@@ -1,0 +1,47 @@
+# --- Python ---
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+dist/
+build/
+.eggs/
+
+# --- Виртуальное окружение ---
+venv/
+.venv/
+env/
+
+# --- Переменные окружения (СЕКРЕТЫ!) ---
+.env
+!.env.example
+
+# --- IDE ---
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# --- Тесты и покрытие ---
+.pytest_cache/
+htmlcov/
+.coverage
+coverage.xml
+
+# --- Mypy ---
+.mypy_cache/
+
+# --- Ruff ---
+.ruff_cache/
+
+# --- Pre-commit ---
+.secrets.baseline
+
+# --- OS ---
+.DS_Store
+Thumbs.db
+
+create_promo.py
+reset_user.py
+
+credentials/
