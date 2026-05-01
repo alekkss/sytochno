@@ -1,0 +1,11 @@
+"""Подпакет сервисов — бизнес-логика приложения."""
+
+from src.services.browser_service import BrowserService
+from src.services.export_service import ExportService
+from src.services.scraper_service import ScraperService
+
+__all__ = [
+    "BrowserService",
+    "ExportService",
+    "ScraperService",
+]
