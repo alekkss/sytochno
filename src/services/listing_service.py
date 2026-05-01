@@ -115,7 +115,7 @@ class ListingService:
         """Извлекает календарь занятости на 60 дней из датепикера.
 
         Последовательность:
-        1. Клик на блок «Заезд» для открытия датепикера.
+        1. Прокрутка к блоку дат и клик на «Заезд» для открытия датепикера.
         2. Нажатие «Сбросить даты».
         3. Считывание дней текущего и следующих месяцев.
         4. Листание месяцев кнопкой «Далее» при необходимости.
@@ -125,32 +125,15 @@ class ListingService:
         """
         page = self._browser.page
 
-        # Шаг 1: Открываем датепикер кликом на «Заезд»
-        checkin_block = await page.query_selector(".sc-detail-dates__item_in")
-        if not checkin_block:
-            logger.warning("блок_заезда_не_найден")
+        # Шаг 1: Прокручиваем к блоку дат и открываем датепикер
+        opened = await self._open_datepicker()
+        if not opened:
             return []
 
-        await checkin_block.click()
-        await asyncio.sleep(1.5)
+        # Шаг 2: Сбрасываем даты
+        await self._reset_dates()
 
-        # Шаг 2: Ждём появления датепикера
-        try:
-            await page.wait_for_selector(
-                ".sc-base-datepicker-modal",
-                timeout=10000,
-            )
-        except Exception:
-            logger.warning("датепикер_не_открылся")
-            return []
-
-        # Шаг 3: Сбрасываем даты
-        reset_button = await page.query_selector(".sc-base-datepicker__reset")
-        if reset_button:
-            await reset_button.click()
-            await asyncio.sleep(1)
-
-        # Шаг 4: Считываем календарь на 60 дней
+        # Шаг 3: Считываем календарь на 60 дней
         today = date.today()
         end_date = today + timedelta(days=59)
         calendar: list[int] = []
@@ -159,13 +142,12 @@ class ListingService:
         months_needed = self._get_months_range(today, end_date)
 
         for month_idx, (year, month) in enumerate(months_needed):
-            # Листаем к нужному месяцу (первый уже виден)
-            if month_idx > 0:
-                # Проверяем, виден ли нужный месяц
+            # Листаем к нужному месяцу (первые два уже видны в датепикере)
+            if month_idx >= 2:
                 is_visible = await self._is_month_visible(year, month)
                 if not is_visible:
                     await self._click_next_month()
-                    await asyncio.sleep(0.8)
+                    await asyncio.sleep(1)
 
             # Считываем дни этого месяца
             month_days = await self._read_month_days(year, month)
@@ -185,11 +167,93 @@ class ListingService:
         # Обрезаем до 60 дней
         calendar = calendar[:60]
 
-        # Закрываем датепикер (клик вне его)
-        await page.keyboard.press("Escape")
-        await asyncio.sleep(0.5)
+        # Закрываем датепикер
+        await self._close_datepicker()
 
         return calendar
+
+    async def _open_datepicker(self) -> bool:
+        """Открывает датепикер кликом на блок «Заезд».
+
+        Прокручивает к элементу, пробует обычный клик,
+        при неудаче — JavaScript-клик.
+
+        Returns:
+            True если датепикер открылся, False — если не удалось.
+        """
+        page = self._browser.page
+
+        # Прокручиваем к блоку дат
+        await page.evaluate("""
+            () => {
+                const el = document.querySelector('.sc-detail-dates');
+                if (el) el.scrollIntoView({behavior: 'smooth', block: 'center'});
+            }
+        """)
+        await asyncio.sleep(1)
+
+        # Ищем блок «Заезд»
+        checkin_block = await page.query_selector(".sc-detail-dates__item_in")
+        if not checkin_block:
+            logger.warning("блок_заезда_не_найден")
+            return False
+
+        # Пробуем обычный клик
+        try:
+            await checkin_block.click(timeout=5000)
+        except Exception:
+            # Fallback: JavaScript-клик
+            logger.debug("обычный_клик_не_сработал_пробуем_js")
+            await page.evaluate("""
+                () => {
+                    const el = document.querySelector('.sc-detail-dates__item_in');
+                    if (el) el.click();
+                }
+            """)
+
+        await asyncio.sleep(1.5)
+
+        # Ждём появления датепикера
+        try:
+            await page.wait_for_selector(
+                ".sc-base-datepicker-modal",
+                timeout=10000,
+            )
+            return True
+        except Exception:
+            logger.warning("датепикер_не_открылся")
+            return False
+
+    async def _reset_dates(self) -> None:
+        """Нажимает кнопку «Сбросить даты» в датепикере."""
+        page = self._browser.page
+
+        # Пробуем обычный клик
+        reset_button = await page.query_selector(".sc-base-datepicker__reset")
+        if not reset_button:
+            return
+
+        try:
+            await reset_button.click(timeout=5000)
+        except Exception:
+            # Fallback: JavaScript-клик
+            await page.evaluate("""
+                () => {
+                    const el = document.querySelector('.sc-base-datepicker__reset');
+                    if (el) el.click();
+                }
+            """)
+
+        await asyncio.sleep(1)
+
+    async def _close_datepicker(self) -> None:
+        """Закрывает датепикер нажатием Escape или кликом вне его."""
+        page = self._browser.page
+        try:
+            await page.keyboard.press("Escape")
+            await asyncio.sleep(0.5)
+        except Exception:
+            pass
 
     async def _is_month_visible(self, year: int, month: int) -> bool:
         """Проверяет, виден ли указанный месяц в датепикере.
@@ -215,10 +279,35 @@ class ListingService:
     async def _click_next_month(self) -> None:
         """Кликает кнопку «Далее» в датепикере для перехода к следующему месяцу."""
         page = self._browser.page
+
         next_btn = await page.query_selector(".sc-base-datepicker-modal__next")
-        if next_btn:
-            await next_btn.click()
-            await asyncio.sleep(0.8)
+        if not next_btn:
+            return
+
+        # Проверяем что кнопка не скрыта (style="display: none;")
+        is_hidden = await page.evaluate("""
+            () => {
+                const el = document.querySelector('.sc-base-datepicker-modal__next');
+                if (!el) return true;
+                const style = window.getComputedStyle(el);
+                return style.display === 'none';
+            }
+        """)
+
+        if is_hidden:
+            return
+
+        try:
+            await next_btn.click(timeout=5000)
+        except Exception:
+            await page.evaluate("""
+                () => {
+                    const el = document.querySelector('.sc-base-datepicker-modal__next');
+                    if (el) el.click();
+                }
+            """)
+
+        await asyncio.sleep(0.8)
 
     async def _read_month_days(self, year: int, month: int) -> list[tuple[int, int]]:
         """Считывает статус всех дней указанного месяца из датепикера.
