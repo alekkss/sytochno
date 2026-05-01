@@ -1,5 +1,6 @@
 """SQLite-реализация репозитория объявлений."""
 
+import json
 import sqlite3
 from datetime import datetime
 from pathlib import Path
@@ -56,6 +57,7 @@ class SQLiteListingRepository(BaseListingRepository):
         self._connection.execute("PRAGMA busy_timeout=5000")
 
         self._create_table()
+        self._migrate()
         logger.info("база_данных_инициализирована", path=self._db_path)
 
     def _create_table(self) -> None:
@@ -75,6 +77,7 @@ class SQLiteListingRepository(BaseListingRepository):
                 address TEXT,
                 metro_station TEXT,
                 has_instant_booking INTEGER NOT NULL DEFAULT 0,
+                calendar_60_days TEXT NOT NULL DEFAULT '[]',
                 snapshot_date TEXT NOT NULL
             )
         """)
@@ -83,6 +86,22 @@ class SQLiteListingRepository(BaseListingRepository):
             ON listings (external_id)
         """)
         conn.commit()
+
+    def _migrate(self) -> None:
+        """Миграция: добавляет столбец calendar_60_days, если он отсутствует.
+
+        Обеспечивает обратную совместимость с базами, созданными ранее.
+        """
+        conn = self._get_connection()
+        cursor = conn.execute("PRAGMA table_info(listings)")
+        columns = {row["name"] for row in cursor.fetchall()}
+
+        if "calendar_60_days" not in columns:
+            conn.execute(
+                "ALTER TABLE listings ADD COLUMN calendar_60_days TEXT NOT NULL DEFAULT '[]'"
+            )
+            conn.commit()
+            logger.info("миграция_выполнена", step="добавлен_столбец_calendar_60_days")
 
     def upsert(self, listing: RawListing) -> None:
         """Сохраняет или обновляет объявление по external_id.
@@ -96,8 +115,8 @@ class SQLiteListingRepository(BaseListingRepository):
             INSERT INTO listings (
                 external_id, title, url, price_per_night, rating,
                 review_count, area_m2, guests, address, metro_station,
-                has_instant_booking, snapshot_date
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                has_instant_booking, calendar_60_days, snapshot_date
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT(external_id) DO UPDATE SET
                 title = excluded.title,
                 url = excluded.url,
@@ -109,6 +128,7 @@ class SQLiteListingRepository(BaseListingRepository):
                 address = excluded.address,
                 metro_station = excluded.metro_station,
                 has_instant_booking = excluded.has_instant_booking,
+                calendar_60_days = excluded.calendar_60_days,
                 snapshot_date = excluded.snapshot_date
             """,
             self._listing_to_row(listing),
@@ -135,8 +155,8 @@ class SQLiteListingRepository(BaseListingRepository):
             INSERT INTO listings (
                 external_id, title, url, price_per_night, rating,
                 review_count, area_m2, guests, address, metro_station,
-                has_instant_booking, snapshot_date
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                has_instant_booking, calendar_60_days, snapshot_date
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT(external_id) DO UPDATE SET
                 title = excluded.title,
                 url = excluded.url,
@@ -148,6 +168,7 @@ class SQLiteListingRepository(BaseListingRepository):
                 address = excluded.address,
                 metro_station = excluded.metro_station,
                 has_instant_booking = excluded.has_instant_booking,
+                calendar_60_days = excluded.calendar_60_days,
                 snapshot_date = excluded.snapshot_date
             """,
             rows,
@@ -210,7 +231,7 @@ class SQLiteListingRepository(BaseListingRepository):
     def _listing_to_row(listing: RawListing) -> tuple[
         str, str, str, int | None, float | None,
         int | None, int | None, int | None, str | None, str | None,
-        int, str,
+        int, str, str,
     ]:
         """Преобразует объект RawListing в кортеж для SQL-запроса.
 
@@ -232,6 +253,7 @@ class SQLiteListingRepository(BaseListingRepository):
             listing.address,
             listing.metro_station,
             1 if listing.has_instant_booking else 0,
+            json.dumps(listing.calendar_60_days),
             listing.snapshot_date.isoformat(),
         )
 
@@ -245,6 +267,10 @@ class SQLiteListingRepository(BaseListingRepository):
         Returns:
             Экземпляр RawListing.
         """
+        # Десериализация calendar_60_days из JSON-строки
+        calendar_raw = row["calendar_60_days"]
+        calendar: list[int] = json.loads(calendar_raw) if calendar_raw else []
+
         return RawListing(
             external_id=row["external_id"],
             title=row["title"],
@@ -257,5 +283,6 @@ class SQLiteListingRepository(BaseListingRepository):
             address=row["address"],
             metro_station=row["metro_station"],
             has_instant_booking=bool(row["has_instant_booking"]),
+            calendar_60_days=calendar,
             snapshot_date=datetime.fromisoformat(row["snapshot_date"]),
         )

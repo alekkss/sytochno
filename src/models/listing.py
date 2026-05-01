@@ -6,7 +6,7 @@ from datetime import datetime
 
 @dataclass
 class RawListing:
-    """Данные объявления, извлечённые со страницы каталога sutochno.ru.
+    """Данные объявления, извлечённые с sutochno.ru.
 
     Attributes:
         external_id: Уникальный идентификатор объявления на sutochno.ru.
@@ -19,6 +19,7 @@ class RawListing:
         address: Полный адрес объекта.
         metro_station: Ближайшая станция метро с расстоянием.
         has_instant_booking: Наличие быстрого бронирования.
+        calendar_60_days: Массив занятости на 60 дней (0 — свободен, 1 — занят).
         url: Прямая ссылка на объявление.
         snapshot_date: Дата и время сбора данных.
     """
@@ -34,7 +35,20 @@ class RawListing:
     address: str | None = None
     metro_station: str | None = None
     has_instant_booking: bool = False
+    calendar_60_days: list[int] = field(default_factory=list)
     snapshot_date: datetime = field(default_factory=datetime.now)
+
+    @property
+    def occupancy_percent(self) -> float:
+        """Вычисляет процент занятости из календаря на 60 дней.
+
+        Returns:
+            Процент занятых дней (0.0–100.0). Если календарь пуст — 0.0.
+        """
+        if not self.calendar_60_days:
+            return 0.0
+        occupied = sum(self.calendar_60_days)
+        return round((occupied / len(self.calendar_60_days)) * 100, 1)
 
     def __post_init__(self) -> None:
         """Валидация обязательных полей после инициализации.

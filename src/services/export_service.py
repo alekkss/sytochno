@@ -25,6 +25,8 @@ _COLUMNS: list[dict[str, str | int]] = [
     {"header": "Адрес", "width": 45},
     {"header": "Метро", "width": 30},
     {"header": "Быстрое бронирование", "width": 22},
+    {"header": "Занятость (%)", "width": 14},
+    {"header": "Календарь 60 дней", "width": 65},
     {"header": "Ссылка", "width": 20},
     {"header": "Дата снимка", "width": 20},
 ]
@@ -142,15 +144,22 @@ class ExportService:
                 value="Да" if listing.has_instant_booking else "Нет",
             )
 
+            # Занятость (%)
+            ws.cell(row=row_idx, column=11, value=listing.occupancy_percent)
+
+            # Календарь 60 дней — компактная строка
+            calendar_str = "".join(str(d) for d in listing.calendar_60_days) if listing.calendar_60_days else ""
+            ws.cell(row=row_idx, column=12, value=calendar_str)
+
             # Кликабельная ссылка
-            link_cell = ws.cell(row=row_idx, column=11, value="Открыть")
+            link_cell = ws.cell(row=row_idx, column=13, value="Открыть")
             link_cell.hyperlink = listing.url
             link_cell.font = link_font
 
             # Дата снимка
             ws.cell(
                 row=row_idx,
-                column=12,
+                column=14,
                 value=listing.snapshot_date.strftime("%Y-%m-%d %H:%M"),
             )
 

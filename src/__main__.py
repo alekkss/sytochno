@@ -9,6 +9,7 @@ from src.config.settings import Settings
 from src.repositories.sqlite_repository import SQLiteListingRepository
 from src.services.browser_service import BrowserService
 from src.services.export_service import ExportService
+from src.services.listing_service import ListingService
 from src.services.scraper_service import ScraperService
 
 
@@ -20,9 +21,10 @@ async def run() -> None:
     2. Инициализацию базы данных.
     3. Запуск браузера.
     4. Парсинг каталога.
-    5. Сохранение результатов в SQLite.
-    6. Экспорт в Excel.
-    7. Корректное завершение работы.
+    5. Обогащение объявлений данными календаря.
+    6. Сохранение результатов в SQLite.
+    7. Экспорт в Excel.
+    8. Корректное завершение работы.
     """
     # --- Шаг 1: Загрузка конфигурации ---
     try:
@@ -46,6 +48,7 @@ async def run() -> None:
     # --- Шаг 4: Создание сервисов (Dependency Injection) ---
     browser_service = BrowserService(settings=settings)
     scraper_service = ScraperService(settings=settings, browser_service=browser_service)
+    listing_service = ListingService(settings=settings, browser_service=browser_service)
     export_service = ExportService(settings=settings)
 
     try:
@@ -53,7 +56,7 @@ async def run() -> None:
         await browser_service.start()
 
         # --- Шаг 6: Парсинг каталога ---
-        logger.info("начало_парсинга", step="scraping")
+        logger.info("начало_парсинга_каталога", step="scraping")
         listings = await scraper_service.scrape_catalog()
 
         if not listings:
@@ -61,12 +64,25 @@ async def run() -> None:
             return
 
         logger.info(
-            "парсинг_завершён",
+            "каталог_собран",
             total=len(listings),
             step="scraping",
         )
 
-        # --- Шаг 7: Сохранение в базу данных ---
+        # --- Шаг 7: Обогащение — парсинг карточек (календарь занятости) ---
+        logger.info(
+            "начало_парсинга_карточек",
+            total=len(listings),
+            step="enrichment",
+        )
+        listings = await listing_service.enrich_listings(listings)
+        logger.info(
+            "карточки_обработаны",
+            total=len(listings),
+            step="enrichment",
+        )
+
+        # --- Шаг 8: Сохранение в базу данных ---
         logger.info("сохранение_в_бд", step="storage")
         saved_count = repository.upsert_many(listings)
         logger.info(
@@ -75,7 +91,7 @@ async def run() -> None:
             step="storage",
         )
 
-        # --- Шаг 8: Экспорт в Excel ---
+        # --- Шаг 9: Экспорт в Excel ---
         logger.info("экспорт_в_excel", step="export")
         all_listings = repository.get_all()
         export_path = export_service.export(all_listings)
@@ -96,7 +112,7 @@ async def run() -> None:
         )
         sys.exit(1)
     finally:
-        # --- Шаг 9: Корректное завершение ---
+        # --- Шаг 10: Корректное завершение ---
         await browser_service.stop()
         repository.close()
         logger.info("приложение_завершено", step="shutdown")
