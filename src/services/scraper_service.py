@@ -1,5 +1,6 @@
 """Сервис парсинга каталога — обход страниц и извлечение данных объявлений."""
 
+import asyncio
 import re
 
 from playwright.async_api import Page
@@ -19,7 +20,8 @@ class ScraperService:
     """Сервис парсинга каталога sutochno.ru.
 
     Обходит страницы каталога, извлекает данные объявлений из карточек,
-    обрабатывает пагинацию и возвращает список RawListing.
+    обрабатывает пагинацию и возвращает список уникальных RawListing.
+    Дедупликация выполняется по external_id в процессе сбора.
     """
 
     def __init__(self, settings: Settings, browser_service: BrowserService) -> None:
@@ -31,16 +33,21 @@ class ScraperService:
         """
         self._settings = settings
         self._browser = browser_service
+        self._seen_ids: set[str] = set()
+        self._duplicates_count: int = 0
 
     async def scrape_catalog(self) -> list[RawListing]:
-        """Основной метод — обходит каталог и собирает все объявления.
+        """Основной метод — обходит каталог и собирает все уникальные объявления.
 
         Обрабатывает пагинацию до MAX_PAGES или до последней страницы.
+        Дубликаты (по external_id) отбрасываются автоматически.
 
         Returns:
-            Список объявлений со всех обработанных страниц.
+            Список уникальных объявлений со всех обработанных страниц.
         """
         all_listings: list[RawListing] = []
+        self._seen_ids.clear()
+        self._duplicates_count = 0
         current_page = 1
         max_pages = self._settings.max_pages or 999
 
@@ -76,7 +83,7 @@ class ScraperService:
                 total=len(page_listings),
             )
 
-            # Проверяем наличие следующей страницы
+            # Проверяем, нужна ли следующая страница
             if current_page >= max_pages:
                 break
 
@@ -86,12 +93,18 @@ class ScraperService:
                 break
 
             current_page += 1
-            await self._wait_for_cards()
 
         logger.info(
             "парсинг_каталога_завершён",
             total=len(all_listings),
         )
+
+        if self._duplicates_count > 0:
+            logger.info(
+                "дубликаты_отброшены",
+                total=self._duplicates_count,
+            )
+
         return all_listings
 
     async def _wait_for_cards(self) -> None:
@@ -102,7 +115,7 @@ class ScraperService:
         page = self._browser.page
         try:
             await page.wait_for_selector(
-                "[data-observe-id]",
+                ".card[data-observe-id]",
                 timeout=30000,
             )
         except Exception:
@@ -111,8 +124,10 @@ class ScraperService:
     async def _parse_current_page(self) -> list[RawListing]:
         """Парсит все карточки объявлений на текущей странице.
 
+        Пропускает карточки с уже встречавшимся external_id (дедупликация).
+
         Returns:
-            Список объявлений с текущей страницы.
+            Список уникальных объявлений с текущей страницы.
         """
         page = self._browser.page
         listings: list[RawListing] = []
@@ -126,8 +141,18 @@ class ScraperService:
 
         for card in cards:
             try:
+                # Предварительная проверка ID до полного парсинга (экономия времени)
+                external_id = await card.get_attribute("data-observe-id")
+                if not external_id:
+                    continue
+
+                if external_id in self._seen_ids:
+                    self._duplicates_count += 1
+                    continue
+
                 listing = await self._parse_card(card, page)
                 if listing is not None:
+                    self._seen_ids.add(listing.external_id)
                     listings.append(listing)
             except Exception as e:
                 logger.warning(
@@ -396,38 +421,84 @@ class ScraperService:
     async def _go_to_next_page(self) -> bool:
         """Переходит на следующую страницу каталога.
 
-        Ищет кнопку «Следующая» или ссылку пагинации и кликает по ней.
+        Находит кнопку «Далее» среди всех li.navigation (их может быть две:
+        «Назад» и «Далее»). Определяет нужную по тексту внутри
+        span.pagination-arrow__text. После клика ожидает обновления контента.
 
         Returns:
-            True если переход выполнен, False если следующей страницы нет.
+            True если переход выполнен, False если кнопки «Далее» нет.
         """
         page = self._browser.page
 
-        # Ищем кнопку "Следующая" или стрелку вправо в пагинации
-        next_button = await page.query_selector(
-            "button.pagination__arrow--right:not([disabled])"
-        )
-        if next_button:
-            await next_button.click()
-            await self._browser.random_delay()
-            return True
+        # Прокручиваем к пагинации
+        await page.evaluate("""
+            () => {
+                const pagination = document.querySelector('.pagination-wrapper');
+                if (pagination) pagination.scrollIntoView({behavior: 'smooth', block: 'center'});
+            }
+        """)
+        await asyncio.sleep(1)
 
-        # Альтернативный селектор для пагинации
-        next_link = await page.query_selector(
-            "a.pagination__arrow--right"
-        )
-        if next_link:
-            await next_link.click()
-            await self._browser.random_delay()
-            return True
+        # Ищем все li.navigation и находим тот, который содержит текст «Далее»
+        next_link = await page.evaluate("""
+            () => {
+                const items = document.querySelectorAll('li.navigation');
+                for (const item of items) {
+                    const text = item.querySelector('.pagination-arrow__text');
+                    if (text && text.textContent.trim() === 'Далее') {
+                        return true;
+                    }
+                }
+                return false;
+            }
+        """)
 
-        # Пробуем найти кнопку "Показать ещё" (если каталог подгружается кнопкой)
-        show_more = await page.query_selector(
-            "button:has-text('Показать ещё')"
-        )
-        if show_more:
-            await show_more.click()
-            await self._browser.random_delay()
-            return True
+        if not next_link:
+            logger.debug("кнопка_далее_не_найдена")
+            return False
 
-        return False
+        # Кликаем именно по кнопке «Далее» через JavaScript
+        clicked = await page.evaluate("""
+            () => {
+                const items = document.querySelectorAll('li.navigation');
+                for (const item of items) {
+                    const text = item.querySelector('.pagination-arrow__text');
+                    if (text && text.textContent.trim() === 'Далее') {
+                        const link = item.querySelector('a');
+                        if (link) {
+                            link.click();
+                            return true;
+                        }
+                    }
+                }
+                return false;
+            }
+        """)
+
+        if not clicked:
+            logger.debug("клик_далее_не_выполнен")
+            return False
+
+        logger.debug("клик_далее_выполнен")
+
+        # Ждём завершения сетевой активности (Vue делает XHR-запрос за новыми данными)
+        try:
+            await page.wait_for_load_state("networkidle", timeout=30000)
+        except Exception:
+            pass
+
+        # Дополнительная пауза для рендеринга Vue-компонентов
+        await asyncio.sleep(3)
+
+        # Прокручиваем наверх
+        await page.evaluate("window.scrollTo(0, 0)")
+        await self._browser.random_delay()
+
+        # Проверяем, что карточки есть на странице
+        cards = await page.query_selector_all(".card[data-observe-id]")
+        if not cards:
+            logger.warning("карточки_не_загрузились_после_пагинации")
+            return False
+
+        logger.info("переход_на_следующую_страницу_выполнен")
+        return True

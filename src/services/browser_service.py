@@ -15,31 +15,13 @@ from src.config.settings import Settings
 
 logger = get_logger("browser")
 
-# Типы ресурсов, которые блокируются для экономии трафика и скорости
-_BLOCKED_RESOURCE_TYPES: set[str] = {
-    "image",
-    "font",
-    "media",
-}
-
-# URL-паттерны аналитических скриптов для блокировки
-_BLOCKED_URL_PATTERNS: list[str] = [
-    "google-analytics",
-    "yandex.ru/metrika",
-    "mc.yandex.ru",
-    "top-fwz1.mail.ru",
-    "vk.com/rtrg",
-    "facebook.net",
-    "doubleclick.net",
-]
-
 
 class BrowserService:
     """Сервис для управления браузером Playwright.
 
     Обеспечивает:
     - Stealth-настройки для обхода детекции бота.
-    - Блокировку изображений, шрифтов и аналитики.
+    - Полную загрузку страницы без блокировки ресурсов.
     - Случайные паузы между действиями.
     - Навигацию с обработкой таймаутов.
     """
@@ -72,7 +54,7 @@ class BrowserService:
         return self._page
 
     async def start(self) -> None:
-        """Запускает браузер с настройками stealth и блокировкой ресурсов."""
+        """Запускает браузер с настройками stealth без блокировки ресурсов."""
         logger.info(
             "запуск_браузера",
             step="start",
@@ -108,9 +90,6 @@ class BrowserService:
         """)
 
         self._page = self._context.pages[0] if self._context.pages else await self._context.new_page()
-
-        # Настраиваем блокировку ресурсов
-        await self._page.route("**/*", self._handle_route)
 
         # Устанавливаем таймаут навигации
         self._page.set_default_navigation_timeout(self._settings.navigation_timeout)
@@ -189,28 +168,3 @@ class BrowserService:
             HTML-строка.
         """
         return await self.page.content()
-
-    async def _handle_route(self, route: "any") -> None:  # type: ignore[name-defined]
-        """Обработчик маршрутов — блокирует лишние ресурсы.
-
-        Блокирует изображения, шрифты, медиа и аналитические скрипты
-        для ускорения загрузки и снижения нагрузки.
-
-        Args:
-            route: Объект маршрута Playwright.
-        """
-        request = route.request
-
-        # Блокируем по типу ресурса
-        if request.resource_type in _BLOCKED_RESOURCE_TYPES:
-            await route.abort()
-            return
-
-        # Блокируем по URL-паттерну (аналитика)
-        url_lower = request.url.lower()
-        for pattern in _BLOCKED_URL_PATTERNS:
-            if pattern in url_lower:
-                await route.abort()
-                return
-
-        await route.continue_()
