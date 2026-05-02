@@ -27,6 +27,8 @@ _COLUMNS: list[dict[str, str | int]] = [
     {"header": "Быстрое бронирование", "width": 22},
     {"header": "Занятость (%)", "width": 14},
     {"header": "Календарь 60 дней", "width": 65},
+    {"header": "Средняя цена (руб./сут.)", "width": 22},
+    {"header": "Цены 60 дней (руб./сут.)", "width": 65},
     {"header": "Ссылка", "width": 20},
     {"header": "Дата снимка", "width": 20},
 ]
@@ -151,15 +153,22 @@ class ExportService:
             calendar_str = "".join(str(d) for d in listing.calendar_60_days) if listing.calendar_60_days else ""
             ws.cell(row=row_idx, column=12, value=calendar_str)
 
+            # Средняя цена (руб./сут.)
+            ws.cell(row=row_idx, column=13, value=listing.average_price)
+
+            # Цены 60 дней — через точку с запятой
+            prices_str = ";".join(str(p) for p in listing.prices_60_days) if listing.prices_60_days else ""
+            ws.cell(row=row_idx, column=14, value=prices_str)
+
             # Кликабельная ссылка
-            link_cell = ws.cell(row=row_idx, column=13, value="Открыть")
+            link_cell = ws.cell(row=row_idx, column=15, value="Открыть")
             link_cell.hyperlink = listing.url
             link_cell.font = link_font
 
             # Дата снимка
             ws.cell(
                 row=row_idx,
-                column=14,
+                column=16,
                 value=listing.snapshot_date.strftime("%Y-%m-%d %H:%M"),
             )
 

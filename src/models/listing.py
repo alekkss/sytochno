@@ -20,6 +20,7 @@ class RawListing:
         metro_station: Ближайшая станция метро с расстоянием.
         has_instant_booking: Наличие быстрого бронирования.
         calendar_60_days: Массив занятости на 60 дней (0 — свободен, 1 — занят).
+        prices_60_days: Массив цен за сутки на 60 дней (0 — день занят).
         url: Прямая ссылка на объявление.
         snapshot_date: Дата и время сбора данных.
     """
@@ -36,6 +37,7 @@ class RawListing:
     metro_station: str | None = None
     has_instant_booking: bool = False
     calendar_60_days: list[int] = field(default_factory=list)
+    prices_60_days: list[int] = field(default_factory=list)
     snapshot_date: datetime = field(default_factory=datetime.now)
 
     @property
@@ -49,6 +51,20 @@ class RawListing:
             return 0.0
         occupied = sum(self.calendar_60_days)
         return round((occupied / len(self.calendar_60_days)) * 100, 1)
+
+    @property
+    def average_price(self) -> int:
+        """Вычисляет среднюю цену за сутки по свободным дням.
+
+        Returns:
+            Средняя цена (целое число). Если нет свободных дней — 0.
+        """
+        if not self.prices_60_days:
+            return 0
+        non_zero = [p for p in self.prices_60_days if p > 0]
+        if not non_zero:
+            return 0
+        return round(sum(non_zero) / len(non_zero))
 
     def __post_init__(self) -> None:
         """Валидация обязательных полей после инициализации.

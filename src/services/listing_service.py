@@ -1,6 +1,8 @@
-"""Сервис парсинга карточки объявления — извлечение календаря занятости."""
+"""Сервис парсинга карточки объявления — извлечение календаря занятости и цен."""
 
 import asyncio
+import re
+import time
 from datetime import date, timedelta
 
 from src.config.logger import get_logger
@@ -27,12 +29,19 @@ _MONTH_MAP: dict[str, int] = {
     "декабр": 12,
 }
 
+# CSS-селекторы элементов с ценой (в порядке приоритета)
+_PRICE_SELECTORS: list[str] = [
+    ".sc-detail-aside-price__cost",
+    ".sc-detail-hotel-booking__price-sale",
+]
+
 
 class ListingService:
     """Сервис парсинга карточки объявления на sutochno.ru.
 
     Заходит в каждое объявление, открывает календарь и считывает
-    занятость на 60 дней (0 — свободен, 1 — занят).
+    занятость на 60 дней (0 — свободен, 1 — занят), а затем
+    собирает цены за сутки для каждого свободного дня.
     """
 
     def __init__(self, settings: Settings, browser_service: BrowserService) -> None:
@@ -46,17 +55,21 @@ class ListingService:
         self._browser = browser_service
 
     async def enrich_listing(self, listing: RawListing) -> RawListing:
-        """Обогащает объявление данными календаря занятости.
+        """Обогащает объявление данными календаря занятости и ценами.
 
         Переходит на страницу объявления, открывает датепикер,
-        сбрасывает даты и считывает занятость на 60 дней.
+        сбрасывает даты, считывает занятость на 60 дней,
+        затем собирает цены по каждому свободному дню.
+        Замеряет и логирует время обработки карточки.
 
         Args:
             listing: Объявление с базовыми данными из каталога.
 
         Returns:
-            Объявление с заполненным calendar_60_days.
+            Объявление с заполненными calendar_60_days и prices_60_days.
         """
+        start_time = time.perf_counter()
+
         logger.info(
             "парсинг_карточки",
             path=listing.url,
@@ -73,9 +86,19 @@ class ListingService:
             listing.calendar_60_days = calendar
 
             logger.info(
-                "карточка_обработана",
+                "календарь_собран",
                 step=f"id={listing.external_id}",
                 total=len(calendar),
+            )
+
+            # Собираем цены по дням
+            prices = await self._extract_prices(calendar)
+            listing.prices_60_days = prices
+
+            logger.info(
+                "цены_собраны",
+                step=f"id={listing.external_id}",
+                total=len(prices),
             )
 
         except Exception as e:
@@ -86,10 +109,19 @@ class ListingService:
                 step=f"id={listing.external_id}",
             )
 
+        elapsed = time.perf_counter() - start_time
+        elapsed_str = f"{elapsed:.1f}с"
+
+        logger.info(
+            "карточка_завершена",
+            step=f"id={listing.external_id}",
+            total=elapsed_str,
+        )
+
         return listing
 
     async def enrich_listings(self, listings: list[RawListing]) -> list[RawListing]:
-        """Обогащает список объявлений данными календаря.
+        """Обогащает список объявлений данными календаря и цен.
 
         Последовательно обрабатывает каждое объявление.
 
@@ -97,7 +129,7 @@ class ListingService:
             listings: Список объявлений из каталога.
 
         Returns:
-            Список объявлений с заполненными calendar_60_days.
+            Список объявлений с заполненными calendar_60_days и prices_60_days.
         """
         total = len(listings)
         for idx, listing in enumerate(listings, start=1):
@@ -110,6 +142,273 @@ class ListingService:
             await self._browser.random_delay()
 
         return listings
+
+    # ─────────────────────────────────────────────────────────────────────
+    # Сбор цен по дням
+    # ─────────────────────────────────────────────────────────────────────
+
+    async def _extract_prices(self, calendar: list[int]) -> list[int]:
+        """Собирает цены за сутки для каждого дня из 60-дневного диапазона.
+
+        Для каждого свободного дня:
+        1. Открывает датепикер.
+        2. Сбрасывает даты.
+        3. Кликает на день N (заезд).
+        4. Находит ближайший свободный день после N и кликает (выезд).
+        5. Считывает цену со страницы.
+        6. Делит цену на количество ночей.
+
+        Для занятых дней — цена = 0.
+        Первая итерация использует полный цикл с прокруткой,
+        последующие — ускоренный без прокрутки.
+
+        Args:
+            calendar: Список занятости (0 — свободен, 1 — занят).
+
+        Returns:
+            Список из 60 цен (int). 0 — если день занят.
+        """
+        if not calendar:
+            return []
+
+        today = date.today()
+        prices: list[int] = []
+        is_first_price_call = True
+
+        for day_idx in range(len(calendar)):
+            current_date = today + timedelta(days=day_idx)
+
+            # Если день занят — цена 0
+            if calendar[day_idx] == 1:
+                prices.append(0)
+                continue
+
+            # Находим ближайший свободный день для выезда (после текущего)
+            checkout_offset = self._find_next_free_day(calendar, day_idx + 1)
+            if checkout_offset is None:
+                # Нет свободного дня для выезда в пределах диапазона — пропускаем
+                prices.append(0)
+                logger.debug(
+                    "нет_свободного_дня_для_выезда",
+                    step=f"день={day_idx + 1}",
+                )
+                continue
+
+            checkout_date = today + timedelta(days=checkout_offset)
+            nights = (checkout_date - current_date).days
+
+            # Получаем цену за выбранный диапазон
+            price_total = await self._get_price_for_dates(
+                current_date, checkout_date, is_first_call=is_first_price_call
+            )
+            is_first_price_call = False
+
+            if price_total > 0 and nights > 0:
+                price_per_night = round(price_total / nights)
+            else:
+                price_per_night = 0
+
+            prices.append(price_per_night)
+
+            logger.debug(
+                "цена_дня",
+                step=f"день={day_idx + 1}",
+                current=f"{current_date} → {checkout_date}",
+                total=price_per_night,
+            )
+
+        return prices
+
+    @staticmethod
+    def _find_next_free_day(calendar: list[int], start_idx: int) -> int | None:
+        """Находит индекс ближайшего свободного дня начиная с start_idx.
+
+        Поиск идёт до 61-го дня (индекс 60) включительно,
+        чтобы для последнего (60-го) дня можно было найти выезд.
+
+        Args:
+            calendar: Список занятости.
+            start_idx: Индекс, с которого начинать поиск.
+
+        Returns:
+            Индекс свободного дня или None, если не найден.
+        """
+        # Разрешаем выезд до 61-го дня (индекс 60)
+        max_idx = min(len(calendar), 61)
+        for idx in range(start_idx, max_idx):
+            if idx >= len(calendar):
+                # День за пределами собранного календаря — считаем свободным
+                return idx
+            if calendar[idx] == 0:
+                return idx
+        # Если все дни до конца заняты, разрешаем выезд на день после календаря
+        if start_idx <= 60:
+            return min(start_idx, 60)
+        return None
+
+    async def _get_price_for_dates(
+        self, checkin: date, checkout: date, *, is_first_call: bool = True
+    ) -> int:
+        """Получает цену за указанный диапазон дат через датепикер.
+
+        При первом вызове выполняет полный цикл с прокруткой и длинными паузами.
+        При последующих вызовах пропускает прокрутку и использует сокращённые паузы,
+        т.к. страница уже в правильной позиции.
+
+        Args:
+            checkin: Дата заезда.
+            checkout: Дата выезда.
+            is_first_call: Первый ли это вызов для данной карточки.
+
+        Returns:
+            Общая цена за период в рублях (int). 0 — если не удалось считать.
+        """
+        try:
+            # Шаг 1: Открываем датепикер
+            opened = await self._open_datepicker(skip_scroll=not is_first_call)
+            if not opened:
+                return 0
+
+            # Шаг 2: Сбрасываем даты
+            await self._reset_dates()
+            await asyncio.sleep(0.3 if not is_first_call else 0.5)
+
+            # Шаг 3: Кликаем дату заезда
+            clicked_checkin = await self._click_day_in_datepicker(checkin)
+            if not clicked_checkin:
+                await self._close_datepicker()
+                return 0
+
+            await asyncio.sleep(0.3 if not is_first_call else 0.8)
+
+            # Шаг 4: Кликаем дату выезда
+            clicked_checkout = await self._click_day_in_datepicker(checkout)
+            if not clicked_checkout:
+                await self._close_datepicker()
+                return 0
+
+            # Шаг 5: Ждём закрытия датепикера и обновления цены
+            await asyncio.sleep(1.0 if not is_first_call else 2.0)
+
+            # Шаг 6: Считываем цену
+            price = await self._read_price()
+            return price
+
+        except Exception as e:
+            logger.debug(
+                "ошибка_получения_цены",
+                error=str(e),
+                error_type=type(e).__name__,
+            )
+            return 0
+
+    async def _click_day_in_datepicker(self, target_date: date) -> bool:
+        """Кликает на конкретный день в открытом датепикере.
+
+        При необходимости листает месяцы кнопкой «Далее».
+
+        Args:
+            target_date: Дата, которую нужно выбрать.
+
+        Returns:
+            True если клик выполнен успешно, False — если день не найден.
+        """
+        page = self._browser.page
+
+        # Убедимся что нужный месяц виден, при необходимости листаем
+        max_attempts = 6
+        for _ in range(max_attempts):
+            is_visible = await self._is_month_visible(target_date.year, target_date.month)
+            if is_visible:
+                break
+            await self._click_next_month()
+            await asyncio.sleep(0.5)
+        else:
+            logger.debug(
+                "месяц_не_найден_в_датепикере",
+                step=f"{target_date.year}-{target_date.month:02d}",
+            )
+            return False
+
+        # Находим блок нужного месяца
+        month_block = await self._find_month_block(target_date.year, target_date.month)
+        if not month_block:
+            return False
+
+        # Находим ячейку нужного дня и кликаем
+        day_cells = await month_block.query_selector_all("td.sc-base-datepicker-day")
+        for cell in day_cells:
+            span = await cell.query_selector("span")
+            if not span:
+                continue
+            day_text = await span.inner_text()
+            day_text = day_text.strip()
+            if not day_text.isdigit():
+                continue
+            if int(day_text) == target_date.day:
+                try:
+                    await cell.click(timeout=3000)
+                    return True
+                except Exception:
+                    # Fallback: JS-клик
+                    await page.evaluate(
+                        "(el) => el.click()",
+                        cell,
+                    )
+                    return True
+
+        logger.debug(
+            "день_не_найден_в_календаре",
+            step=f"{target_date.isoformat()}",
+        )
+        return False
+
+    async def _read_price(self) -> int:
+        """Считывает цену из элемента на странице карточки.
+
+        Пробует несколько CSS-селекторов в порядке приоритета:
+        1. .sc-detail-aside-price__cost — основной блок цены.
+        2. .sc-detail-hotel-booking__price-sale — альтернативный блок (отели/гостиницы).
+
+        Убирает неразрывные пробелы и символ валюты, извлекает число.
+
+        Returns:
+            Цена в рублях (int). 0 — если ни один элемент не найден или не распарсился.
+        """
+        page = self._browser.page
+
+        for selector in _PRICE_SELECTORS:
+            try:
+                price_el = await page.wait_for_selector(
+                    selector,
+                    timeout=3000,
+                )
+                if not price_el:
+                    continue
+
+                price_text = await price_el.inner_text()
+
+                # Убираем неразрывные пробелы, обычные пробелы, символ рубля и прочее
+                cleaned = price_text.replace("\xa0", "").replace(" ", "")
+                # Извлекаем только цифры
+                digits = re.sub(r"[^\d]", "", cleaned)
+
+                if not digits:
+                    continue
+
+                price = int(digits)
+                if price > 0:
+                    return price
+
+            except Exception:
+                continue
+
+        logger.debug("цена_не_найдена_ни_в_одном_селекторе")
+        return 0
+
+    # ─────────────────────────────────────────────────────────────────────
+    # Извлечение календаря занятости (существующий функционал)
+    # ─────────────────────────────────────────────────────────────────────
 
     async def _extract_calendar(self) -> list[int]:
         """Извлекает календарь занятости на 60 дней из датепикера.
@@ -172,25 +471,34 @@ class ListingService:
 
         return calendar
 
-    async def _open_datepicker(self) -> bool:
+    # ─────────────────────────────────────────────────────────────────────
+    # Вспомогательные методы работы с датепикером
+    # ─────────────────────────────────────────────────────────────────────
+
+    async def _open_datepicker(self, *, skip_scroll: bool = False) -> bool:
         """Открывает датепикер кликом на блок «Заезд».
 
-        Прокручивает к элементу, пробует обычный клик,
-        при неудаче — JavaScript-клик.
+        При первом вызове прокручивает к элементу с полными паузами.
+        При последующих (skip_scroll=True) — пропускает прокрутку
+        и использует сокращённые паузы.
+
+        Args:
+            skip_scroll: Пропустить прокрутку к блоку дат (уже в позиции).
 
         Returns:
             True если датепикер открылся, False — если не удалось.
         """
         page = self._browser.page
 
-        # Прокручиваем к блоку дат
-        await page.evaluate("""
-            () => {
-                const el = document.querySelector('.sc-detail-dates');
-                if (el) el.scrollIntoView({behavior: 'smooth', block: 'center'});
-            }
-        """)
-        await asyncio.sleep(1)
+        if not skip_scroll:
+            # Прокручиваем к блоку дат
+            await page.evaluate("""
+                () => {
+                    const el = document.querySelector('.sc-detail-dates');
+                    if (el) el.scrollIntoView({behavior: 'smooth', block: 'center'});
+                }
+            """)
+            await asyncio.sleep(1)
 
         # Ищем блок «Заезд»
         checkin_block = await page.query_selector(".sc-detail-dates__item_in")
@@ -211,13 +519,14 @@ class ListingService:
                 }
             """)
 
-        await asyncio.sleep(1.5)
+        # Сокращённая пауза при повторных вызовах
+        await asyncio.sleep(0.5 if skip_scroll else 1.5)
 
         # Ждём появления датепикера
         try:
             await page.wait_for_selector(
                 ".sc-base-datepicker-modal",
-                timeout=10000,
+                timeout=5000,
             )
             return True
         except Exception:
@@ -228,13 +537,12 @@ class ListingService:
         """Нажимает кнопку «Сбросить даты» в датепикере."""
         page = self._browser.page
 
-        # Пробуем обычный клик
         reset_button = await page.query_selector(".sc-base-datepicker__reset")
         if not reset_button:
             return
 
         try:
-            await reset_button.click(timeout=5000)
+            await reset_button.click(timeout=3000)
         except Exception:
             # Fallback: JavaScript-клик
             await page.evaluate("""
@@ -244,14 +552,14 @@ class ListingService:
                 }
             """)
 
-        await asyncio.sleep(1)
+        await asyncio.sleep(0.3)
 
     async def _close_datepicker(self) -> None:
         """Закрывает датепикер нажатием Escape или кликом вне его."""
         page = self._browser.page
         try:
             await page.keyboard.press("Escape")
-            await asyncio.sleep(0.5)
+            await asyncio.sleep(0.3)
         except Exception:
             pass
 
@@ -307,7 +615,7 @@ class ListingService:
                 }
             """)
 
-        await asyncio.sleep(0.8)
+        await asyncio.sleep(0.5)
 
     async def _read_month_days(self, year: int, month: int) -> list[tuple[int, int]]:
         """Считывает статус всех дней указанного месяца из датепикера.
