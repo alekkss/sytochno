@@ -35,6 +35,9 @@ _PRICE_SELECTORS: list[str] = [
     ".sc-detail-hotel-booking__price-sale",
 ]
 
+# Селектор ошибки минимального количества суток
+_MIN_NIGHTS_ERROR_SELECTOR: str = ".sc-detail-aside-booking__info-error-text"
+
 
 class ListingService:
     """Сервис парсинга карточки объявления на sutochno.ru.
@@ -156,7 +159,9 @@ class ListingService:
         3. Кликает на день N (заезд).
         4. Находит ближайший свободный день после N и кликает (выезд).
         5. Считывает цену со страницы.
-        6. Делит цену на количество ночей.
+        6. Если появилась ошибка «Минимальное количество суток — N»,
+           повторяет с диапазоном checkin + N дней.
+        7. Делит цену на количество ночей.
 
         Для занятых дней — цена = 0.
         Первая итерация использует полный цикл с прокруткой,
@@ -252,8 +257,11 @@ class ListingService:
         """Получает цену за указанный диапазон дат через датепикер.
 
         При первом вызове выполняет полный цикл с прокруткой и длинными паузами.
-        При последующих вызовах пропускает прокрутку и использует сокращённые паузы,
-        т.к. страница уже в правильной позиции.
+        При последующих вызовах пропускает прокрутку и использует сокращённые паузы.
+
+        Если после выбора дат появляется ошибка «Минимальное количество суток — N»,
+        повторяет попытку с увеличенным диапазоном (checkin + N дней) и делит
+        итоговую цену на N.
 
         Args:
             checkin: Дата заезда.
@@ -290,7 +298,19 @@ class ListingService:
             # Шаг 5: Ждём закрытия датепикера и обновления цены
             await asyncio.sleep(1.0 if not is_first_call else 2.0)
 
-            # Шаг 6: Считываем цену
+            # Шаг 6: Проверяем ошибку минимального количества суток
+            min_nights = await self._check_min_nights_error()
+            if min_nights is not None:
+                logger.debug(
+                    "минимум_суток_требуется",
+                    step=f"{checkin.isoformat()}",
+                    total=min_nights,
+                )
+                # Повторяем с увеличенным диапазоном
+                price = await self._retry_with_min_nights(checkin, min_nights)
+                return price
+
+            # Шаг 7: Считываем цену
             price = await self._read_price()
             return price
 
@@ -301,6 +321,102 @@ class ListingService:
                 error_type=type(e).__name__,
             )
             return 0
+
+    async def _check_min_nights_error(self) -> int | None:
+        """Проверяет наличие ошибки «Минимальное количество суток — N».
+
+        Ищет элемент с текстом ошибки и извлекает число минимальных суток.
+
+        Returns:
+            Число минимальных суток (int) если ошибка найдена, None — если ошибки нет.
+        """
+        page = self._browser.page
+
+        try:
+            error_el = await page.query_selector(_MIN_NIGHTS_ERROR_SELECTOR)
+            if not error_el:
+                return None
+
+            error_text = await error_el.inner_text()
+            if not error_text:
+                return None
+
+            # Извлекаем число из текста «Минимальное количество суток - 3.»
+            digits = re.search(r"(\d+)", error_text)
+            if not digits:
+                return None
+
+            min_nights = int(digits.group(1))
+            if min_nights > 0:
+                return min_nights
+
+        except Exception:
+            pass
+
+        return None
+
+    async def _retry_with_min_nights(self, checkin: date, min_nights: int) -> int:
+        """Повторяет получение цены с учётом минимального количества суток.
+
+        Открывает датепикер, сбрасывает даты, выбирает заезд = checkin,
+        выезд = checkin + min_nights. Считывает цену и делит на min_nights.
+
+        Args:
+            checkin: Дата заезда.
+            min_nights: Минимальное количество суток.
+
+        Returns:
+            Цена за одну ночь (int). 0 — если не удалось считать.
+        """
+        checkout = checkin + timedelta(days=min_nights)
+
+        try:
+            # Открываем датепикер (уже в правильной позиции)
+            opened = await self._open_datepicker(skip_scroll=True)
+            if not opened:
+                return 0
+
+            # Сбрасываем даты
+            await self._reset_dates()
+            await asyncio.sleep(0.3)
+
+            # Кликаем дату заезда
+            clicked_checkin = await self._click_day_in_datepicker(checkin)
+            if not clicked_checkin:
+                await self._close_datepicker()
+                return 0
+
+            await asyncio.sleep(0.3)
+
+            # Кликаем дату выезда (checkin + min_nights)
+            clicked_checkout = await self._click_day_in_datepicker(checkout)
+            if not clicked_checkout:
+                await self._close_datepicker()
+                return 0
+
+            # Ждём обновления цены
+            await asyncio.sleep(1.0)
+
+            # Считываем цену
+            price_total = await self._read_price()
+
+            if price_total > 0:
+                price_per_night = round(price_total / min_nights)
+                logger.debug(
+                    "цена_с_минимумом_суток",
+                    step=f"{checkin.isoformat()} → {checkout.isoformat()}",
+                    total=price_per_night,
+                )
+                return price_per_night
+
+        except Exception as e:
+            logger.debug(
+                "ошибка_повтора_с_минимумом_суток",
+                error=str(e),
+                error_type=type(e).__name__,
+            )
+
+        return 0
 
     async def _click_day_in_datepicker(self, target_date: date) -> bool:
         """Кликает на конкретный день в открытом датепикере.
