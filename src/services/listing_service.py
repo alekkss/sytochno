@@ -82,8 +82,18 @@ class ListingService:
 
         try:
             # Переходим на страницу объявления
+            logger.debug(
+                "переход_на_страницу",
+                step=f"id={listing.external_id}",
+                path=listing.url,
+            )
             await self._browser.navigate(listing.url)
             await self._browser.random_delay()
+
+            logger.debug(
+                "страница_загружена",
+                step=f"id={listing.external_id}",
+            )
 
             # Открываем календарь и считываем занятость
             calendar = await self._extract_calendar()
@@ -303,7 +313,7 @@ class ListingService:
 
         Для каждого свободного дня:
         1. Открывает датепикер.
-        2. Сбрасывает даты.
+        2. Сбрасывает даты (с проверкой, что датепикер остался открытым).
         3. Кликает на день N (заезд).
         4. Находит ближайший свободный день после N и кликает (выезд).
         5. Считывает цену со страницы.
@@ -312,8 +322,6 @@ class ListingService:
         7. Делит цену на количество ночей.
 
         Для занятых дней — цена = 0.
-        Первая итерация использует полный цикл с прокруткой,
-        последующие — ускоренный без прокрутки.
 
         Args:
             calendar: Список занятости (0 — свободен, 1 — занят).
@@ -327,6 +335,13 @@ class ListingService:
         today = date.today()
         prices: list[int] = []
         is_first_price_call = True
+        free_days_count = sum(1 for d in calendar if d == 0)
+
+        logger.debug(
+            "начало_сбора_цен",
+            step=f"свободных_дней={free_days_count}",
+            total=len(calendar),
+        )
 
         for day_idx in range(len(calendar)):
             current_date = today + timedelta(days=day_idx)
@@ -339,16 +354,21 @@ class ListingService:
             # Находим ближайший свободный день для выезда (после текущего)
             checkout_offset = self._find_next_free_day(calendar, day_idx + 1)
             if checkout_offset is None:
-                # Нет свободного дня для выезда в пределах диапазона — пропускаем
                 prices.append(0)
                 logger.debug(
                     "нет_свободного_дня_для_выезда",
-                    step=f"день={day_idx + 1}",
+                    step=f"день={day_idx + 1}, дата={current_date.isoformat()}",
                 )
                 continue
 
             checkout_date = today + timedelta(days=checkout_offset)
             nights = (checkout_date - current_date).days
+
+            logger.debug(
+                "запрос_цены_для_дня",
+                step=f"день={day_idx + 1}/{len(calendar)}",
+                current=f"заезд={current_date.isoformat()}, выезд={checkout_date.isoformat()}, ночей={nights}",
+            )
 
             # Получаем цену за выбранный диапазон
             price_total = await self._get_price_for_dates(
@@ -364,11 +384,16 @@ class ListingService:
             prices.append(price_per_night)
 
             logger.debug(
-                "цена_дня",
+                "цена_дня_получена",
                 step=f"день={day_idx + 1}",
-                current=f"{current_date} → {checkout_date}",
-                total=price_per_night,
+                current=f"итого={price_total}, за_ночь={price_per_night}",
             )
+
+        logger.debug(
+            "сбор_цен_завершён",
+            step=f"ненулевых={sum(1 for p in prices if p > 0)}",
+            total=len(prices),
+        )
 
         return prices
 
@@ -390,7 +415,6 @@ class ListingService:
         max_idx = min(len(calendar), 61)
         for idx in range(start_idx, max_idx):
             if idx >= len(calendar):
-                # День за пределами собранного календаря — считаем свободным
                 return idx
             if calendar[idx] == 0:
                 return idx
@@ -404,12 +428,14 @@ class ListingService:
     ) -> int:
         """Получает цену за указанный диапазон дат через датепикер.
 
-        При первом вызове выполняет полный цикл с прокруткой и длинными паузами.
-        При последующих вызовах пропускает прокрутку и использует сокращённые паузы.
-
-        Если после выбора дат появляется ошибка «Минимальное количество суток — N»,
-        повторяет попытку с увеличенным диапазоном (checkin + N дней) и делит
-        итоговую цену на N.
+        Последовательность:
+        1. Открывает датепикер.
+        2. Сбрасывает даты и гарантирует, что датепикер остался открытым.
+        3. Кликает дату заезда.
+        4. Кликает дату выезда.
+        5. Ждёт обновления цены.
+        6. Проверяет ошибку минимального количества суток.
+        7. Считывает цену.
 
         Args:
             checkin: Дата заезда.
@@ -421,45 +447,102 @@ class ListingService:
         """
         try:
             # Шаг 1: Открываем датепикер
+            logger.debug(
+                "шаг_1_открытие_датепикера",
+                step=f"заезд={checkin.isoformat()}",
+                current=f"skip_scroll={not is_first_call}",
+            )
             opened = await self._open_datepicker(skip_scroll=not is_first_call)
             if not opened:
+                logger.debug(
+                    "датепикер_не_открылся_для_цены",
+                    step=f"заезд={checkin.isoformat()}",
+                )
                 return 0
 
-            # Шаг 2: Сбрасываем даты
-            await self._reset_dates()
-            await asyncio.sleep(0.3 if not is_first_call else 0.5)
+            logger.debug(
+                "шаг_2_сброс_дат",
+                step=f"заезд={checkin.isoformat()}",
+            )
+
+            # Шаг 2: Сбрасываем даты и гарантируем, что датепикер открыт
+            await self._reset_dates_and_ensure_open(
+                short_delay=not is_first_call
+            )
+
+            logger.debug(
+                "шаг_3_клик_заезд",
+                step=f"дата={checkin.isoformat()}",
+            )
 
             # Шаг 3: Кликаем дату заезда
             clicked_checkin = await self._click_day_in_datepicker(checkin)
             if not clicked_checkin:
+                logger.debug(
+                    "не_удалось_кликнуть_заезд",
+                    step=f"дата={checkin.isoformat()}",
+                )
                 await self._close_datepicker()
                 return 0
 
+            logger.debug(
+                "заезд_кликнут_успешно",
+                step=f"дата={checkin.isoformat()}",
+            )
+
             await asyncio.sleep(0.3 if not is_first_call else 0.8)
+
+            logger.debug(
+                "шаг_4_клик_выезд",
+                step=f"дата={checkout.isoformat()}",
+            )
 
             # Шаг 4: Кликаем дату выезда
             clicked_checkout = await self._click_day_in_datepicker(checkout)
             if not clicked_checkout:
+                logger.debug(
+                    "не_удалось_кликнуть_выезд",
+                    step=f"дата={checkout.isoformat()}",
+                )
                 await self._close_datepicker()
                 return 0
 
+            logger.debug(
+                "выезд_кликнут_успешно",
+                step=f"дата={checkout.isoformat()}",
+            )
+
             # Шаг 5: Ждём закрытия датепикера и обновления цены
-            await asyncio.sleep(1.0 if not is_first_call else 2.0)
+            wait_time = 1.5 if not is_first_call else 2.5
+            logger.debug(
+                "шаг_5_ожидание_обновления_цены",
+                step=f"ожидание={wait_time}с",
+            )
+            await asyncio.sleep(wait_time)
 
             # Шаг 6: Проверяем ошибку минимального количества суток
             min_nights = await self._check_min_nights_error()
             if min_nights is not None:
                 logger.debug(
-                    "минимум_суток_требуется",
-                    step=f"{checkin.isoformat()}",
+                    "шаг_6_минимум_суток_требуется",
+                    step=f"заезд={checkin.isoformat()}",
                     total=min_nights,
                 )
-                # Повторяем с увеличенным диапазоном
                 price = await self._retry_with_min_nights(checkin, min_nights)
                 return price
 
             # Шаг 7: Считываем цену
+            logger.debug(
+                "шаг_7_чтение_цены",
+                step=f"заезд={checkin.isoformat()}",
+            )
             price = await self._read_price()
+
+            logger.debug(
+                "цена_прочитана",
+                step=f"заезд={checkin.isoformat()}",
+                total=price,
+            )
             return price
 
         except Exception as e:
@@ -467,6 +550,7 @@ class ListingService:
                 "ошибка_получения_цены",
                 error=str(e),
                 error_type=type(e).__name__,
+                step=f"заезд={checkin.isoformat()}",
             )
             return 0
 
@@ -496,6 +580,11 @@ class ListingService:
 
             min_nights = int(digits.group(1))
             if min_nights > 0:
+                logger.debug(
+                    "ошибка_минимум_суток",
+                    step=f"текст='{error_text.strip()}'",
+                    total=min_nights,
+                )
                 return min_nights
 
         except Exception:
@@ -518,17 +607,18 @@ class ListingService:
         """
         checkout = checkin + timedelta(days=min_nights)
 
+        logger.debug(
+            "повтор_с_минимумом_суток",
+            step=f"заезд={checkin.isoformat()}, выезд={checkout.isoformat()}, ночей={min_nights}",
+        )
+
         try:
-            # Открываем датепикер (уже в правильной позиции)
             opened = await self._open_datepicker(skip_scroll=True)
             if not opened:
                 return 0
 
-            # Сбрасываем даты
-            await self._reset_dates()
-            await asyncio.sleep(0.3)
+            await self._reset_dates_and_ensure_open(short_delay=True)
 
-            # Кликаем дату заезда
             clicked_checkin = await self._click_day_in_datepicker(checkin)
             if not clicked_checkin:
                 await self._close_datepicker()
@@ -536,24 +626,20 @@ class ListingService:
 
             await asyncio.sleep(0.3)
 
-            # Кликаем дату выезда (checkin + min_nights)
             clicked_checkout = await self._click_day_in_datepicker(checkout)
             if not clicked_checkout:
                 await self._close_datepicker()
                 return 0
 
-            # Ждём обновления цены
-            await asyncio.sleep(1.0)
+            await asyncio.sleep(1.5)
 
-            # Считываем цену
             price_total = await self._read_price()
 
             if price_total > 0:
                 price_per_night = round(price_total / min_nights)
                 logger.debug(
-                    "цена_с_минимумом_суток",
-                    step=f"{checkin.isoformat()} → {checkout.isoformat()}",
-                    total=price_per_night,
+                    "цена_с_минимумом_суток_получена",
+                    step=f"итого={price_total}, за_ночь={price_per_night}",
                 )
                 return price_per_night
 
@@ -581,10 +667,14 @@ class ListingService:
 
         # Убедимся что нужный месяц виден, при необходимости листаем
         max_attempts = 6
-        for _ in range(max_attempts):
+        for attempt in range(max_attempts):
             is_visible = await self._is_month_visible(target_date.year, target_date.month)
             if is_visible:
                 break
+            logger.debug(
+                "листаем_к_месяцу",
+                step=f"попытка={attempt + 1}, цель={target_date.year}-{target_date.month:02d}",
+            )
             await self._click_next_month()
             await asyncio.sleep(0.5)
         else:
@@ -597,10 +687,19 @@ class ListingService:
         # Находим блок нужного месяца
         month_block = await self._find_month_block(target_date.year, target_date.month)
         if not month_block:
+            logger.debug(
+                "блок_месяца_не_найден_для_клика",
+                step=f"{target_date.year}-{target_date.month:02d}",
+            )
             return False
 
         # Находим ячейку нужного дня и кликаем
         day_cells = await month_block.query_selector_all("td.sc-base-datepicker-day")
+        logger.debug(
+            "поиск_дня_в_месяце",
+            step=f"дата={target_date.isoformat()}, ячеек_найдено={len(day_cells)}",
+        )
+
         for cell in day_cells:
             span = await cell.query_selector("span")
             if not span:
@@ -610,10 +709,29 @@ class ListingService:
             if not day_text.isdigit():
                 continue
             if int(day_text) == target_date.day:
+                # Проверяем, что день не disabled (занят)
+                class_attr = await cell.get_attribute("class") or ""
+                if "disabled" in class_attr:
+                    logger.debug(
+                        "день_disabled_пропускаем",
+                        step=f"дата={target_date.isoformat()}, class='{class_attr}'",
+                    )
+                    return False
+
+                logger.debug(
+                    "кликаем_день",
+                    step=f"дата={target_date.isoformat()}, class='{class_attr}'",
+                )
+
                 try:
                     await cell.click(timeout=3000)
                     return True
-                except Exception:
+                except Exception as e:
+                    logger.debug(
+                        "обычный_клик_не_сработал_js_fallback",
+                        step=f"дата={target_date.isoformat()}",
+                        error=str(e),
+                    )
                     # Fallback: JS-клик
                     await page.evaluate(
                         "(el) => el.click()",
@@ -622,56 +740,81 @@ class ListingService:
                     return True
 
         logger.debug(
-            "день_не_найден_в_календаре",
-            step=f"{target_date.isoformat()}",
+            "день_не_найден_в_ячейках",
+            step=f"дата={target_date.isoformat()}, искали_день={target_date.day}",
         )
         return False
 
     async def _read_price(self) -> int:
         """Считывает цену из элемента на странице карточки.
 
-        Пробует несколько CSS-селекторов в порядке приоритета:
-        1. .sc-detail-aside-price__cost — основной блок цены.
-        2. .sc-detail-hotel-booking__price-sale — альтернативный блок (отели/гостиницы).
-
-        Убирает неразрывные пробелы и символ валюты, извлекает число.
+        Пробует несколько CSS-селекторов в порядке приоритета.
+        Ожидает, что текст содержит цифры (цена обновилась после выбора дат).
+        Ретраит чтение до 5 раз с паузой, если текст пока пустой.
 
         Returns:
-            Цена в рублях (int). 0 — если ни один элемент не найден или не распарсился.
+            Цена в рублях (int). 0 — если ни один элемент не найден.
         """
         page = self._browser.page
 
         for selector in _PRICE_SELECTORS:
             try:
+                # Ждём появления элемента
                 price_el = await page.wait_for_selector(
                     selector,
-                    timeout=3000,
+                    timeout=5000,
                 )
                 if not price_el:
+                    logger.debug(
+                        "селектор_не_найден",
+                        step=f"selector='{selector}'",
+                    )
                     continue
 
-                price_text = await price_el.inner_text()
+                # Ждём, пока текст цены содержит цифры
+                for retry in range(5):
+                    price_text = await price_el.inner_text()
+                    cleaned = price_text.replace("\xa0", "").replace(" ", "")
+                    digits = re.sub(r"[^\d]", "", cleaned)
 
-                # Убираем неразрывные пробелы, обычные пробелы, символ рубля и прочее
-                cleaned = price_text.replace("\xa0", "").replace(" ", "")
-                # Извлекаем только цифры
-                digits = re.sub(r"[^\d]", "", cleaned)
+                    logger.debug(
+                        "чтение_текста_цены",
+                        step=f"selector='{selector}', попытка={retry + 1}",
+                        current=f"raw='{price_text}', cleaned='{cleaned}', digits='{digits}'",
+                    )
 
-                if not digits:
-                    continue
+                    if digits:
+                        price = int(digits)
+                        if price > 0:
+                            logger.debug(
+                                "цена_извлечена",
+                                step=f"selector='{selector}'",
+                                total=price,
+                            )
+                            return price
 
-                price = int(digits)
-                if price > 0:
-                    return price
+                    # Текст пока пустой или без цифр — ждём обновления
+                    await asyncio.sleep(0.5)
 
-            except Exception:
+                logger.debug(
+                    "цена_не_появилась_после_ретраев",
+                    step=f"selector='{selector}'",
+                )
+
+            except Exception as e:
+                logger.debug(
+                    "ошибка_при_чтении_цены",
+                    step=f"selector='{selector}'",
+                    error=str(e),
+                    error_type=type(e).__name__,
+                )
                 continue
 
         logger.debug("цена_не_найдена_ни_в_одном_селекторе")
         return 0
 
     # ─────────────────────────────────────────────────────────────────────
-    # Извлечение календаря занятости (исправленный функционал)
+    # Извлечение календаря занятости
     # ─────────────────────────────────────────────────────────────────────
 
     async def _extract_calendar(self) -> list[int]:
@@ -686,14 +829,20 @@ class ListingService:
         Returns:
             Список из 60 элементов (0 — свободен, 1 — занят).
         """
+        logger.debug("начало_сбора_календаря")
+
         # Шаг 1: Прокручиваем к блоку дат и открываем датепикер
         opened = await self._open_datepicker()
         if not opened:
             logger.warning("датепикер_не_открылся_при_сборе_календаря")
             return []
 
+        logger.debug("датепикер_открыт_для_календаря")
+
         # Шаг 2: Сбрасываем даты и проверяем, что датепикер остался открытым
         await self._reset_dates_safe()
+
+        logger.debug("даты_сброшены_для_календаря")
 
         # Шаг 3: Считываем календарь на 60 дней
         today = date.today()
@@ -706,7 +855,7 @@ class ListingService:
         logger.debug(
             "месяцы_для_сбора",
             step=f"всего={len(months_needed)}",
-            total=str(months_needed),
+            current=str(months_needed),
         )
 
         for month_idx, (year, month) in enumerate(months_needed):
@@ -714,6 +863,10 @@ class ListingService:
             if month_idx >= 2:
                 is_visible = await self._is_month_visible(year, month)
                 if not is_visible:
+                    logger.debug(
+                        "листаем_к_месяцу_календарь",
+                        step=f"{year}-{month:02d}",
+                    )
                     await self._click_next_month()
                     await asyncio.sleep(1)
 
@@ -767,6 +920,12 @@ class ListingService:
                 total=60,
             )
 
+        logger.debug(
+            "календарь_собран_итого",
+            step=f"занятых={sum(calendar)}, свободных={len(calendar) - sum(calendar)}",
+            total=len(calendar),
+        )
+
         return calendar
 
     # ─────────────────────────────────────────────────────────────────────
@@ -775,10 +934,6 @@ class ListingService:
 
     async def _open_datepicker(self, *, skip_scroll: bool = False) -> bool:
         """Открывает датепикер кликом на блок «Заезд».
-
-        При первом вызове прокручивает к элементу с полными паузами.
-        При последующих (skip_scroll=True) — пропускает прокрутку
-        и использует сокращённые паузы.
 
         Args:
             skip_scroll: Пропустить прокрутку к блоку дат (уже в позиции).
@@ -789,21 +944,13 @@ class ListingService:
         page = self._browser.page
 
         # Проверяем, может датепикер уже открыт
-        datepicker_visible = await page.query_selector(".sc-base-datepicker-modal")
-        if datepicker_visible:
-            is_displayed = await page.evaluate("""
-                () => {
-                    const el = document.querySelector('.sc-base-datepicker-modal');
-                    if (!el) return false;
-                    const style = window.getComputedStyle(el);
-                    return style.display !== 'none' && style.visibility !== 'hidden';
-                }
-            """)
-            if is_displayed:
-                return True
+        if await self._is_datepicker_open():
+            logger.debug("датепикер_уже_открыт")
+            return True
 
         if not skip_scroll:
             # Прокручиваем к блоку дат
+            logger.debug("прокрутка_к_блоку_дат")
             await page.evaluate("""
                 () => {
                     const el = document.querySelector('.sc-detail-dates');
@@ -821,9 +968,12 @@ class ListingService:
         # Пробуем обычный клик
         try:
             await checkin_block.click(timeout=5000)
-        except Exception:
-            # Fallback: JavaScript-клик
-            logger.debug("обычный_клик_не_сработал_пробуем_js")
+            logger.debug("клик_по_блоку_заезда_выполнен")
+        except Exception as e:
+            logger.debug(
+                "обычный_клик_не_сработал_пробуем_js",
+                error=str(e),
+            )
             await page.evaluate("""
                 () => {
                     const el = document.querySelector('.sc-detail-dates__item_in');
@@ -831,7 +981,7 @@ class ListingService:
                 }
             """)
 
-        # Сокращённая пауза при повторных вызовах
+        # Пауза для анимации
         await asyncio.sleep(0.5 if skip_scroll else 1.5)
 
         # Ждём появления датепикера
@@ -840,27 +990,37 @@ class ListingService:
                 ".sc-base-datepicker-modal",
                 timeout=5000,
             )
-            return True
+            # Дополнительно проверяем видимость
+            if await self._is_datepicker_open():
+                logger.debug("датепикер_открылся_успешно")
+                return True
+            # Элемент в DOM, но скрыт — ждём ещё
+            await asyncio.sleep(0.5)
+            is_open = await self._is_datepicker_open()
+            logger.debug(
+                "датепикер_после_доп_ожидания",
+                step=f"открыт={is_open}",
+            )
+            return is_open
         except Exception:
-            logger.warning("датепикер_не_открылся")
+            logger.warning("датепикер_не_открылся_таймаут")
             return False
 
     async def _reset_dates_safe(self) -> None:
         """Сбрасывает даты в датепикере с проверкой, что он остался открытым.
 
-        После нажатия «Сбросить даты» датепикер может закрыться автоматически
-        (особенно если ранее были выбраны даты). В этом случае метод
-        переоткрывает датепикер и ждёт загрузки блоков месяцев.
+        После нажатия «Сбросить даты» датепикер может закрыться автоматически.
+        В этом случае переоткрывает его.
         """
         page = self._browser.page
 
         # Нажимаем «Сбросить даты»
         reset_button = await page.query_selector(".sc-base-datepicker__reset")
         if reset_button:
+            logger.debug("нажимаем_сбросить_даты")
             try:
                 await reset_button.click(timeout=3000)
             except Exception:
-                # Fallback: JavaScript-клик
                 await page.evaluate("""
                     () => {
                         const el = document.querySelector('.sc-base-datepicker__reset');
@@ -868,22 +1028,25 @@ class ListingService:
                     }
                 """)
 
-            # Ждём реакции интерфейса
             await asyncio.sleep(1.0)
+        else:
+            logger.debug("кнопка_сбросить_даты_не_найдена")
 
         # Проверяем, остался ли датепикер открытым
         datepicker_still_open = await self._is_datepicker_open()
+        logger.debug(
+            "после_сброса_дат",
+            step=f"датепикер_открыт={datepicker_still_open}",
+        )
 
         if not datepicker_still_open:
             logger.debug("датепикер_закрылся_после_сброса_переоткрываем")
 
-            # Переоткрываем датепикер
             reopened = await self._open_datepicker(skip_scroll=True)
             if not reopened:
                 logger.warning("не_удалось_переоткрыть_датепикер_после_сброса")
                 return
 
-            # Дополнительное ожидание для рендеринга месяцев
             await asyncio.sleep(1.0)
 
         # Ждём, пока блоки месяцев появятся в DOM
@@ -892,35 +1055,57 @@ class ListingService:
                 ".sc-base-datepicker-month",
                 timeout=5000,
             )
+            logger.debug("блоки_месяцев_найдены")
         except Exception:
             logger.warning("блоки_месяцев_не_появились_после_сброса")
 
-        # Дополнительная пауза для полного рендеринга всех ячеек
         await asyncio.sleep(0.5)
 
-    async def _reset_dates(self) -> None:
-        """Нажимает кнопку «Сбросить даты» в датепикере.
+    async def _reset_dates_and_ensure_open(
+        self, *, short_delay: bool = False
+    ) -> None:
+        """Сбрасывает даты и гарантирует, что датепикер остаётся открытым.
 
-        Используется в контексте сбора цен, где после сброса
-        не требуется проверка открытости (датепикер переоткроется
-        на следующем шаге).
+        Используется в контексте сбора цен.
+
+        Args:
+            short_delay: Использовать сокращённые паузы (для повторных вызовов).
         """
         page = self._browser.page
 
+        # Нажимаем «Сбросить даты»
         reset_button = await page.query_selector(".sc-base-datepicker__reset")
-        if not reset_button:
-            return
+        if reset_button:
+            logger.debug("сброс_дат_для_цены")
+            try:
+                await reset_button.click(timeout=3000)
+            except Exception:
+                await page.evaluate("""
+                    () => {
+                        const el = document.querySelector('.sc-base-datepicker__reset');
+                        if (el) el.click();
+                    }
+                """)
 
+            await asyncio.sleep(0.5 if short_delay else 1.0)
+        else:
+            logger.debug("кнопка_сброса_не_найдена_в_ценах")
+
+        # Проверяем, что датепикер остался открытым
+        is_open = await self._is_datepicker_open()
+        if not is_open:
+            logger.debug("датепикер_закрылся_после_сброса_в_ценах_переоткрываем")
+            await self._open_datepicker(skip_scroll=True)
+            await asyncio.sleep(0.5 if short_delay else 1.0)
+
+        # Ждём появления блоков месяцев
         try:
-            await reset_button.click(timeout=3000)
+            await page.wait_for_selector(
+                ".sc-base-datepicker-month",
+                timeout=3000,
+            )
         except Exception:
-            # Fallback: JavaScript-клик
-            await page.evaluate("""
-                () => {
-                    const el = document.querySelector('.sc-base-datepicker__reset');
-                    if (el) el.click();
-                }
-            """)
+            logger.debug("блоки_месяцев_не_найдены_после_сброса_в_ценах")
 
         await asyncio.sleep(0.3)
 
@@ -955,6 +1140,7 @@ class ListingService:
         try:
             await page.keyboard.press("Escape")
             await asyncio.sleep(0.3)
+            logger.debug("датепикер_закрыт_escape")
         except Exception:
             pass
 
@@ -985,9 +1171,10 @@ class ListingService:
 
         next_btn = await page.query_selector(".sc-base-datepicker-modal__next")
         if not next_btn:
+            logger.debug("кнопка_далее_не_найдена")
             return
 
-        # Проверяем что кнопка не скрыта (style="display: none;")
+        # Проверяем что кнопка не скрыта
         is_hidden = await page.evaluate("""
             () => {
                 const el = document.querySelector('.sc-base-datepicker-modal__next');
@@ -998,10 +1185,12 @@ class ListingService:
         """)
 
         if is_hidden:
+            logger.debug("кнопка_далее_скрыта")
             return
 
         try:
             await next_btn.click(timeout=5000)
+            logger.debug("кнопка_далее_нажата")
         except Exception:
             await page.evaluate("""
                 () => {
@@ -1009,6 +1198,7 @@ class ListingService:
                     if (el) el.click();
                 }
             """)
+            logger.debug("кнопка_далее_нажата_js")
 
         await asyncio.sleep(0.5)
 
@@ -1037,7 +1227,6 @@ class ListingService:
         day_cells = await month_block.query_selector_all("td.sc-base-datepicker-day")
 
         for cell in day_cells:
-            # Получаем номер дня
             span = await cell.query_selector("span")
             if not span:
                 continue
@@ -1128,7 +1317,6 @@ class ListingService:
 
         while current <= end:
             months.append((current.year, current.month))
-            # Переходим к первому дню следующего месяца
             if current.month == 12:
                 current = current.replace(year=current.year + 1, month=1)
             else:
