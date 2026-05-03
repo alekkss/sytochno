@@ -8,6 +8,7 @@ from datetime import date, timedelta
 from src.config.logger import get_logger
 from src.config.settings import Settings
 from src.models.listing import RawListing
+from src.models.proxy import ProxyConfig
 from src.services.browser_service import BrowserService
 
 logger = get_logger("listing")
@@ -145,6 +146,153 @@ class ListingService:
             await self._browser.random_delay()
 
         return listings
+
+    # ─────────────────────────────────────────────────────────────────────
+    # Параллельная обработка через прокси
+    # ─────────────────────────────────────────────────────────────────────
+
+    @staticmethod
+    async def enrich_listings_parallel(
+        settings: Settings,
+        listings: list[RawListing],
+        proxies: list[ProxyConfig],
+    ) -> list[RawListing]:
+        """Обогащает карточки параллельно через несколько прокси-браузеров.
+
+        Каждая прокси запускает свой браузер, прогревает его на sutochno.ru,
+        затем обрабатывает свою порцию карточек. Результаты объединяются.
+
+        Args:
+            settings: Настройки приложения.
+            listings: Полный список карточек для обработки.
+            proxies: Список рабочих прокси.
+
+        Returns:
+            Список обогащённых карточек (порядок может отличаться от входного).
+        """
+        from src.services.proxy_service import ProxyService
+
+        # Распределяем карточки между прокси
+        chunks = ProxyService.distribute_listings(listings, len(proxies))
+
+        logger.info(
+            "параллельная_обработка",
+            total=len(listings),
+            step=f"прокси={len(proxies)}",
+        )
+
+        # Запускаем воркеры параллельно
+        tasks = [
+            ListingService._worker(settings, chunk, proxy, worker_idx)
+            for worker_idx, (chunk, proxy) in enumerate(zip(chunks, proxies), start=1)
+        ]
+
+        results = await asyncio.gather(*tasks, return_exceptions=True)
+
+        # Собираем результаты
+        all_enriched: list[RawListing] = []
+        for worker_idx, result in enumerate(results, start=1):
+            if isinstance(result, Exception):
+                logger.warning(
+                    "воркер_завершился_с_ошибкой",
+                    error=str(result),
+                    error_type=type(result).__name__,
+                    step=f"воркер={worker_idx}",
+                )
+            elif isinstance(result, list):
+                all_enriched.extend(result)
+
+        logger.info(
+            "параллельная_обработка_завершена",
+            total=len(all_enriched),
+        )
+
+        return all_enriched
+
+    @staticmethod
+    async def _worker(
+        settings: Settings,
+        listings: list[RawListing],
+        proxy: ProxyConfig,
+        worker_idx: int,
+    ) -> list[RawListing]:
+        """Воркер — обрабатывает порцию карточек через один прокси-браузер.
+
+        Последовательность:
+        1. Запускает браузер с прокси.
+        2. Переходит на sutochno.ru для прогрева (15 секунд).
+        3. Последовательно обрабатывает свои карточки.
+        4. Останавливает браузер.
+
+        Args:
+            settings: Настройки приложения.
+            listings: Порция карточек для этого воркера.
+            proxy: Прокси для этого воркера.
+            worker_idx: Номер воркера (для логов).
+
+        Returns:
+            Список обогащённых карточек.
+        """
+        if not listings:
+            return []
+
+        browser_service = BrowserService(settings=settings)
+
+        try:
+            # Шаг 1: Запускаем браузер с прокси
+            await browser_service.start(proxy=proxy)
+
+            logger.info(
+                "воркер_запущен",
+                step=f"воркер={worker_idx}",
+                total=len(listings),
+            )
+
+            # Шаг 2: Прогрев — переходим на sutochno.ru и ждём 15 секунд
+            await browser_service.navigate("https://sutochno.ru")
+            await browser_service.scroll_page()
+            await asyncio.sleep(15)
+
+            logger.info(
+                "воркер_прогрет",
+                step=f"воркер={worker_idx}",
+            )
+
+            # Шаг 3: Создаём ListingService для этого браузера и обрабатываем карточки
+            listing_service = ListingService(
+                settings=settings,
+                browser_service=browser_service,
+            )
+
+            total = len(listings)
+            for idx, listing in enumerate(listings, start=1):
+                logger.info(
+                    "обработка_карточки",
+                    current=idx,
+                    total=total,
+                    step=f"воркер={worker_idx}",
+                )
+                await listing_service.enrich_listing(listing)
+                await browser_service.random_delay()
+
+            return listings
+
+        except Exception as e:
+            logger.warning(
+                "ошибка_воркера",
+                error=str(e),
+                error_type=type(e).__name__,
+                step=f"воркер={worker_idx}",
+            )
+            return listings
+
+        finally:
+            # Шаг 4: Останавливаем браузер
+            await browser_service.stop()
+            logger.info(
+                "воркер_остановлен",
+                step=f"воркер={worker_idx}",
+            )
 
     # ─────────────────────────────────────────────────────────────────────
     # Сбор цен по дням

@@ -98,6 +98,11 @@ class Settings:
     log_level: str
     log_file_path: str
 
+    # Прокси
+    use_proxy: bool
+    proxies_path: str
+    max_proxy_workers: int
+
     @classmethod
     def load(cls) -> "Settings":
         """Фабричный метод — загружает настройки из переменных окружения.
@@ -123,6 +128,9 @@ class Settings:
             export_path=os.getenv("EXPORT_PATH", "data/sutochno_report.xlsx").strip(),
             log_level=os.getenv("LOG_LEVEL", "INFO").strip().upper(),
             log_file_path=os.getenv("LOG_FILE_PATH", "logs/app.log").strip(),
+            use_proxy=_get_bool("USE_PROXY", "false"),
+            proxies_path=os.getenv("PROXIES_PATH", "data/proxies.txt").strip(),
+            max_proxy_workers=_get_int("MAX_PROXY_WORKERS", "5"),
         )
 
         # Валидация диапазонов
@@ -136,6 +144,20 @@ class Settings:
             raise RuntimeError(
                 f"LOG_LEVEL должен быть одним из: DEBUG, INFO, WARNING, ERROR, CRITICAL. "
                 f"Получено: '{settings.log_level}'."
+            )
+
+        # Валидация прокси
+        if settings.use_proxy:
+            proxies_file = Path(settings.proxies_path)
+            if not proxies_file.exists():
+                raise RuntimeError(
+                    f"USE_PROXY=true, но файл прокси не найден: {settings.proxies_path}. "
+                    f"Создайте файл или укажите корректный путь в PROXIES_PATH."
+                )
+
+        if settings.max_proxy_workers < 1:
+            raise RuntimeError(
+                "MAX_PROXY_WORKERS должен быть не менее 1."
             )
 
         return settings

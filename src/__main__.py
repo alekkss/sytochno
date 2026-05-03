@@ -10,6 +10,7 @@ from src.repositories.sqlite_repository import SQLiteListingRepository
 from src.services.browser_service import BrowserService
 from src.services.export_service import ExportService
 from src.services.listing_service import ListingService
+from src.services.proxy_service import ProxyService
 from src.services.scraper_service import ScraperService
 
 
@@ -21,7 +22,7 @@ async def run() -> None:
     2. Инициализацию базы данных.
     3. Запуск браузера.
     4. Парсинг каталога.
-    5. Обогащение объявлений данными календаря.
+    5. Обогащение объявлений данными календаря (последовательно или параллельно).
     6. Сохранение результатов в SQLite.
     7. Экспорт в Excel.
     8. Корректное завершение работы.
@@ -69,13 +70,14 @@ async def run() -> None:
             step="scraping",
         )
 
-        # --- Шаг 7: Обогащение — парсинг карточек (календарь занятости) ---
-        logger.info(
-            "начало_парсинга_карточек",
-            total=len(listings),
-            step="enrichment",
+        # --- Шаг 7: Обогащение — парсинг карточек (календарь + цены) ---
+        listings = await _enrich_with_proxy_or_sequential(
+            settings=settings,
+            listings=listings,
+            listing_service=listing_service,
+            logger=logger,
         )
-        listings = await listing_service.enrich_listings(listings)
+
         logger.info(
             "карточки_обработаны",
             total=len(listings),
@@ -116,6 +118,91 @@ async def run() -> None:
         await browser_service.stop()
         repository.close()
         logger.info("приложение_завершено", step="shutdown")
+
+
+async def _enrich_with_proxy_or_sequential(
+    settings: Settings,
+    listings: list,
+    listing_service: ListingService,
+    logger: "any",  # type: ignore[name-defined]
+) -> list:
+    """Обогащает карточки: параллельно через прокси или последовательно.
+
+    Логика:
+    1. Если USE_PROXY=true — загружает и проверяет прокси.
+    2. Ограничивает количество прокси значением MAX_PROXY_WORKERS.
+    3. Если есть рабочие прокси — параллельная обработка.
+    4. Если прокси выключены или все нерабочие — последовательная обработка.
+
+    Args:
+        settings: Настройки приложения.
+        listings: Список карточек для обогащения.
+        listing_service: Сервис парсинга карточек (для последовательного режима).
+        logger: Логгер.
+
+    Returns:
+        Список обогащённых карточек.
+    """
+    if settings.use_proxy:
+        logger.info("режим_прокси_включён", step="enrichment")
+
+        proxy_service = ProxyService(settings=settings)
+
+        # Загружаем прокси из файла
+        try:
+            proxies = proxy_service.load_proxies()
+        except RuntimeError as e:
+            logger.warning(
+                "ошибка_загрузки_прокси",
+                error=str(e),
+                step="enrichment",
+            )
+            logger.info("переход_в_последовательный_режим", step="enrichment")
+            return await listing_service.enrich_listings(listings)
+
+        # Проверяем прокси на работоспособность
+        working_proxies = await proxy_service.check_proxies(proxies)
+
+        if not working_proxies:
+            logger.warning(
+                "нет_рабочих_прокси",
+                step="enrichment",
+            )
+            logger.info("переход_в_последовательный_режим", step="enrichment")
+            return await listing_service.enrich_listings(listings)
+
+        # Ограничиваем количество воркеров
+        max_workers = settings.max_proxy_workers
+        if len(working_proxies) > max_workers:
+            logger.info(
+                "ограничение_воркеров",
+                total=len(working_proxies),
+                step=f"лимит={max_workers}",
+            )
+            working_proxies = working_proxies[:max_workers]
+
+        # Параллельная обработка через рабочие прокси
+        logger.info(
+            "начало_параллельного_парсинга",
+            total=len(listings),
+            step=f"прокси={len(working_proxies)}",
+        )
+
+        enriched = await ListingService.enrich_listings_parallel(
+            settings=settings,
+            listings=listings,
+            proxies=working_proxies,
+        )
+
+        return enriched
+
+    # Последовательная обработка без прокси
+    logger.info(
+        "начало_парсинга_карточек",
+        total=len(listings),
+        step="enrichment",
+    )
+    return await listing_service.enrich_listings(listings)
 
 
 def main() -> None:

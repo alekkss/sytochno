@@ -4,6 +4,7 @@ import asyncio
 import random
 
 from playwright.async_api import (
+    Browser,
     BrowserContext,
     Page,
     Playwright,
@@ -12,6 +13,7 @@ from playwright.async_api import (
 
 from src.config.logger import get_logger
 from src.config.settings import Settings
+from src.models.proxy import ProxyConfig
 
 logger = get_logger("browser")
 
@@ -24,6 +26,7 @@ class BrowserService:
     - Полную загрузку страницы без блокировки ресурсов.
     - Случайные паузы между действиями.
     - Навигацию с обработкой таймаутов.
+    - Запуск через прокси-сервер.
     """
 
     def __init__(self, settings: Settings) -> None:
@@ -34,8 +37,10 @@ class BrowserService:
         """
         self._settings = settings
         self._playwright: Playwright | None = None
+        self._browser: Browser | None = None
         self._context: BrowserContext | None = None
         self._page: Page | None = None
+        self._proxy: ProxyConfig | None = None
 
     @property
     def page(self) -> Page:
@@ -53,15 +58,40 @@ class BrowserService:
             )
         return self._page
 
-    async def start(self) -> None:
-        """Запускает браузер с настройками stealth без блокировки ресурсов."""
+    async def start(self, proxy: ProxyConfig | None = None) -> None:
+        """Запускает браузер с настройками stealth.
+
+        Если передана прокси — браузер использует её для всех соединений.
+        Без прокси — запускает persistent context (как раньше).
+
+        Args:
+            proxy: Конфигурация прокси (опционально).
+        """
+        self._proxy = proxy
+        proxy_label = str(proxy) if proxy else "без прокси"
+
         logger.info(
             "запуск_браузера",
-            step="start",
+            step=proxy_label,
         )
 
         self._playwright = await async_playwright().start()
 
+        if proxy:
+            await self._start_with_proxy(proxy)
+        else:
+            await self._start_without_proxy()
+
+        # Устанавливаем таймаут навигации
+        self._page.set_default_navigation_timeout(self._settings.navigation_timeout)
+
+        logger.info(
+            "браузер_запущен",
+            step=proxy_label,
+        )
+
+    async def _start_without_proxy(self) -> None:
+        """Запускает браузер без прокси через persistent context."""
         self._context = await self._playwright.chromium.launch_persistent_context(
             user_data_dir="",
             headless=self._settings.headless_mode,
@@ -89,15 +119,52 @@ class BrowserService:
             window.chrome = {runtime: {}};
         """)
 
-        self._page = self._context.pages[0] if self._context.pages else await self._context.new_page()
-
-        # Устанавливаем таймаут навигации
-        self._page.set_default_navigation_timeout(self._settings.navigation_timeout)
-
-        logger.info(
-            "браузер_запущен",
-            step="start",
+        self._page = (
+            self._context.pages[0]
+            if self._context.pages
+            else await self._context.new_page()
         )
+
+    async def _start_with_proxy(self, proxy: ProxyConfig) -> None:
+        """Запускает браузер с прокси через обычный launch + context.
+
+        Args:
+            proxy: Конфигурация прокси.
+        """
+        self._browser = await self._playwright.chromium.launch(
+            headless=self._settings.headless_mode,
+            proxy={
+                "server": proxy.server_url,
+                "username": proxy.username,
+                "password": proxy.password,
+            },
+            args=[
+                "--disable-blink-features=AutomationControlled",
+                "--disable-dev-shm-usage",
+                "--no-sandbox",
+            ],
+        )
+
+        self._context = await self._browser.new_context(
+            viewport={"width": 1920, "height": 1080},
+            locale="ru-RU",
+            timezone_id="Europe/Moscow",
+            user_agent=(
+                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+                "AppleWebKit/537.36 (KHTML, like Gecko) "
+                "Chrome/124.0.0.0 Safari/537.36"
+            ),
+        )
+
+        # Скрываем признаки автоматизации
+        await self._context.add_init_script("""
+            Object.defineProperty(navigator, 'webdriver', {get: () => undefined});
+            Object.defineProperty(navigator, 'plugins', {get: () => [1, 2, 3, 4, 5]});
+            Object.defineProperty(navigator, 'languages', {get: () => ['ru-RU', 'ru', 'en-US', 'en']});
+            window.chrome = {runtime: {}};
+        """)
+
+        self._page = await self._context.new_page()
 
     async def stop(self) -> None:
         """Останавливает браузер и освобождает ресурсы."""
@@ -105,6 +172,10 @@ class BrowserService:
             await self._context.close()
             self._context = None
             self._page = None
+
+        if self._browser is not None:
+            await self._browser.close()
+            self._browser = None
 
         if self._playwright is not None:
             await self._playwright.stop()
