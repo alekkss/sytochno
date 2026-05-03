@@ -655,7 +655,7 @@ class ListingService:
     async def _click_day_in_datepicker(self, target_date: date) -> bool:
         """Кликает на конкретный день в открытом датепикере.
 
-        При необходимости листает месяцы кнопкой «Далее».
+        При необходимости листает месяцы вперёд или назад.
 
         Args:
             target_date: Дата, которую нужно выбрать.
@@ -665,19 +665,9 @@ class ListingService:
         """
         page = self._browser.page
 
-        # Убедимся что нужный месяц виден, при необходимости листаем
-        max_attempts = 6
-        for attempt in range(max_attempts):
-            is_visible = await self._is_month_visible(target_date.year, target_date.month)
-            if is_visible:
-                break
-            logger.debug(
-                "листаем_к_месяцу",
-                step=f"попытка={attempt + 1}, цель={target_date.year}-{target_date.month:02d}",
-            )
-            await self._click_next_month()
-            await asyncio.sleep(0.5)
-        else:
+        # Навигируем к нужному месяцу (вперёд или назад)
+        navigated = await self._navigate_to_month(target_date.year, target_date.month)
+        if not navigated:
             logger.debug(
                 "месяц_не_найден_в_датепикере",
                 step=f"{target_date.year}-{target_date.month:02d}",
@@ -744,6 +734,129 @@ class ListingService:
             step=f"дата={target_date.isoformat()}, искали_день={target_date.day}",
         )
         return False
+    
+    async def _navigate_to_month(self, year: int, month: int) -> bool:
+        """Навигирует датепикер к указанному месяцу (вперёд или назад).
+
+        Определяет, в каком направлении листать, сравнивая целевой месяц
+        с текущими видимыми месяцами в датепикере.
+
+        Args:
+            year: Целевой год.
+            month: Целевой месяц (1-12).
+
+        Returns:
+            True если месяц стал видимым, False — если не удалось.
+        """
+        max_attempts = 12  # Максимум 12 листаний (год)
+
+        for attempt in range(max_attempts):
+            # Проверяем, виден ли уже нужный месяц
+            if await self._is_month_visible(year, month):
+                return True
+
+            # Определяем направление листания
+            direction = await self._get_navigation_direction(year, month)
+
+            if direction == "forward":
+                logger.debug(
+                    "листаем_вперёд",
+                    step=f"попытка={attempt + 1}, цель={year}-{month:02d}",
+                )
+                await self._click_next_month()
+            elif direction == "backward":
+                logger.debug(
+                    "листаем_назад",
+                    step=f"попытка={attempt + 1}, цель={year}-{month:02d}",
+                )
+                await self._click_prev_month()
+            else:
+                # Не удалось определить направление
+                logger.debug(
+                    "не_удалось_определить_направление",
+                    step=f"цель={year}-{month:02d}",
+                )
+                return False
+
+            await asyncio.sleep(0.5)
+
+        return False
+
+    async def _get_navigation_direction(self, target_year: int, target_month: int) -> str:
+        """Определяет направление листания датепикера.
+
+        Сравнивает целевой месяц с первым видимым месяцем в датепикере.
+
+        Args:
+            target_year: Целевой год.
+            target_month: Целевой месяц.
+
+        Returns:
+            "forward", "backward" или "unknown".
+        """
+        page = self._browser.page
+        titles = await page.query_selector_all(".sc-base-datepicker-month__title")
+
+        if not titles:
+            return "unknown"
+
+        # Берём первый видимый месяц для сравнения
+        first_title_text = await titles[0].inner_text()
+        parsed = self._parse_month_title(first_title_text)
+
+        if not parsed:
+            return "unknown"
+
+        visible_year, visible_month = parsed
+        target_value = target_year * 12 + target_month
+        visible_value = visible_year * 12 + visible_month
+
+        if target_value < visible_value:
+            return "backward"
+        elif target_value > visible_value + 1:
+            # +1 потому что обычно видны 2 месяца
+            return "forward"
+        else:
+            # Целевой месяц должен быть виден (текущий или следующий)
+            # но _is_month_visible вернул False — значит нужно листнуть вперёд
+            return "forward"
+
+    async def _click_prev_month(self) -> None:
+        """Кликает кнопку «Назад» в датепикере для перехода к предыдущему месяцу."""
+        page = self._browser.page
+
+        prev_btn = await page.query_selector(".sc-base-datepicker-modal__prev")
+        if not prev_btn:
+            logger.debug("кнопка_назад_не_найдена")
+            return
+
+        # Проверяем что кнопка не скрыта (style="display: none;")
+        is_hidden = await page.evaluate("""
+            () => {
+                const el = document.querySelector('.sc-base-datepicker-modal__prev');
+                if (!el) return true;
+                const style = window.getComputedStyle(el);
+                return style.display === 'none';
+            }
+        """)
+
+        if is_hidden:
+            logger.debug("кнопка_назад_скрыта")
+            return
+
+        try:
+            await prev_btn.click(timeout=5000)
+            logger.debug("кнопка_назад_нажата")
+        except Exception:
+            await page.evaluate("""
+                () => {
+                    const el = document.querySelector('.sc-base-datepicker-modal__prev');
+                    if (el) el.click();
+                }
+            """)
+            logger.debug("кнопка_назад_нажата_js")
+
+        await asyncio.sleep(0.5)
 
     async def _read_price(self) -> int:
         """Считывает цену из элемента на странице карточки.

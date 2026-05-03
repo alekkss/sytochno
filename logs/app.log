@@ -2514,3 +2514,195 @@
 {"timestamp": "2026-05-03T19:11:44.953670+00:00", "level": "INFO", "message": "календарь_собран", "logger": "listing", "trace_id": "f1d89014f4cb", "context": {"step": "id=977025", "total": 60}}
 {"timestamp": "2026-05-03T19:11:50.587066+00:00", "level": "INFO", "message": "календарь_собран", "logger": "listing", "trace_id": "f1d89014f4cb", "context": {"step": "id=1209575", "total": 60}}
 {"timestamp": "2026-05-03T19:11:51.923558+00:00", "level": "INFO", "message": "календарь_собран", "logger": "listing", "trace_id": "f1d89014f4cb", "context": {"step": "id=908275", "total": 60}}
+{"timestamp": "2026-05-03T19:29:04.125649+00:00", "level": "INFO", "message": "приложение_запущено", "logger": "main", "trace_id": "43864a80a877", "context": {"step": "init"}}
+{"timestamp": "2026-05-03T19:29:04.157952+00:00", "level": "INFO", "message": "база_данных_инициализирована", "logger": "repository", "trace_id": "43864a80a877", "context": {"path": "data/sutochno_listings.db"}}
+{"timestamp": "2026-05-03T19:29:04.158311+00:00", "level": "INFO", "message": "запуск_браузера", "logger": "browser", "trace_id": "43864a80a877", "context": {"step": "без прокси"}}
+{"timestamp": "2026-05-03T19:29:09.904301+00:00", "level": "INFO", "message": "браузер_запущен", "logger": "browser", "trace_id": "43864a80a877", "context": {"step": "без прокси"}}
+{"timestamp": "2026-05-03T19:29:09.904507+00:00", "level": "INFO", "message": "начало_парсинга_каталога", "logger": "main", "trace_id": "43864a80a877", "context": {"step": "scraping"}}
+{"timestamp": "2026-05-03T19:29:09.904724+00:00", "level": "INFO", "message": "начало_парсинга_каталога", "logger": "scraper", "trace_id": "43864a80a877", "context": {"path": "https://sutochno.ru/front/searchapp/search?guests_adults=2&occupied=2026-05-04;2026-05-05&term=%D0%A1%D0%B0%D0%BD%D0%BA%D1%82-%D0%9F%D0%B5%D1%82%D0%B5%D1%80%D0%B1%D1%83%D1%80%D0%B3&id=397367&type=city&SW.lat=59.77977557614511&SW.lng=30.026817069335937&NE.lat=60.055581373598486&NE.lng=30.582999930664045&price_per=1&is_studio=1&is_apartment=1"}}
+{"timestamp": "2026-05-03T19:29:09.905244+00:00", "level": "DEBUG", "message": "навигация", "logger": "browser", "trace_id": "43864a80a877", "context": {"path": "https://sutochno.ru/front/searchapp/search?guests_adults=2&occupied=2026-05-04;2026-05-05&term=%D0%A1%D0%B0%D0%BD%D0%BA%D1%82-%D0%9F%D0%B5%D1%82%D0%B5%D1%80%D0%B1%D1%83%D1%80%D0%B3&id=397367&type=city&SW.lat=59.77977557614511&SW.lng=30.026817069335937&NE.lat=60.055581373598486&NE.lng=30.582999930664045&price_per=1&is_studio=1&is_apartment=1"}}
+{"timestamp": "2026-05-03T19:29:16.128280+00:00", "level": "INFO", "message": "парсинг_страницы", "logger": "scraper", "trace_id": "43864a80a877", "context": {"current": 1, "total": 1}}
+{"timestamp": "2026-05-03T19:29:43.524118+00:00", "level": "INFO", "message": "страница_обработана", "logger": "scraper", "trace_id": "43864a80a877", "context": {"current": 1, "total": 50}}
+{"timestamp": "2026-05-03T19:29:43.524487+00:00", "level": "INFO", "message": "парсинг_каталога_завершён", "logger": "scraper", "trace_id": "43864a80a877", "context": {"total": 50}}
+{"timestamp": "2026-05-03T19:29:43.524712+00:00", "level": "INFO", "message": "каталог_собран", "logger": "main", "trace_id": "43864a80a877", "context": {"total": 50, "step": "scraping"}}
+{"timestamp": "2026-05-03T19:29:43.524889+00:00", "level": "INFO", "message": "режим_прокси_включён", "logger": "main", "trace_id": "43864a80a877", "context": {"step": "enrichment"}}
+{"timestamp": "2026-05-03T19:29:43.525941+00:00", "level": "INFO", "message": "прокси_загружены", "logger": "proxy", "trace_id": "43864a80a877", "context": {"total": 3, "path": "data/proxies.txt"}}
+{"timestamp": "2026-05-03T19:29:43.526151+00:00", "level": "INFO", "message": "начало_проверки_прокси", "logger": "proxy", "trace_id": "43864a80a877", "context": {"total": 3}}
+{"timestamp": "2026-05-03T19:30:12.601803+00:00", "level": "INFO", "message": "прокси_работает", "logger": "proxy", "trace_id": "43864a80a877", "context": {"step": "45.11.125.66:9766:oEp2y6:***"}}
+{"timestamp": "2026-05-03T19:30:12.602087+00:00", "level": "INFO", "message": "прокси_работает", "logger": "proxy", "trace_id": "43864a80a877", "context": {"step": "45.11.127.221:9653:oEp2y6:***"}}
+{"timestamp": "2026-05-03T19:30:12.602232+00:00", "level": "INFO", "message": "прокси_работает", "logger": "proxy", "trace_id": "43864a80a877", "context": {"step": "45.11.127.105:9809:oEp2y6:***"}}
+{"timestamp": "2026-05-03T19:30:12.602382+00:00", "level": "INFO", "message": "проверка_прокси_завершена", "logger": "proxy", "trace_id": "43864a80a877", "context": {"total": 3, "step": "из 3"}}
+{"timestamp": "2026-05-03T19:30:12.602528+00:00", "level": "INFO", "message": "ограничение_воркеров", "logger": "main", "trace_id": "43864a80a877", "context": {"total": 3, "step": "лимит=1"}}
+{"timestamp": "2026-05-03T19:30:12.602679+00:00", "level": "INFO", "message": "начало_параллельного_парсинга", "logger": "main", "trace_id": "43864a80a877", "context": {"total": 50, "step": "прокси=1"}}
+{"timestamp": "2026-05-03T19:30:12.602901+00:00", "level": "INFO", "message": "параллельная_обработка", "logger": "listing", "trace_id": "43864a80a877", "context": {"total": 50, "step": "прокси=1"}}
+{"timestamp": "2026-05-03T19:30:12.603241+00:00", "level": "INFO", "message": "запуск_браузера", "logger": "browser", "trace_id": "43864a80a877", "context": {"step": "45.11.125.66:9766:oEp2y6:***"}}
+{"timestamp": "2026-05-03T19:30:13.959778+00:00", "level": "INFO", "message": "браузер_запущен", "logger": "browser", "trace_id": "43864a80a877", "context": {"step": "45.11.125.66:9766:oEp2y6:***"}}
+{"timestamp": "2026-05-03T19:30:13.960296+00:00", "level": "INFO", "message": "воркер_запущен", "logger": "listing", "trace_id": "43864a80a877", "context": {"step": "воркер=1", "total": 50}}
+{"timestamp": "2026-05-03T19:30:13.960766+00:00", "level": "DEBUG", "message": "навигация", "logger": "browser", "trace_id": "43864a80a877", "context": {"path": "https://sutochno.ru"}}
+{"timestamp": "2026-05-03T19:30:40.646295+00:00", "level": "INFO", "message": "воркер_прогрет", "logger": "listing", "trace_id": "43864a80a877", "context": {"step": "воркер=1"}}
+{"timestamp": "2026-05-03T19:30:40.646660+00:00", "level": "INFO", "message": "обработка_карточки", "logger": "listing", "trace_id": "43864a80a877", "context": {"current": 1, "total": 50, "step": "воркер=1"}}
+{"timestamp": "2026-05-03T19:30:40.646957+00:00", "level": "INFO", "message": "парсинг_карточки", "logger": "listing", "trace_id": "43864a80a877", "context": {"path": "https://sutochno.ru/front/searchapp/detail/709383?guests_adults=2&occupied=2026-05-04;2026-05-05&term=%D0%A1%D0%B0%D0%BD%D0%BA%D1%82-%D0%9F%D0%B5%D1%82%D0%B5%D1%80%D0%B1%D1%83%D1%80%D0%B3&id=397367&type=city&SW.lat=59.74409827797147&SW.lng=30.03368352441405&NE.lat=60.090924462880835&NE.lng=30.576133475585934&price_per=1&is_studio=1&is_apartment=1", "step": "id=709383"}}
+{"timestamp": "2026-05-03T19:30:40.647229+00:00", "level": "DEBUG", "message": "переход_на_страницу", "logger": "listing", "trace_id": "43864a80a877", "context": {"step": "id=709383", "path": "https://sutochno.ru/front/searchapp/detail/709383?guests_adults=2&occupied=2026-05-04;2026-05-05&term=%D0%A1%D0%B0%D0%BD%D0%BA%D1%82-%D0%9F%D0%B5%D1%82%D0%B5%D1%80%D0%B1%D1%83%D1%80%D0%B3&id=397367&type=city&SW.lat=59.74409827797147&SW.lng=30.03368352441405&NE.lat=60.090924462880835&NE.lng=30.576133475585934&price_per=1&is_studio=1&is_apartment=1"}}
+{"timestamp": "2026-05-03T19:30:40.647402+00:00", "level": "DEBUG", "message": "навигация", "logger": "browser", "trace_id": "43864a80a877", "context": {"path": "https://sutochno.ru/front/searchapp/detail/709383?guests_adults=2&occupied=2026-05-04;2026-05-05&term=%D0%A1%D0%B0%D0%BD%D0%BA%D1%82-%D0%9F%D0%B5%D1%82%D0%B5%D1%80%D0%B1%D1%83%D1%80%D0%B3&id=397367&type=city&SW.lat=59.74409827797147&SW.lng=30.03368352441405&NE.lat=60.090924462880835&NE.lng=30.576133475585934&price_per=1&is_studio=1&is_apartment=1"}}
+{"timestamp": "2026-05-03T19:30:56.858769+00:00", "level": "DEBUG", "message": "страница_загружена", "logger": "listing", "trace_id": "43864a80a877", "context": {"step": "id=709383"}}
+{"timestamp": "2026-05-03T19:30:56.859126+00:00", "level": "DEBUG", "message": "начало_сбора_календаря", "logger": "listing", "trace_id": "43864a80a877"}
+{"timestamp": "2026-05-03T19:30:56.864450+00:00", "level": "DEBUG", "message": "прокрутка_к_блоку_дат", "logger": "listing", "trace_id": "43864a80a877"}
+{"timestamp": "2026-05-03T19:30:58.018934+00:00", "level": "DEBUG", "message": "клик_по_блоку_заезда_выполнен", "logger": "listing", "trace_id": "43864a80a877"}
+{"timestamp": "2026-05-03T19:30:59.542029+00:00", "level": "DEBUG", "message": "датепикер_открылся_успешно", "logger": "listing", "trace_id": "43864a80a877"}
+{"timestamp": "2026-05-03T19:30:59.542321+00:00", "level": "DEBUG", "message": "датепикер_открыт_для_календаря", "logger": "listing", "trace_id": "43864a80a877"}
+{"timestamp": "2026-05-03T19:30:59.549221+00:00", "level": "DEBUG", "message": "нажимаем_сбросить_даты", "logger": "listing", "trace_id": "43864a80a877"}
+{"timestamp": "2026-05-03T19:31:00.716569+00:00", "level": "DEBUG", "message": "после_сброса_дат", "logger": "listing", "trace_id": "43864a80a877", "context": {"step": "датепикер_открыт=True"}}
+{"timestamp": "2026-05-03T19:31:00.727635+00:00", "level": "DEBUG", "message": "блоки_месяцев_найдены", "logger": "listing", "trace_id": "43864a80a877"}
+{"timestamp": "2026-05-03T19:31:01.228332+00:00", "level": "DEBUG", "message": "даты_сброшены_для_календаря", "logger": "listing", "trace_id": "43864a80a877"}
+{"timestamp": "2026-05-03T19:31:01.228903+00:00", "level": "DEBUG", "message": "месяцы_для_сбора", "logger": "listing", "trace_id": "43864a80a877", "context": {"step": "всего=3", "current": "[(2026, 5), (2026, 6), (2026, 7)]"}}
+{"timestamp": "2026-05-03T19:31:01.809413+00:00", "level": "DEBUG", "message": "дни_месяца_считаны", "logger": "listing", "trace_id": "43864a80a877", "context": {"step": "2026-05", "total": 31}}
+{"timestamp": "2026-05-03T19:31:02.363262+00:00", "level": "DEBUG", "message": "дни_месяца_считаны", "logger": "listing", "trace_id": "43864a80a877", "context": {"step": "2026-06", "total": 30}}
+{"timestamp": "2026-05-03T19:31:02.382086+00:00", "level": "DEBUG", "message": "листаем_к_месяцу_календарь", "logger": "listing", "trace_id": "43864a80a877", "context": {"step": "2026-07"}}
+{"timestamp": "2026-05-03T19:31:02.475310+00:00", "level": "DEBUG", "message": "кнопка_далее_нажата", "logger": "listing", "trace_id": "43864a80a877"}
+{"timestamp": "2026-05-03T19:31:04.544523+00:00", "level": "DEBUG", "message": "дни_месяца_считаны", "logger": "listing", "trace_id": "43864a80a877", "context": {"step": "2026-07", "total": 31}}
+{"timestamp": "2026-05-03T19:31:04.860697+00:00", "level": "DEBUG", "message": "датепикер_закрыт_escape", "logger": "listing", "trace_id": "43864a80a877"}
+{"timestamp": "2026-05-03T19:31:04.861182+00:00", "level": "DEBUG", "message": "календарь_собран_итого", "logger": "listing", "trace_id": "43864a80a877", "context": {"step": "занятых=0, свободных=60", "total": 60}}
+{"timestamp": "2026-05-03T19:31:04.861599+00:00", "level": "INFO", "message": "календарь_собран", "logger": "listing", "trace_id": "43864a80a877", "context": {"step": "id=709383", "total": 60}}
+{"timestamp": "2026-05-03T19:31:04.861939+00:00", "level": "DEBUG", "message": "начало_сбора_цен", "logger": "listing", "trace_id": "43864a80a877", "context": {"step": "свободных_дней=60", "total": 60}}
+{"timestamp": "2026-05-03T19:31:04.862363+00:00", "level": "DEBUG", "message": "запрос_цены_для_дня", "logger": "listing", "trace_id": "43864a80a877", "context": {"step": "день=1/60", "current": "заезд=2026-05-03, выезд=2026-05-04, ночей=1"}}
+{"timestamp": "2026-05-03T19:31:04.862606+00:00", "level": "DEBUG", "message": "шаг_1_открытие_датепикера", "logger": "listing", "trace_id": "43864a80a877", "context": {"step": "заезд=2026-05-03", "current": "skip_scroll=False"}}
+{"timestamp": "2026-05-03T19:31:04.866124+00:00", "level": "DEBUG", "message": "датепикер_уже_открыт", "logger": "listing", "trace_id": "43864a80a877"}
+{"timestamp": "2026-05-03T19:31:04.866440+00:00", "level": "DEBUG", "message": "шаг_2_сброс_дат", "logger": "listing", "trace_id": "43864a80a877", "context": {"step": "заезд=2026-05-03"}}
+{"timestamp": "2026-05-03T19:31:04.873279+00:00", "level": "DEBUG", "message": "сброс_дат_для_цены", "logger": "listing", "trace_id": "43864a80a877"}
+{"timestamp": "2026-05-03T19:31:09.228219+00:00", "level": "DEBUG", "message": "шаг_3_клик_заезд", "logger": "listing", "trace_id": "43864a80a877", "context": {"step": "дата=2026-05-03"}}
+{"timestamp": "2026-05-03T19:31:09.246762+00:00", "level": "DEBUG", "message": "листаем_к_месяцу", "logger": "listing", "trace_id": "43864a80a877", "context": {"step": "попытка=1, цель=2026-05"}}
+{"timestamp": "2026-05-03T19:31:09.370686+00:00", "level": "DEBUG", "message": "кнопка_далее_нажата", "logger": "listing", "trace_id": "43864a80a877"}
+{"timestamp": "2026-05-03T19:31:10.410904+00:00", "level": "DEBUG", "message": "листаем_к_месяцу", "logger": "listing", "trace_id": "43864a80a877", "context": {"step": "попытка=2, цель=2026-05"}}
+{"timestamp": "2026-05-03T19:31:10.485657+00:00", "level": "DEBUG", "message": "кнопка_далее_нажата", "logger": "listing", "trace_id": "43864a80a877"}
+{"timestamp": "2026-05-03T19:31:11.529341+00:00", "level": "DEBUG", "message": "листаем_к_месяцу", "logger": "listing", "trace_id": "43864a80a877", "context": {"step": "попытка=3, цель=2026-05"}}
+{"timestamp": "2026-05-03T19:31:11.618393+00:00", "level": "DEBUG", "message": "кнопка_далее_нажата", "logger": "listing", "trace_id": "43864a80a877"}
+{"timestamp": "2026-05-03T19:31:12.655788+00:00", "level": "DEBUG", "message": "листаем_к_месяцу", "logger": "listing", "trace_id": "43864a80a877", "context": {"step": "попытка=4, цель=2026-05"}}
+{"timestamp": "2026-05-03T19:31:12.735819+00:00", "level": "DEBUG", "message": "кнопка_далее_нажата", "logger": "listing", "trace_id": "43864a80a877"}
+{"timestamp": "2026-05-03T19:31:13.768571+00:00", "level": "DEBUG", "message": "листаем_к_месяцу", "logger": "listing", "trace_id": "43864a80a877", "context": {"step": "попытка=5, цель=2026-05"}}
+{"timestamp": "2026-05-03T19:31:13.859839+00:00", "level": "DEBUG", "message": "кнопка_далее_нажата", "logger": "listing", "trace_id": "43864a80a877"}
+{"timestamp": "2026-05-03T19:31:14.889589+00:00", "level": "DEBUG", "message": "листаем_к_месяцу", "logger": "listing", "trace_id": "43864a80a877", "context": {"step": "попытка=6, цель=2026-05"}}
+{"timestamp": "2026-05-03T19:31:14.899514+00:00", "level": "DEBUG", "message": "кнопка_далее_скрыта", "logger": "listing", "trace_id": "43864a80a877"}
+{"timestamp": "2026-05-03T19:31:15.412494+00:00", "level": "DEBUG", "message": "месяц_не_найден_в_датепикере", "logger": "listing", "trace_id": "43864a80a877", "context": {"step": "2026-05"}}
+{"timestamp": "2026-05-03T19:31:15.412961+00:00", "level": "DEBUG", "message": "не_удалось_кликнуть_заезд", "logger": "listing", "trace_id": "43864a80a877", "context": {"step": "дата=2026-05-03"}}
+{"timestamp": "2026-05-03T19:31:15.727669+00:00", "level": "DEBUG", "message": "датепикер_закрыт_escape", "logger": "listing", "trace_id": "43864a80a877"}
+{"timestamp": "2026-05-03T19:31:15.728246+00:00", "level": "DEBUG", "message": "цена_дня_получена", "logger": "listing", "trace_id": "43864a80a877", "context": {"step": "день=1", "current": "итого=0, за_ночь=0"}}
+{"timestamp": "2026-05-03T19:31:15.728641+00:00", "level": "DEBUG", "message": "запрос_цены_для_дня", "logger": "listing", "trace_id": "43864a80a877", "context": {"step": "день=2/60", "current": "заезд=2026-05-04, выезд=2026-05-05, ночей=1"}}
+{"timestamp": "2026-05-03T19:31:15.728884+00:00", "level": "DEBUG", "message": "шаг_1_открытие_датепикера", "logger": "listing", "trace_id": "43864a80a877", "context": {"step": "заезд=2026-05-04", "current": "skip_scroll=True"}}
+{"timestamp": "2026-05-03T19:31:15.732709+00:00", "level": "DEBUG", "message": "датепикер_уже_открыт", "logger": "listing", "trace_id": "43864a80a877"}
+{"timestamp": "2026-05-03T19:31:15.733070+00:00", "level": "DEBUG", "message": "шаг_2_сброс_дат", "logger": "listing", "trace_id": "43864a80a877", "context": {"step": "заезд=2026-05-04"}}
+{"timestamp": "2026-05-03T19:31:15.740426+00:00", "level": "DEBUG", "message": "сброс_дат_для_цены", "logger": "listing", "trace_id": "43864a80a877"}
+{"timestamp": "2026-05-03T19:31:19.578283+00:00", "level": "DEBUG", "message": "шаг_3_клик_заезд", "logger": "listing", "trace_id": "43864a80a877", "context": {"step": "дата=2026-05-04"}}
+{"timestamp": "2026-05-03T19:31:19.596758+00:00", "level": "DEBUG", "message": "листаем_к_месяцу", "logger": "listing", "trace_id": "43864a80a877", "context": {"step": "попытка=1, цель=2026-05"}}
+{"timestamp": "2026-05-03T19:31:19.607202+00:00", "level": "DEBUG", "message": "кнопка_далее_скрыта", "logger": "listing", "trace_id": "43864a80a877"}
+{"timestamp": "2026-05-03T19:31:20.128670+00:00", "level": "DEBUG", "message": "листаем_к_месяцу", "logger": "listing", "trace_id": "43864a80a877", "context": {"step": "попытка=2, цель=2026-05"}}
+{"timestamp": "2026-05-03T19:31:20.138688+00:00", "level": "DEBUG", "message": "кнопка_далее_скрыта", "logger": "listing", "trace_id": "43864a80a877"}
+{"timestamp": "2026-05-03T19:31:20.661745+00:00", "level": "DEBUG", "message": "листаем_к_месяцу", "logger": "listing", "trace_id": "43864a80a877", "context": {"step": "попытка=3, цель=2026-05"}}
+{"timestamp": "2026-05-03T19:31:20.671227+00:00", "level": "DEBUG", "message": "кнопка_далее_скрыта", "logger": "listing", "trace_id": "43864a80a877"}
+{"timestamp": "2026-05-03T19:31:21.196759+00:00", "level": "DEBUG", "message": "листаем_к_месяцу", "logger": "listing", "trace_id": "43864a80a877", "context": {"step": "попытка=4, цель=2026-05"}}
+{"timestamp": "2026-05-03T19:31:21.207224+00:00", "level": "DEBUG", "message": "кнопка_далее_скрыта", "logger": "listing", "trace_id": "43864a80a877"}
+{"timestamp": "2026-05-03T19:31:21.728999+00:00", "level": "DEBUG", "message": "листаем_к_месяцу", "logger": "listing", "trace_id": "43864a80a877", "context": {"step": "попытка=5, цель=2026-05"}}
+{"timestamp": "2026-05-03T19:31:21.738815+00:00", "level": "DEBUG", "message": "кнопка_далее_скрыта", "logger": "listing", "trace_id": "43864a80a877"}
+{"timestamp": "2026-05-03T19:31:22.265252+00:00", "level": "DEBUG", "message": "листаем_к_месяцу", "logger": "listing", "trace_id": "43864a80a877", "context": {"step": "попытка=6, цель=2026-05"}}
+{"timestamp": "2026-05-03T19:31:22.274185+00:00", "level": "DEBUG", "message": "кнопка_далее_скрыта", "logger": "listing", "trace_id": "43864a80a877"}
+{"timestamp": "2026-05-03T19:31:22.777960+00:00", "level": "DEBUG", "message": "месяц_не_найден_в_датепикере", "logger": "listing", "trace_id": "43864a80a877", "context": {"step": "2026-05"}}
+{"timestamp": "2026-05-03T19:31:22.778566+00:00", "level": "DEBUG", "message": "не_удалось_кликнуть_заезд", "logger": "listing", "trace_id": "43864a80a877", "context": {"step": "дата=2026-05-04"}}
+{"timestamp": "2026-05-03T19:31:23.094825+00:00", "level": "DEBUG", "message": "датепикер_закрыт_escape", "logger": "listing", "trace_id": "43864a80a877"}
+{"timestamp": "2026-05-03T19:31:23.095189+00:00", "level": "DEBUG", "message": "цена_дня_получена", "logger": "listing", "trace_id": "43864a80a877", "context": {"step": "день=2", "current": "итого=0, за_ночь=0"}}
+{"timestamp": "2026-05-03T19:31:23.095692+00:00", "level": "DEBUG", "message": "запрос_цены_для_дня", "logger": "listing", "trace_id": "43864a80a877", "context": {"step": "день=3/60", "current": "заезд=2026-05-05, выезд=2026-05-06, ночей=1"}}
+{"timestamp": "2026-05-03T19:31:23.096034+00:00", "level": "DEBUG", "message": "шаг_1_открытие_датепикера", "logger": "listing", "trace_id": "43864a80a877", "context": {"step": "заезд=2026-05-05", "current": "skip_scroll=True"}}
+{"timestamp": "2026-05-03T19:31:23.099583+00:00", "level": "DEBUG", "message": "датепикер_уже_открыт", "logger": "listing", "trace_id": "43864a80a877"}
+{"timestamp": "2026-05-03T19:31:23.099792+00:00", "level": "DEBUG", "message": "шаг_2_сброс_дат", "logger": "listing", "trace_id": "43864a80a877", "context": {"step": "заезд=2026-05-05"}}
+{"timestamp": "2026-05-03T19:31:23.106221+00:00", "level": "DEBUG", "message": "сброс_дат_для_цены", "logger": "listing", "trace_id": "43864a80a877"}
+{"timestamp": "2026-05-03T19:31:26.961400+00:00", "level": "DEBUG", "message": "шаг_3_клик_заезд", "logger": "listing", "trace_id": "43864a80a877", "context": {"step": "дата=2026-05-05"}}
+{"timestamp": "2026-05-03T19:31:26.981844+00:00", "level": "DEBUG", "message": "листаем_к_месяцу", "logger": "listing", "trace_id": "43864a80a877", "context": {"step": "попытка=1, цель=2026-05"}}
+{"timestamp": "2026-05-03T19:31:26.991678+00:00", "level": "DEBUG", "message": "кнопка_далее_скрыта", "logger": "listing", "trace_id": "43864a80a877"}
+{"timestamp": "2026-05-03T19:31:27.523734+00:00", "level": "DEBUG", "message": "листаем_к_месяцу", "logger": "listing", "trace_id": "43864a80a877", "context": {"step": "попытка=2, цель=2026-05"}}
+{"timestamp": "2026-05-03T19:31:27.532420+00:00", "level": "DEBUG", "message": "кнопка_далее_скрыта", "logger": "listing", "trace_id": "43864a80a877"}
+{"timestamp": "2026-05-03T19:31:28.064188+00:00", "level": "DEBUG", "message": "листаем_к_месяцу", "logger": "listing", "trace_id": "43864a80a877", "context": {"step": "попытка=3, цель=2026-05"}}
+{"timestamp": "2026-05-03T19:31:28.074367+00:00", "level": "DEBUG", "message": "кнопка_далее_скрыта", "logger": "listing", "trace_id": "43864a80a877"}
+{"timestamp": "2026-05-03T19:31:28.607397+00:00", "level": "DEBUG", "message": "листаем_к_месяцу", "logger": "listing", "trace_id": "43864a80a877", "context": {"step": "попытка=4, цель=2026-05"}}
+{"timestamp": "2026-05-03T19:31:28.618882+00:00", "level": "DEBUG", "message": "кнопка_далее_скрыта", "logger": "listing", "trace_id": "43864a80a877"}
+{"timestamp": "2026-05-03T19:31:29.140847+00:00", "level": "DEBUG", "message": "листаем_к_месяцу", "logger": "listing", "trace_id": "43864a80a877", "context": {"step": "попытка=5, цель=2026-05"}}
+{"timestamp": "2026-05-03T19:31:29.151552+00:00", "level": "DEBUG", "message": "кнопка_далее_скрыта", "logger": "listing", "trace_id": "43864a80a877"}
+{"timestamp": "2026-05-03T19:31:29.674830+00:00", "level": "DEBUG", "message": "листаем_к_месяцу", "logger": "listing", "trace_id": "43864a80a877", "context": {"step": "попытка=6, цель=2026-05"}}
+{"timestamp": "2026-05-03T19:31:29.684323+00:00", "level": "DEBUG", "message": "кнопка_далее_скрыта", "logger": "listing", "trace_id": "43864a80a877"}
+{"timestamp": "2026-05-03T19:31:30.190866+00:00", "level": "DEBUG", "message": "месяц_не_найден_в_датепикере", "logger": "listing", "trace_id": "43864a80a877", "context": {"step": "2026-05"}}
+{"timestamp": "2026-05-03T19:31:30.191195+00:00", "level": "DEBUG", "message": "не_удалось_кликнуть_заезд", "logger": "listing", "trace_id": "43864a80a877", "context": {"step": "дата=2026-05-05"}}
+{"timestamp": "2026-05-03T19:31:30.501981+00:00", "level": "DEBUG", "message": "датепикер_закрыт_escape", "logger": "listing", "trace_id": "43864a80a877"}
+{"timestamp": "2026-05-03T19:31:30.502483+00:00", "level": "DEBUG", "message": "цена_дня_получена", "logger": "listing", "trace_id": "43864a80a877", "context": {"step": "день=3", "current": "итого=0, за_ночь=0"}}
+{"timestamp": "2026-05-03T19:31:30.502740+00:00", "level": "DEBUG", "message": "запрос_цены_для_дня", "logger": "listing", "trace_id": "43864a80a877", "context": {"step": "день=4/60", "current": "заезд=2026-05-06, выезд=2026-05-07, ночей=1"}}
+{"timestamp": "2026-05-03T19:31:30.502998+00:00", "level": "DEBUG", "message": "шаг_1_открытие_датепикера", "logger": "listing", "trace_id": "43864a80a877", "context": {"step": "заезд=2026-05-06", "current": "skip_scroll=True"}}
+{"timestamp": "2026-05-03T19:31:30.506782+00:00", "level": "DEBUG", "message": "датепикер_уже_открыт", "logger": "listing", "trace_id": "43864a80a877"}
+{"timestamp": "2026-05-03T19:31:30.507050+00:00", "level": "DEBUG", "message": "шаг_2_сброс_дат", "logger": "listing", "trace_id": "43864a80a877", "context": {"step": "заезд=2026-05-06"}}
+{"timestamp": "2026-05-03T19:31:30.514480+00:00", "level": "DEBUG", "message": "сброс_дат_для_цены", "logger": "listing", "trace_id": "43864a80a877"}
+{"timestamp": "2026-05-03T19:31:34.362463+00:00", "level": "DEBUG", "message": "шаг_3_клик_заезд", "logger": "listing", "trace_id": "43864a80a877", "context": {"step": "дата=2026-05-06"}}
+{"timestamp": "2026-05-03T19:31:34.383729+00:00", "level": "DEBUG", "message": "листаем_к_месяцу", "logger": "listing", "trace_id": "43864a80a877", "context": {"step": "попытка=1, цель=2026-05"}}
+{"timestamp": "2026-05-03T19:31:34.392590+00:00", "level": "DEBUG", "message": "кнопка_далее_скрыта", "logger": "listing", "trace_id": "43864a80a877"}
+{"timestamp": "2026-05-03T19:31:34.913259+00:00", "level": "DEBUG", "message": "листаем_к_месяцу", "logger": "listing", "trace_id": "43864a80a877", "context": {"step": "попытка=2, цель=2026-05"}}
+{"timestamp": "2026-05-03T19:31:34.922443+00:00", "level": "DEBUG", "message": "кнопка_далее_скрыта", "logger": "listing", "trace_id": "43864a80a877"}
+{"timestamp": "2026-05-03T19:31:35.448564+00:00", "level": "DEBUG", "message": "листаем_к_месяцу", "logger": "listing", "trace_id": "43864a80a877", "context": {"step": "попытка=3, цель=2026-05"}}
+{"timestamp": "2026-05-03T19:31:35.459733+00:00", "level": "DEBUG", "message": "кнопка_далее_скрыта", "logger": "listing", "trace_id": "43864a80a877"}
+{"timestamp": "2026-05-03T19:31:35.979085+00:00", "level": "DEBUG", "message": "листаем_к_месяцу", "logger": "listing", "trace_id": "43864a80a877", "context": {"step": "попытка=4, цель=2026-05"}}
+{"timestamp": "2026-05-03T19:31:35.988857+00:00", "level": "DEBUG", "message": "кнопка_далее_скрыта", "logger": "listing", "trace_id": "43864a80a877"}
+{"timestamp": "2026-05-03T19:31:36.509067+00:00", "level": "DEBUG", "message": "листаем_к_месяцу", "logger": "listing", "trace_id": "43864a80a877", "context": {"step": "попытка=5, цель=2026-05"}}
+{"timestamp": "2026-05-03T19:31:36.518284+00:00", "level": "DEBUG", "message": "кнопка_далее_скрыта", "logger": "listing", "trace_id": "43864a80a877"}
+{"timestamp": "2026-05-03T19:31:37.048736+00:00", "level": "DEBUG", "message": "листаем_к_месяцу", "logger": "listing", "trace_id": "43864a80a877", "context": {"step": "попытка=6, цель=2026-05"}}
+{"timestamp": "2026-05-03T19:31:37.057755+00:00", "level": "DEBUG", "message": "кнопка_далее_скрыта", "logger": "listing", "trace_id": "43864a80a877"}
+{"timestamp": "2026-05-03T19:31:37.562479+00:00", "level": "DEBUG", "message": "месяц_не_найден_в_датепикере", "logger": "listing", "trace_id": "43864a80a877", "context": {"step": "2026-05"}}
+{"timestamp": "2026-05-03T19:31:37.562812+00:00", "level": "DEBUG", "message": "не_удалось_кликнуть_заезд", "logger": "listing", "trace_id": "43864a80a877", "context": {"step": "дата=2026-05-06"}}
+{"timestamp": "2026-05-03T19:31:37.878492+00:00", "level": "DEBUG", "message": "датепикер_закрыт_escape", "logger": "listing", "trace_id": "43864a80a877"}
+{"timestamp": "2026-05-03T19:31:37.878771+00:00", "level": "DEBUG", "message": "цена_дня_получена", "logger": "listing", "trace_id": "43864a80a877", "context": {"step": "день=4", "current": "итого=0, за_ночь=0"}}
+{"timestamp": "2026-05-03T19:31:37.879307+00:00", "level": "DEBUG", "message": "запрос_цены_для_дня", "logger": "listing", "trace_id": "43864a80a877", "context": {"step": "день=5/60", "current": "заезд=2026-05-07, выезд=2026-05-08, ночей=1"}}
+{"timestamp": "2026-05-03T19:31:37.879616+00:00", "level": "DEBUG", "message": "шаг_1_открытие_датепикера", "logger": "listing", "trace_id": "43864a80a877", "context": {"step": "заезд=2026-05-07", "current": "skip_scroll=True"}}
+{"timestamp": "2026-05-03T19:31:37.884073+00:00", "level": "DEBUG", "message": "датепикер_уже_открыт", "logger": "listing", "trace_id": "43864a80a877"}
+{"timestamp": "2026-05-03T19:31:37.884254+00:00", "level": "DEBUG", "message": "шаг_2_сброс_дат", "logger": "listing", "trace_id": "43864a80a877", "context": {"step": "заезд=2026-05-07"}}
+{"timestamp": "2026-05-03T19:31:37.890757+00:00", "level": "DEBUG", "message": "сброс_дат_для_цены", "logger": "listing", "trace_id": "43864a80a877"}
+{"timestamp": "2026-05-03T19:31:41.723826+00:00", "level": "DEBUG", "message": "шаг_3_клик_заезд", "logger": "listing", "trace_id": "43864a80a877", "context": {"step": "дата=2026-05-07"}}
+{"timestamp": "2026-05-03T19:31:41.741309+00:00", "level": "DEBUG", "message": "листаем_к_месяцу", "logger": "listing", "trace_id": "43864a80a877", "context": {"step": "попытка=1, цель=2026-05"}}
+{"timestamp": "2026-05-03T19:31:41.751146+00:00", "level": "DEBUG", "message": "кнопка_далее_скрыта", "logger": "listing", "trace_id": "43864a80a877"}
+{"timestamp": "2026-05-03T19:31:42.281832+00:00", "level": "DEBUG", "message": "листаем_к_месяцу", "logger": "listing", "trace_id": "43864a80a877", "context": {"step": "попытка=2, цель=2026-05"}}
+{"timestamp": "2026-05-03T19:31:42.291267+00:00", "level": "DEBUG", "message": "кнопка_далее_скрыта", "logger": "listing", "trace_id": "43864a80a877"}
+{"timestamp": "2026-05-03T19:31:42.827302+00:00", "level": "DEBUG", "message": "листаем_к_месяцу", "logger": "listing", "trace_id": "43864a80a877", "context": {"step": "попытка=3, цель=2026-05"}}
+{"timestamp": "2026-05-03T19:31:42.837842+00:00", "level": "DEBUG", "message": "кнопка_далее_скрыта", "logger": "listing", "trace_id": "43864a80a877"}
+{"timestamp": "2026-05-03T19:31:43.367882+00:00", "level": "DEBUG", "message": "листаем_к_месяцу", "logger": "listing", "trace_id": "43864a80a877", "context": {"step": "попытка=4, цель=2026-05"}}
+{"timestamp": "2026-05-03T19:31:43.377011+00:00", "level": "DEBUG", "message": "кнопка_далее_скрыта", "logger": "listing", "trace_id": "43864a80a877"}
+{"timestamp": "2026-05-03T19:31:43.919829+00:00", "level": "DEBUG", "message": "листаем_к_месяцу", "logger": "listing", "trace_id": "43864a80a877", "context": {"step": "попытка=5, цель=2026-05"}}
+{"timestamp": "2026-05-03T19:31:43.929666+00:00", "level": "DEBUG", "message": "кнопка_далее_скрыта", "logger": "listing", "trace_id": "43864a80a877"}
+{"timestamp": "2026-05-03T19:31:44.459822+00:00", "level": "DEBUG", "message": "листаем_к_месяцу", "logger": "listing", "trace_id": "43864a80a877", "context": {"step": "попытка=6, цель=2026-05"}}
+{"timestamp": "2026-05-03T19:31:44.470048+00:00", "level": "DEBUG", "message": "кнопка_далее_скрыта", "logger": "listing", "trace_id": "43864a80a877"}
+{"timestamp": "2026-05-03T19:31:44.975527+00:00", "level": "DEBUG", "message": "месяц_не_найден_в_датепикере", "logger": "listing", "trace_id": "43864a80a877", "context": {"step": "2026-05"}}
+{"timestamp": "2026-05-03T19:31:44.975986+00:00", "level": "DEBUG", "message": "не_удалось_кликнуть_заезд", "logger": "listing", "trace_id": "43864a80a877", "context": {"step": "дата=2026-05-07"}}
+{"timestamp": "2026-05-03T19:31:45.287893+00:00", "level": "DEBUG", "message": "датепикер_закрыт_escape", "logger": "listing", "trace_id": "43864a80a877"}
+{"timestamp": "2026-05-03T19:31:45.288483+00:00", "level": "DEBUG", "message": "цена_дня_получена", "logger": "listing", "trace_id": "43864a80a877", "context": {"step": "день=5", "current": "итого=0, за_ночь=0"}}
+{"timestamp": "2026-05-03T19:31:45.288944+00:00", "level": "DEBUG", "message": "запрос_цены_для_дня", "logger": "listing", "trace_id": "43864a80a877", "context": {"step": "день=6/60", "current": "заезд=2026-05-08, выезд=2026-05-09, ночей=1"}}
+{"timestamp": "2026-05-03T19:31:45.289284+00:00", "level": "DEBUG", "message": "шаг_1_открытие_датепикера", "logger": "listing", "trace_id": "43864a80a877", "context": {"step": "заезд=2026-05-08", "current": "skip_scroll=True"}}
+{"timestamp": "2026-05-03T19:31:45.293080+00:00", "level": "DEBUG", "message": "датепикер_уже_открыт", "logger": "listing", "trace_id": "43864a80a877"}
+{"timestamp": "2026-05-03T19:31:45.293444+00:00", "level": "DEBUG", "message": "шаг_2_сброс_дат", "logger": "listing", "trace_id": "43864a80a877", "context": {"step": "заезд=2026-05-08"}}
+{"timestamp": "2026-05-03T19:31:45.300325+00:00", "level": "DEBUG", "message": "сброс_дат_для_цены", "logger": "listing", "trace_id": "43864a80a877"}
+{"timestamp": "2026-05-03T19:31:49.139905+00:00", "level": "DEBUG", "message": "шаг_3_клик_заезд", "logger": "listing", "trace_id": "43864a80a877", "context": {"step": "дата=2026-05-08"}}
+{"timestamp": "2026-05-03T19:31:49.159088+00:00", "level": "DEBUG", "message": "листаем_к_месяцу", "logger": "listing", "trace_id": "43864a80a877", "context": {"step": "попытка=1, цель=2026-05"}}
+{"timestamp": "2026-05-03T19:31:49.170278+00:00", "level": "DEBUG", "message": "кнопка_далее_скрыта", "logger": "listing", "trace_id": "43864a80a877"}
+{"timestamp": "2026-05-03T19:31:49.698292+00:00", "level": "DEBUG", "message": "листаем_к_месяцу", "logger": "listing", "trace_id": "43864a80a877", "context": {"step": "попытка=2, цель=2026-05"}}
+{"timestamp": "2026-05-03T19:31:49.709166+00:00", "level": "DEBUG", "message": "кнопка_далее_скрыта", "logger": "listing", "trace_id": "43864a80a877"}
+{"timestamp": "2026-05-03T19:31:50.243140+00:00", "level": "DEBUG", "message": "листаем_к_месяцу", "logger": "listing", "trace_id": "43864a80a877", "context": {"step": "попытка=3, цель=2026-05"}}
+{"timestamp": "2026-05-03T19:31:50.252901+00:00", "level": "DEBUG", "message": "кнопка_далее_скрыта", "logger": "listing", "trace_id": "43864a80a877"}
+{"timestamp": "2026-05-03T19:31:50.782443+00:00", "level": "DEBUG", "message": "листаем_к_месяцу", "logger": "listing", "trace_id": "43864a80a877", "context": {"step": "попытка=4, цель=2026-05"}}
+{"timestamp": "2026-05-03T19:31:50.792823+00:00", "level": "DEBUG", "message": "кнопка_далее_скрыта", "logger": "listing", "trace_id": "43864a80a877"}
+{"timestamp": "2026-05-03T19:31:51.314871+00:00", "level": "DEBUG", "message": "листаем_к_месяцу", "logger": "listing", "trace_id": "43864a80a877", "context": {"step": "попытка=5, цель=2026-05"}}
+{"timestamp": "2026-05-03T19:31:51.324802+00:00", "level": "DEBUG", "message": "кнопка_далее_скрыта", "logger": "listing", "trace_id": "43864a80a877"}
+{"timestamp": "2026-05-03T19:31:51.846009+00:00", "level": "DEBUG", "message": "листаем_к_месяцу", "logger": "listing", "trace_id": "43864a80a877", "context": {"step": "попытка=6, цель=2026-05"}}
+{"timestamp": "2026-05-03T19:31:51.855518+00:00", "level": "DEBUG", "message": "кнопка_далее_скрыта", "logger": "listing", "trace_id": "43864a80a877"}
+{"timestamp": "2026-05-03T19:31:52.361772+00:00", "level": "DEBUG", "message": "месяц_не_найден_в_датепикере", "logger": "listing", "trace_id": "43864a80a877", "context": {"step": "2026-05"}}
+{"timestamp": "2026-05-03T19:31:52.362516+00:00", "level": "DEBUG", "message": "не_удалось_кликнуть_заезд", "logger": "listing", "trace_id": "43864a80a877", "context": {"step": "дата=2026-05-08"}}
+{"timestamp": "2026-05-03T19:31:52.682360+00:00", "level": "DEBUG", "message": "датепикер_закрыт_escape", "logger": "listing", "trace_id": "43864a80a877"}
+{"timestamp": "2026-05-03T19:31:52.682690+00:00", "level": "DEBUG", "message": "цена_дня_получена", "logger": "listing", "trace_id": "43864a80a877", "context": {"step": "день=6", "current": "итого=0, за_ночь=0"}}
+{"timestamp": "2026-05-03T19:31:52.682889+00:00", "level": "DEBUG", "message": "запрос_цены_для_дня", "logger": "listing", "trace_id": "43864a80a877", "context": {"step": "день=7/60", "current": "заезд=2026-05-09, выезд=2026-05-10, ночей=1"}}
+{"timestamp": "2026-05-03T19:31:52.683124+00:00", "level": "DEBUG", "message": "шаг_1_открытие_датепикера", "logger": "listing", "trace_id": "43864a80a877", "context": {"step": "заезд=2026-05-09", "current": "skip_scroll=True"}}
+{"timestamp": "2026-05-03T19:31:52.687081+00:00", "level": "DEBUG", "message": "датепикер_уже_открыт", "logger": "listing", "trace_id": "43864a80a877"}
+{"timestamp": "2026-05-03T19:31:52.687437+00:00", "level": "DEBUG", "message": "шаг_2_сброс_дат", "logger": "listing", "trace_id": "43864a80a877", "context": {"step": "заезд=2026-05-09"}}
+{"timestamp": "2026-05-03T19:31:52.695463+00:00", "level": "DEBUG", "message": "сброс_дат_для_цены", "logger": "listing", "trace_id": "43864a80a877"}
+{"timestamp": "2026-05-03T19:31:54.350196+00:00", "level": "INFO", "message": "браузер_остановлен", "logger": "browser", "trace_id": "43864a80a877"}
+{"timestamp": "2026-05-03T19:31:54.350519+00:00", "level": "INFO", "message": "воркер_остановлен", "logger": "listing", "trace_id": "43864a80a877", "context": {"step": "воркер=1"}}
+{"timestamp": "2026-05-03T19:31:54.569036+00:00", "level": "INFO", "message": "браузер_остановлен", "logger": "browser", "trace_id": "43864a80a877"}
+{"timestamp": "2026-05-03T19:31:54.570494+00:00", "level": "INFO", "message": "соединение_с_бд_закрыто", "logger": "repository", "trace_id": "43864a80a877"}
+{"timestamp": "2026-05-03T19:31:54.570750+00:00", "level": "INFO", "message": "приложение_завершено", "logger": "main", "trace_id": "43864a80a877", "context": {"step": "shutdown"}}
