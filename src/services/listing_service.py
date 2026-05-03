@@ -671,7 +671,7 @@ class ListingService:
         return 0
 
     # ─────────────────────────────────────────────────────────────────────
-    # Извлечение календаря занятости (существующий функционал)
+    # Извлечение календаря занятости (исправленный функционал)
     # ─────────────────────────────────────────────────────────────────────
 
     async def _extract_calendar(self) -> list[int]:
@@ -679,22 +679,21 @@ class ListingService:
 
         Последовательность:
         1. Прокрутка к блоку дат и клик на «Заезд» для открытия датепикера.
-        2. Нажатие «Сбросить даты».
+        2. Нажатие «Сбросить даты» с проверкой, что датепикер остался открытым.
         3. Считывание дней текущего и следующих месяцев.
         4. Листание месяцев кнопкой «Далее» при необходимости.
 
         Returns:
             Список из 60 элементов (0 — свободен, 1 — занят).
         """
-        page = self._browser.page
-
         # Шаг 1: Прокручиваем к блоку дат и открываем датепикер
         opened = await self._open_datepicker()
         if not opened:
+            logger.warning("датепикер_не_открылся_при_сборе_календаря")
             return []
 
-        # Шаг 2: Сбрасываем даты
-        await self._reset_dates()
+        # Шаг 2: Сбрасываем даты и проверяем, что датепикер остался открытым
+        await self._reset_dates_safe()
 
         # Шаг 3: Считываем календарь на 60 дней
         today = date.today()
@@ -703,6 +702,12 @@ class ListingService:
 
         # Определяем, какие месяцы нам нужны
         months_needed = self._get_months_range(today, end_date)
+
+        logger.debug(
+            "месяцы_для_сбора",
+            step=f"всего={len(months_needed)}",
+            total=str(months_needed),
+        )
 
         for month_idx, (year, month) in enumerate(months_needed):
             # Листаем к нужному месяцу (первые два уже видны в датепикере)
@@ -714,6 +719,27 @@ class ListingService:
 
             # Считываем дни этого месяца
             month_days = await self._read_month_days(year, month)
+
+            logger.debug(
+                "дни_месяца_считаны",
+                step=f"{year}-{month:02d}",
+                total=len(month_days),
+            )
+
+            # Если блок месяца не найден — пробуем листнуть и повторить
+            if not month_days and month_idx < len(months_needed):
+                logger.debug(
+                    "месяц_не_найден_пробуем_листнуть",
+                    step=f"{year}-{month:02d}",
+                )
+                await self._click_next_month()
+                await asyncio.sleep(1)
+                month_days = await self._read_month_days(year, month)
+                logger.debug(
+                    "повторное_чтение_месяца",
+                    step=f"{year}-{month:02d}",
+                    total=len(month_days),
+                )
 
             # Фильтруем: берём только дни в диапазоне [today, end_date]
             for day_num, is_occupied in month_days:
@@ -732,6 +758,14 @@ class ListingService:
 
         # Закрываем датепикер
         await self._close_datepicker()
+
+        # Проверяем, что собрали достаточно данных
+        if len(calendar) < 60:
+            logger.warning(
+                "календарь_неполный",
+                step=f"собрано={len(calendar)}",
+                total=60,
+            )
 
         return calendar
 
@@ -753,6 +787,20 @@ class ListingService:
             True если датепикер открылся, False — если не удалось.
         """
         page = self._browser.page
+
+        # Проверяем, может датепикер уже открыт
+        datepicker_visible = await page.query_selector(".sc-base-datepicker-modal")
+        if datepicker_visible:
+            is_displayed = await page.evaluate("""
+                () => {
+                    const el = document.querySelector('.sc-base-datepicker-modal');
+                    if (!el) return false;
+                    const style = window.getComputedStyle(el);
+                    return style.display !== 'none' && style.visibility !== 'hidden';
+                }
+            """)
+            if is_displayed:
+                return True
 
         if not skip_scroll:
             # Прокручиваем к блоку дат
@@ -797,8 +845,66 @@ class ListingService:
             logger.warning("датепикер_не_открылся")
             return False
 
+    async def _reset_dates_safe(self) -> None:
+        """Сбрасывает даты в датепикере с проверкой, что он остался открытым.
+
+        После нажатия «Сбросить даты» датепикер может закрыться автоматически
+        (особенно если ранее были выбраны даты). В этом случае метод
+        переоткрывает датепикер и ждёт загрузки блоков месяцев.
+        """
+        page = self._browser.page
+
+        # Нажимаем «Сбросить даты»
+        reset_button = await page.query_selector(".sc-base-datepicker__reset")
+        if reset_button:
+            try:
+                await reset_button.click(timeout=3000)
+            except Exception:
+                # Fallback: JavaScript-клик
+                await page.evaluate("""
+                    () => {
+                        const el = document.querySelector('.sc-base-datepicker__reset');
+                        if (el) el.click();
+                    }
+                """)
+
+            # Ждём реакции интерфейса
+            await asyncio.sleep(1.0)
+
+        # Проверяем, остался ли датепикер открытым
+        datepicker_still_open = await self._is_datepicker_open()
+
+        if not datepicker_still_open:
+            logger.debug("датепикер_закрылся_после_сброса_переоткрываем")
+
+            # Переоткрываем датепикер
+            reopened = await self._open_datepicker(skip_scroll=True)
+            if not reopened:
+                logger.warning("не_удалось_переоткрыть_датепикер_после_сброса")
+                return
+
+            # Дополнительное ожидание для рендеринга месяцев
+            await asyncio.sleep(1.0)
+
+        # Ждём, пока блоки месяцев появятся в DOM
+        try:
+            await page.wait_for_selector(
+                ".sc-base-datepicker-month",
+                timeout=5000,
+            )
+        except Exception:
+            logger.warning("блоки_месяцев_не_появились_после_сброса")
+
+        # Дополнительная пауза для полного рендеринга всех ячеек
+        await asyncio.sleep(0.5)
+
     async def _reset_dates(self) -> None:
-        """Нажимает кнопку «Сбросить даты» в датепикере."""
+        """Нажимает кнопку «Сбросить даты» в датепикере.
+
+        Используется в контексте сбора цен, где после сброса
+        не требуется проверка открытости (датепикер переоткроется
+        на следующем шаге).
+        """
         page = self._browser.page
 
         reset_button = await page.query_selector(".sc-base-datepicker__reset")
@@ -817,6 +923,31 @@ class ListingService:
             """)
 
         await asyncio.sleep(0.3)
+
+    async def _is_datepicker_open(self) -> bool:
+        """Проверяет, открыт ли датепикер (виден в DOM и отображается).
+
+        Returns:
+            True если датепикер открыт и виден, False — если закрыт или не найден.
+        """
+        page = self._browser.page
+
+        try:
+            is_open = await page.evaluate("""
+                () => {
+                    const el = document.querySelector('.sc-base-datepicker-modal');
+                    if (!el) return false;
+                    const rect = el.getBoundingClientRect();
+                    if (rect.width === 0 || rect.height === 0) return false;
+                    const style = window.getComputedStyle(el);
+                    return style.display !== 'none'
+                        && style.visibility !== 'hidden'
+                        && style.opacity !== '0';
+                }
+            """)
+            return bool(is_open)
+        except Exception:
+            return False
 
     async def _close_datepicker(self) -> None:
         """Закрывает датепикер нажатием Escape или кликом вне его."""
@@ -891,12 +1022,15 @@ class ListingService:
         Returns:
             Список кортежей (номер_дня, статус), где статус: 0=свободен, 1=занят.
         """
-        page = self._browser.page
         days: list[tuple[int, int]] = []
 
         # Находим нужный блок месяца по заголовку
         month_block = await self._find_month_block(year, month)
         if not month_block:
+            logger.debug(
+                "блок_месяца_не_найден",
+                step=f"{year}-{month:02d}",
+            )
             return days
 
         # Находим все ячейки дней в этом месяце
