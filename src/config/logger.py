@@ -216,7 +216,10 @@ _log_file_path: str = "logs/app.log"
 def configure(log_level: str, log_file_path: str) -> None:
     """Конфигурирует параметры логирования для всего приложения.
 
-    Должна вызываться один раз при старте приложения, до первого get_logger().
+    Должна вызываться один раз при старте приложения.
+    Обновляет уровень логирования для всех уже созданных логгеров,
+    а также добавляет файловый обработчик тем логгерам, которые были
+    созданы до вызова configure() (при импорте модулей).
 
     Args:
         log_level: Уровень логирования.
@@ -225,6 +228,34 @@ def configure(log_level: str, log_file_path: str) -> None:
     global _log_level, _log_file_path  # noqa: PLW0603
     _log_level = log_level
     _log_file_path = log_file_path
+
+    # Обновляем все уже существующие логгеры
+    target_level = getattr(logging, log_level, logging.INFO)
+
+    for name, context_logger in _loggers_cache.items():
+        raw_logger = context_logger._logger
+
+        # Обновляем уровень логирования
+        raw_logger.setLevel(target_level)
+
+        # Проверяем, есть ли уже файловый обработчик
+        has_file_handler = any(
+            isinstance(h, RotatingFileHandler) for h in raw_logger.handlers
+        )
+
+        # Добавляем файловый обработчик, если его нет и путь указан
+        if not has_file_handler and log_file_path:
+            log_path = Path(log_file_path)
+            log_path.parent.mkdir(parents=True, exist_ok=True)
+
+            file_handler = RotatingFileHandler(
+                filename=str(log_path),
+                maxBytes=10 * 1024 * 1024,  # 10 МБ
+                backupCount=5,
+                encoding="utf-8",
+            )
+            file_handler.setFormatter(JsonFileFormatter())
+            raw_logger.addHandler(file_handler)
 
 
 def get_logger(name: str = "sutochno_parser") -> ContextLogger:
