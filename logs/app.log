@@ -1,1 +1,1 @@
-{"timestamp": "2026-05-03T21:17:18.629774+00:00", "level": "INFO", "message": "отчёт_сохранён", "logger": "export", "trace_id": "bfc10a0f0fb4", "context": {"path": "data/sutochno_report.xlsx", "total": 50}}
+{"timestamp": "2026-05-04T10:11:14.854268+00:00", "level": "INFO", "message": "отчёт_сохранён", "logger": "export", "trace_id": "8370b6b60446", "context": {"path": "data/sutochno_report.xlsx", "total": 50}}
