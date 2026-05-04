@@ -39,6 +39,45 @@ _PRICE_SELECTORS: list[str] = [
 # Селектор ошибки минимального количества суток
 _MIN_NIGHTS_ERROR_SELECTOR: str = ".sc-detail-aside-booking__info-error-text"
 
+# CSS-классы, означающие полную недоступность дня (занят или прошедший)
+_DISABLED_FULL: str = "sc-base-datepicker-day_disabled-both"
+_DISABLED_PAST: str = "sc-base-datepicker-day_disabled"
+
+# CSS-классы граничных дней (кликабельны, считаются свободными)
+_DISABLED_LEFT: str = "sc-base-datepicker-day_disabled-left"
+_DISABLED_RIGHT: str = "sc-base-datepicker-day_disabled-right"
+
+
+def _is_day_disabled(class_attr: str) -> bool:
+    """Определяет, является ли день полностью недоступным (занят или прошёл).
+
+    Семантика CSS-классов датепикера sutochno.ru:
+    - ``_disabled-both`` — занят полностью (ни заезд, ни выезд).
+    - ``_disabled`` (без суффикса) — прошедший день.
+    - ``_disabled-left`` — граничный: предыдущий гость выезжает, день СВОБОДЕН.
+    - ``_disabled-right`` — граничный: следующий гость заезжает, день СВОБОДЕН.
+
+    Дни с ``_disabled-left`` и ``_disabled-right`` кликабельны и считаются свободными.
+
+    Args:
+        class_attr: Значение атрибута class у ячейки дня.
+
+    Returns:
+        True — день недоступен (занят/прошёл), False — день свободен (можно кликнуть).
+    """
+    classes = class_attr.split()
+
+    # Проверяем полную недоступность
+    if _DISABLED_FULL in classes:
+        return True
+
+    # Проверяем прошедший день: класс _disabled без суффикса.
+    # Нужно точное совпадение, чтобы не поймать _disabled-left / _disabled-right
+    if _DISABLED_PAST in classes:
+        return True
+
+    return False
+
 
 class ListingService:
     """Сервис парсинга карточки объявления на sutochno.ru.
@@ -319,7 +358,7 @@ class ListingService:
         5. Считывает цену со страницы.
         6. Если появилась ошибка «Минимальное количество суток — N»,
            повторяет с диапазоном checkin + N дней.
-        7. Делит цену на количество ночей.
+        7. Корректно вычисляет цену за ночь без двойного деления.
 
         Для занятых дней — цена = 0.
 
@@ -371,22 +410,17 @@ class ListingService:
             )
 
             # Получаем цену за выбранный диапазон
-            price_total = await self._get_price_for_dates(
+            price_per_night = await self._get_price_for_dates(
                 current_date, checkout_date, is_first_call=is_first_price_call
             )
             is_first_price_call = False
-
-            if price_total > 0 and nights > 0:
-                price_per_night = round(price_total / nights)
-            else:
-                price_per_night = 0
 
             prices.append(price_per_night)
 
             logger.debug(
                 "цена_дня_получена",
                 step=f"день={day_idx + 1}",
-                current=f"итого={price_total}, за_ночь={price_per_night}",
+                current=f"за_ночь={price_per_night}",
             )
 
         logger.debug(
@@ -426,7 +460,7 @@ class ListingService:
     async def _get_price_for_dates(
         self, checkin: date, checkout: date, *, is_first_call: bool = True
     ) -> int:
-        """Получает цену за указанный диапазон дат через датепикер.
+        """Получает цену за одну ночь для указанного диапазона дат через датепикер.
 
         Последовательность:
         1. Открывает датепикер.
@@ -435,7 +469,7 @@ class ListingService:
         4. Кликает дату выезда.
         5. Ждёт обновления цены.
         6. Проверяет ошибку минимального количества суток.
-        7. Считывает цену.
+        7. Считывает цену и вычисляет цену за ночь.
 
         Args:
             checkin: Дата заезда.
@@ -443,7 +477,7 @@ class ListingService:
             is_first_call: Первый ли это вызов для данной карточки.
 
         Returns:
-            Общая цена за период в рублях (int). 0 — если не удалось считать.
+            Цена за одну ночь в рублях (int). 0 — если не удалось считать.
         """
         try:
             # Шаг 1: Открываем датепикер
@@ -528,22 +562,31 @@ class ListingService:
                     step=f"заезд={checkin.isoformat()}",
                     total=min_nights,
                 )
-                price = await self._retry_with_min_nights(checkin, min_nights)
-                return price
+                # _retry_with_min_nights возвращает уже цену за ночь
+                price_per_night = await self._retry_with_min_nights(
+                    checkin, min_nights
+                )
+                return price_per_night
 
-            # Шаг 7: Считываем цену
+            # Шаг 7: Считываем цену и вычисляем за ночь
             logger.debug(
                 "шаг_7_чтение_цены",
                 step=f"заезд={checkin.isoformat()}",
             )
-            price = await self._read_price()
+            price_total = await self._read_price()
+
+            nights = (checkout - checkin).days
+            if price_total > 0 and nights > 0:
+                price_per_night = round(price_total / nights)
+            else:
+                price_per_night = 0
 
             logger.debug(
                 "цена_прочитана",
                 step=f"заезд={checkin.isoformat()}",
-                total=price,
+                current=f"итого={price_total}, ночей={nights}, за_ночь={price_per_night}",
             )
-            return price
+            return price_per_night
 
         except Exception as e:
             logger.debug(
@@ -596,7 +639,8 @@ class ListingService:
         """Повторяет получение цены с учётом минимального количества суток.
 
         Открывает датепикер, сбрасывает даты, выбирает заезд = checkin,
-        выезд = checkin + min_nights. Считывает цену и делит на min_nights.
+        выезд = checkin + min_nights. Считывает общую цену и делит
+        на min_nights для получения цены за одну ночь.
 
         Args:
             checkin: Дата заезда.
@@ -639,7 +683,7 @@ class ListingService:
                 price_per_night = round(price_total / min_nights)
                 logger.debug(
                     "цена_с_минимумом_суток_получена",
-                    step=f"итого={price_total}, за_ночь={price_per_night}",
+                    step=f"итого={price_total}, ночей={min_nights}, за_ночь={price_per_night}",
                 )
                 return price_per_night
 
@@ -656,6 +700,9 @@ class ListingService:
         """Кликает на конкретный день в открытом датепикере.
 
         При необходимости листает месяцы вперёд или назад.
+        Разрешает клик по граничным дням (``_disabled-left``,
+        ``_disabled-right``), блокирует только полностью
+        занятые (``_disabled-both``) и прошедшие (``_disabled``).
 
         Args:
             target_date: Дата, которую нужно выбрать.
@@ -699,11 +746,11 @@ class ListingService:
             if not day_text.isdigit():
                 continue
             if int(day_text) == target_date.day:
-                # Проверяем, что день не disabled (занят)
+                # Проверяем, что день не полностью недоступен
                 class_attr = await cell.get_attribute("class") or ""
-                if "disabled" in class_attr:
+                if _is_day_disabled(class_attr):
                     logger.debug(
-                        "день_disabled_пропускаем",
+                        "день_недоступен_пропускаем",
                         step=f"дата={target_date.isoformat()}, class='{class_attr}'",
                     )
                     return False
@@ -734,7 +781,7 @@ class ListingService:
             step=f"дата={target_date.isoformat()}, искали_день={target_date.day}",
         )
         return False
-    
+
     async def _navigate_to_month(self, year: int, month: int) -> bool:
         """Навигирует датепикер к указанному месяцу (вперёд или назад).
 
@@ -1318,6 +1365,13 @@ class ListingService:
     async def _read_month_days(self, year: int, month: int) -> list[tuple[int, int]]:
         """Считывает статус всех дней указанного месяца из датепикера.
 
+        Семантика CSS-классов:
+        - ``_disabled-both`` — день занят полностью → статус 1.
+        - ``_disabled`` (без суффикса) — прошедший день → статус 1.
+        - ``_disabled-left`` — граничный, свободен → статус 0.
+        - ``_disabled-right`` — граничный, свободен → статус 0.
+        - Без disabled-классов — полностью свободен → статус 0.
+
         Args:
             year: Год.
             month: Номер месяца (1-12).
@@ -1351,9 +1405,9 @@ class ListingService:
 
             day_num = int(day_text)
 
-            # Определяем статус: занят если есть класс _disabled
+            # Определяем статус через централизованную функцию
             class_attr = await cell.get_attribute("class") or ""
-            is_occupied = 1 if "disabled" in class_attr else 0
+            is_occupied = 1 if _is_day_disabled(class_attr) else 0
 
             days.append((day_num, is_occupied))
 
