@@ -41,6 +41,13 @@ _PRICE_SELECTORS: list[str] = [
 # Селектор ошибки минимального количества суток
 _MIN_NIGHTS_ERROR_SELECTOR: str = ".sc-detail-aside-booking__info-error-text"
 
+# Селекторы, подтверждающие что карточка загрузилась полностью
+_PAGE_READY_SELECTORS: list[str] = [
+    ".sc-detail-dates",
+    ".sc-detail-aside-price__cost",
+    ".sc-detail-hotel-booking__price-sale",
+]
+
 # CSS-классы, означающие полную недоступность дня (занят или прошедший)
 _DISABLED_FULL: str = "sc-base-datepicker-day_disabled-both"
 _DISABLED_PAST: str = "sc-base-datepicker-day_disabled"
@@ -48,6 +55,12 @@ _DISABLED_PAST: str = "sc-base-datepicker-day_disabled"
 # CSS-классы граничных дней (кликабельны, считаются свободными)
 _DISABLED_LEFT: str = "sc-base-datepicker-day_disabled-left"
 _DISABLED_RIGHT: str = "sc-base-datepicker-day_disabled-right"
+
+# Максимальное количество попыток загрузки страницы карточки
+_MAX_GOTO_RETRIES: int = 3
+
+# Пауза между повторными попытками загрузки (секунды)
+_GOTO_RETRY_DELAY: float = 5.0
 
 
 def _is_day_disabled(class_attr: str) -> bool:
@@ -105,6 +118,120 @@ class ListingService:
         self._browser = browser_service
 
     # ─────────────────────────────────────────────────────────────────────
+    # Загрузка страницы карточки с retry и ожиданием готовности
+    # ─────────────────────────────────────────────────────────────────────
+
+    async def _goto_with_retry(self, page: Page, url: str) -> bool:
+        """Загружает страницу карточки с повторными попытками при сетевых ошибках.
+
+        Стратегия загрузки:
+        1. Попытка с wait_until="networkidle" (полная загрузка JS).
+        2. При таймауте — fallback на "domcontentloaded".
+        3. При сетевых ошибках (ERR_TIMED_OUT, ERR_CONNECTION_RESET) —
+           повторная попытка после паузы.
+        4. После успешной загрузки — ожидание появления ключевых элементов.
+
+        Args:
+            page: Вкладка браузера.
+            url: URL карточки.
+
+        Returns:
+            True если страница загружена и готова, False — если все попытки исчерпаны.
+        """
+        for attempt in range(1, _MAX_GOTO_RETRIES + 1):
+            try:
+                # Пробуем загрузить с полным ожиданием сети
+                logger.debug(
+                    "goto_попытка",
+                    step=f"попытка={attempt}/{_MAX_GOTO_RETRIES}",
+                    path=url,
+                )
+                try:
+                    await page.goto(url, wait_until="networkidle", timeout=45000)
+                except Exception:
+                    # Fallback: хотя бы DOM загрузился
+                    logger.debug(
+                        "networkidle_таймаут_пробуем_domcontentloaded",
+                        step=f"попытка={attempt}",
+                    )
+                    await page.goto(url, wait_until="domcontentloaded")
+
+                # Ждём появления ключевых элементов карточки
+                page_ready = await self._wait_for_page_ready(page)
+                if page_ready:
+                    logger.debug(
+                        "страница_готова",
+                        step=f"попытка={attempt}",
+                    )
+                    return True
+
+                logger.debug(
+                    "страница_загрузилась_но_элементы_не_найдены",
+                    step=f"попытка={attempt}",
+                )
+                # Страница загрузилась, но элементы не появились — всё равно пробуем работать
+                return True
+
+            except Exception as e:
+                error_msg = str(e)
+                is_network_error = any(
+                    err in error_msg
+                    for err in [
+                        "ERR_TIMED_OUT",
+                        "ERR_CONNECTION_RESET",
+                        "ERR_CONNECTION_CLOSED",
+                        "ERR_CONNECTION_REFUSED",
+                        "ERR_PROXY_CONNECTION_FAILED",
+                        "ERR_TUNNEL_CONNECTION_FAILED",
+                    ]
+                )
+
+                if is_network_error and attempt < _MAX_GOTO_RETRIES:
+                    logger.warning(
+                        "сетевая_ошибка_повтор",
+                        error=error_msg[:200],
+                        step=f"попытка={attempt}/{_MAX_GOTO_RETRIES}, пауза={_GOTO_RETRY_DELAY}с",
+                    )
+                    await asyncio.sleep(_GOTO_RETRY_DELAY)
+                    continue
+
+                # Не сетевая ошибка или исчерпаны попытки
+                logger.warning(
+                    "goto_не_удался",
+                    error=error_msg[:200],
+                    error_type=type(e).__name__,
+                    step=f"попытка={attempt}/{_MAX_GOTO_RETRIES}",
+                )
+                return False
+
+        return False
+
+    async def _wait_for_page_ready(self, page: Page, timeout: int = 10000) -> bool:
+        """Ожидает появления ключевых элементов на странице карточки.
+
+        Пробует несколько селекторов — достаточно, чтобы хотя бы один появился.
+
+        Args:
+            page: Вкладка браузера.
+            timeout: Максимальное время ожидания в мс.
+
+        Returns:
+            True если хотя бы один ключевой элемент найден.
+        """
+        for selector in _PAGE_READY_SELECTORS:
+            try:
+                await page.wait_for_selector(selector, timeout=timeout)
+                logger.debug(
+                    "элемент_готовности_найден",
+                    step=f"selector='{selector}'",
+                )
+                return True
+            except Exception:
+                continue
+
+        return False
+
+    # ─────────────────────────────────────────────────────────────────────
     # Публичные методы обогащения
     # ─────────────────────────────────────────────────────────────────────
 
@@ -135,13 +262,27 @@ class ListingService:
         )
 
         try:
-            # Переходим на страницу объявления
+            # Переходим на страницу объявления с retry
             logger.debug(
                 "переход_на_страницу",
                 step=f"id={listing.external_id}",
                 path=listing.url,
             )
-            await active_page.goto(listing.url, wait_until="domcontentloaded")
+
+            loaded = await self._goto_with_retry(active_page, listing.url)
+            if not loaded:
+                logger.warning(
+                    "страница_не_загрузилась",
+                    step=f"id={listing.external_id}",
+                )
+                elapsed = time.perf_counter() - start_time
+                logger.info(
+                    "карточка_завершена",
+                    step=f"id={listing.external_id}",
+                    total=f"{elapsed:.1f}с",
+                )
+                return listing
+
             await self._browser.random_delay()
 
             logger.debug(
@@ -218,8 +359,9 @@ class ListingService:
         asyncio.Semaphore. Каждая вкладка обрабатывает одну карточку за раз,
         после завершения берёт следующую из очереди.
 
-        Вкладки запускаются с интервалом TAB_DELAY_MS для распределения
-        нагрузки на сеть.
+        Загрузки страниц (goto) выполняются последовательно через navigation_lock,
+        чтобы не перегружать сеть одновременными запросами. После загрузки
+        страницы вкладка работает с DOM параллельно с другими.
 
         Args:
             listings: Список объявлений из каталога.
@@ -237,35 +379,84 @@ class ListingService:
             total=total,
         )
 
-        # Семафор ограничивает количество одновременно работающих вкладок
+        # Семафор ограничивает количество одновременно открытых вкладок
         semaphore = asyncio.Semaphore(max_tabs)
+
+        # Lock для последовательной загрузки страниц —
+        # только одна вкладка за раз выполняет goto
+        navigation_lock = asyncio.Lock()
 
         # Счётчик обработанных карточек (для логирования прогресса)
         processed_count = 0
         count_lock = asyncio.Lock()
 
-        async def _process_one(listing: RawListing, task_idx: int) -> None:
+        async def _process_one(listing: RawListing) -> None:
             """Обрабатывает одну карточку в отдельной вкладке.
+
+            Алгоритм:
+            1. Захватывает семафор (ждёт свободную «слот» для вкладки).
+            2. Создаёт вкладку.
+            3. Захватывает navigation_lock и загружает страницу.
+            4. Освобождает navigation_lock — другие вкладки могут грузить свои страницы.
+            5. Работает с DOM (календарь, цены) параллельно с другими вкладками.
+            6. Закрывает вкладку, освобождает семафор.
 
             Args:
                 listing: Объявление для обогащения.
-                task_idx: Порядковый номер задачи (для логов и задержки старта).
             """
             nonlocal processed_count
 
             async with semaphore:
-                # Задержка между запуском вкладок — распределяем нагрузку на сеть
-                startup_delay = task_idx * (tab_delay_ms / 1000.0)
-                if startup_delay > 0:
-                    await asyncio.sleep(startup_delay)
-
-                # Создаём вкладку для этой карточки
+                # Создаём вкладку
                 page = await self._browser.create_page()
 
                 try:
-                    await self.enrich_listing(listing, page=page)
+                    # Загружаем страницу последовательно через lock
+                    async with navigation_lock:
+                        # Пауза между загрузками — даём сети отдохнуть
+                        await asyncio.sleep(tab_delay_ms / 1000.0)
+
+                        logger.debug(
+                            "загрузка_страницы_вкладки",
+                            step=f"id={listing.external_id}",
+                        )
+
+                        loaded = await self._goto_with_retry(page, listing.url)
+
+                    # navigation_lock освобождён — другие вкладки могут грузить
+
+                    if not loaded:
+                        logger.warning(
+                            "страница_не_загрузилась_вкладка",
+                            step=f"id={listing.external_id}",
+                        )
+                    else:
+                        # Дополнительная пауза после загрузки
+                        await self._browser.random_delay()
+
+                        # Работаем с DOM параллельно с другими вкладками
+                        try:
+                            calendar = await self._extract_calendar(page)
+                            listing.calendar_60_days = calendar
+
+                            prices = await self._extract_prices(page, calendar)
+                            listing.prices_60_days = prices
+
+                            logger.info(
+                                "карточка_обработана_вкладкой",
+                                step=f"id={listing.external_id}",
+                                total=f"календарь={len(calendar)}, цены={len(prices)}",
+                            )
+                        except Exception as e:
+                            logger.warning(
+                                "ошибка_обработки_вкладки",
+                                error=str(e),
+                                error_type=type(e).__name__,
+                                step=f"id={listing.external_id}",
+                            )
+
                 finally:
-                    # Всегда закрываем вкладку после обработки
+                    # Всегда закрываем вкладку
                     await self._browser.close_page(page)
 
                 # Обновляем и логируем прогресс
@@ -280,12 +471,7 @@ class ListingService:
                 )
 
         # Создаём задачи для всех карточек
-        # task_idx определяет задержку старта ТОЛЬКО для первых max_tabs задач.
-        # Остальные задачи ждут на семафоре и стартуют по мере освобождения вкладок.
-        tasks = [
-            _process_one(listing, task_idx=idx % max_tabs)
-            for idx, listing in enumerate(listings)
-        ]
+        tasks = [_process_one(listing) for listing in listings]
 
         # Запускаем все задачи параллельно (семафор ограничивает до max_tabs)
         results = await asyncio.gather(*tasks, return_exceptions=True)
