@@ -90,6 +90,10 @@ class Settings:
     # Парсинг
     max_pages: int
 
+    # Параллельные вкладки
+    max_tabs: int
+    tab_delay_ms: int
+
     # Хранилище
     db_path: str
     export_path: str
@@ -124,6 +128,8 @@ class Settings:
             min_delay_ms=_get_int("MIN_DELAY_MS", "2000"),
             max_delay_ms=_get_int("MAX_DELAY_MS", "5000"),
             max_pages=_get_int("MAX_PAGES", "5"),
+            max_tabs=_get_int("MAX_TABS", "5"),
+            tab_delay_ms=_get_int("TAB_DELAY_MS", "3000"),
             db_path=os.getenv("DB_PATH", "data/sutochno_listings.db").strip(),
             export_path=os.getenv("EXPORT_PATH", "data/sutochno_report.xlsx").strip(),
             log_level=os.getenv("LOG_LEVEL", "INFO").strip().upper(),
@@ -145,6 +151,17 @@ class Settings:
                 f"LOG_LEVEL должен быть одним из: DEBUG, INFO, WARNING, ERROR, CRITICAL. "
                 f"Получено: '{settings.log_level}'."
             )
+
+        # Валидация параллельных вкладок
+        if settings.max_tabs < 1:
+            raise RuntimeError("MAX_TABS должен быть не менее 1.")
+        if settings.max_tabs > 20:
+            raise RuntimeError(
+                "MAX_TABS не может быть больше 20. "
+                "Рекомендуется 3–5 для стабильной работы."
+            )
+        if settings.tab_delay_ms < 0:
+            raise RuntimeError("TAB_DELAY_MS не может быть отрицательным.")
 
         # Валидация прокси
         if settings.use_proxy:

@@ -22,7 +22,7 @@ async def run() -> None:
     2. Инициализацию базы данных.
     3. Запуск браузера.
     4. Парсинг каталога.
-    5. Обогащение объявлений данными календаря (последовательно или параллельно).
+    5. Обогащение объявлений данными календаря (последовательно, вкладки или прокси+вкладки).
     6. Сохранение результатов в SQLite.
     7. Экспорт в Excel.
     8. Корректное завершение работы.
@@ -126,18 +126,18 @@ async def _enrich_with_proxy_or_sequential(
     listing_service: ListingService,
     logger: "any",  # type: ignore[name-defined]
 ) -> list:
-    """Обогащает карточки: параллельно через прокси или последовательно.
+    """Обогащает карточки: параллельно через прокси, через вкладки или последовательно.
 
-    Логика:
+    Логика выбора режима:
     1. Если USE_PROXY=true — загружает и проверяет прокси.
-    2. Ограничивает количество прокси значением MAX_PROXY_WORKERS.
-    3. Если есть рабочие прокси — параллельная обработка.
-    4. Если прокси выключены или все нерабочие — последовательная обработка.
+       Каждый прокси-браузер использует MAX_TABS вкладок.
+    2. Если прокси выключены и MAX_TABS > 1 — параллельные вкладки в одном браузере.
+    3. Если прокси выключены и MAX_TABS = 1 — последовательная обработка.
 
     Args:
         settings: Настройки приложения.
         listings: Список карточек для обогащения.
-        listing_service: Сервис парсинга карточек (для последовательного режима).
+        listing_service: Сервис парсинга карточек.
         logger: Логгер.
 
     Returns:
@@ -157,8 +157,8 @@ async def _enrich_with_proxy_or_sequential(
                 error=str(e),
                 step="enrichment",
             )
-            logger.info("переход_в_последовательный_режим", step="enrichment")
-            return await listing_service.enrich_listings(listings)
+            logger.info("переход_в_режим_без_прокси", step="enrichment")
+            return await _enrich_without_proxy(settings, listings, listing_service, logger)
 
         # Проверяем прокси на работоспособность
         working_proxies = await proxy_service.check_proxies(proxies)
@@ -168,8 +168,8 @@ async def _enrich_with_proxy_or_sequential(
                 "нет_рабочих_прокси",
                 step="enrichment",
             )
-            logger.info("переход_в_последовательный_режим", step="enrichment")
-            return await listing_service.enrich_listings(listings)
+            logger.info("переход_в_режим_без_прокси", step="enrichment")
+            return await _enrich_without_proxy(settings, listings, listing_service, logger)
 
         # Ограничиваем количество воркеров
         max_workers = settings.max_proxy_workers
@@ -181,11 +181,11 @@ async def _enrich_with_proxy_or_sequential(
             )
             working_proxies = working_proxies[:max_workers]
 
-        # Параллельная обработка через рабочие прокси
+        # Параллельная обработка через рабочие прокси (каждая с MAX_TABS вкладками)
         logger.info(
             "начало_параллельного_парсинга",
             total=len(listings),
-            step=f"прокси={len(working_proxies)}",
+            step=f"прокси={len(working_proxies)}, вкладок_на_прокси={settings.max_tabs}",
         )
 
         enriched = await ListingService.enrich_listings_parallel(
@@ -196,9 +196,42 @@ async def _enrich_with_proxy_or_sequential(
 
         return enriched
 
-    # Последовательная обработка без прокси
+    # Режим без прокси
+    return await _enrich_without_proxy(settings, listings, listing_service, logger)
+
+
+async def _enrich_without_proxy(
+    settings: Settings,
+    listings: list,
+    listing_service: ListingService,
+    logger: "any",  # type: ignore[name-defined]
+) -> list:
+    """Обогащает карточки без прокси: через вкладки или последовательно.
+
+    Если MAX_TABS > 1 — параллельные вкладки в одном браузере.
+    Если MAX_TABS = 1 — последовательная обработка (как раньше).
+
+    Args:
+        settings: Настройки приложения.
+        listings: Список карточек для обогащения.
+        listing_service: Сервис парсинга карточек.
+        logger: Логгер.
+
+    Returns:
+        Список обогащённых карточек.
+    """
+    if settings.max_tabs > 1:
+        # Параллельные вкладки в одном браузере
+        logger.info(
+            "начало_парсинга_карточек_вкладки",
+            total=len(listings),
+            step=f"вкладок={settings.max_tabs}, tab_delay={settings.tab_delay_ms}мс",
+        )
+        return await listing_service.enrich_listings_tabbed(listings)
+
+    # Последовательная обработка — одна вкладка
     logger.info(
-        "начало_парсинга_карточек",
+        "начало_парсинга_карточек_последовательно",
         total=len(listings),
         step="enrichment",
     )

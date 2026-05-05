@@ -5,6 +5,8 @@ import re
 import time
 from datetime import date, timedelta
 
+from playwright.async_api import Page
+
 from src.config.logger import get_logger
 from src.config.settings import Settings
 from src.models.listing import RawListing
@@ -85,6 +87,11 @@ class ListingService:
     Заходит в каждое объявление, открывает календарь и считывает
     занятость на 60 дней (0 — свободен, 1 — занят), а затем
     собирает цены за сутки для каждого свободного дня.
+
+    Поддерживает три режима обработки:
+    - Последовательный: одна вкладка, карточки по очереди.
+    - Параллельные вкладки: N вкладок в одном браузере.
+    - Прокси + вкладки: M браузеров × N вкладок в каждом.
     """
 
     def __init__(self, settings: Settings, browser_service: BrowserService) -> None:
@@ -97,7 +104,11 @@ class ListingService:
         self._settings = settings
         self._browser = browser_service
 
-    async def enrich_listing(self, listing: RawListing) -> RawListing:
+    # ─────────────────────────────────────────────────────────────────────
+    # Публичные методы обогащения
+    # ─────────────────────────────────────────────────────────────────────
+
+    async def enrich_listing(self, listing: RawListing, page: Page | None = None) -> RawListing:
         """Обогащает объявление данными календаря занятости и ценами.
 
         Переходит на страницу объявления, открывает датепикер,
@@ -107,10 +118,14 @@ class ListingService:
 
         Args:
             listing: Объявление с базовыми данными из каталога.
+            page: Вкладка для работы. Если None — используется основная страница браузера.
 
         Returns:
             Объявление с заполненными calendar_60_days и prices_60_days.
         """
+        # Определяем вкладку: переданная явно или основная страница браузера
+        active_page = page if page is not None else self._browser.page
+
         start_time = time.perf_counter()
 
         logger.info(
@@ -126,7 +141,7 @@ class ListingService:
                 step=f"id={listing.external_id}",
                 path=listing.url,
             )
-            await self._browser.navigate(listing.url)
+            await active_page.goto(listing.url, wait_until="domcontentloaded")
             await self._browser.random_delay()
 
             logger.debug(
@@ -135,7 +150,7 @@ class ListingService:
             )
 
             # Открываем календарь и считываем занятость
-            calendar = await self._extract_calendar()
+            calendar = await self._extract_calendar(active_page)
             listing.calendar_60_days = calendar
 
             logger.info(
@@ -145,7 +160,7 @@ class ListingService:
             )
 
             # Собираем цены по дням
-            prices = await self._extract_prices(calendar)
+            prices = await self._extract_prices(active_page, calendar)
             listing.prices_60_days = prices
 
             logger.info(
@@ -176,7 +191,7 @@ class ListingService:
     async def enrich_listings(self, listings: list[RawListing]) -> list[RawListing]:
         """Обогащает список объявлений данными календаря и цен.
 
-        Последовательно обрабатывает каждое объявление.
+        Последовательно обрабатывает каждое объявление через основную страницу.
 
         Args:
             listings: Список объявлений из каталога.
@@ -196,6 +211,105 @@ class ListingService:
 
         return listings
 
+    async def enrich_listings_tabbed(self, listings: list[RawListing]) -> list[RawListing]:
+        """Обогащает карточки параллельно через несколько вкладок в одном браузере.
+
+        Создаёт пул из MAX_TABS вкладок, распределяет карточки через
+        asyncio.Semaphore. Каждая вкладка обрабатывает одну карточку за раз,
+        после завершения берёт следующую из очереди.
+
+        Вкладки запускаются с интервалом TAB_DELAY_MS для распределения
+        нагрузки на сеть.
+
+        Args:
+            listings: Список объявлений из каталога.
+
+        Returns:
+            Список объявлений с заполненными calendar_60_days и prices_60_days.
+        """
+        max_tabs = self._settings.max_tabs
+        tab_delay_ms = self._settings.tab_delay_ms
+        total = len(listings)
+
+        logger.info(
+            "запуск_параллельных_вкладок",
+            step=f"вкладок={max_tabs}",
+            total=total,
+        )
+
+        # Семафор ограничивает количество одновременно работающих вкладок
+        semaphore = asyncio.Semaphore(max_tabs)
+
+        # Счётчик обработанных карточек (для логирования прогресса)
+        processed_count = 0
+        count_lock = asyncio.Lock()
+
+        async def _process_one(listing: RawListing, task_idx: int) -> None:
+            """Обрабатывает одну карточку в отдельной вкладке.
+
+            Args:
+                listing: Объявление для обогащения.
+                task_idx: Порядковый номер задачи (для логов и задержки старта).
+            """
+            nonlocal processed_count
+
+            async with semaphore:
+                # Задержка между запуском вкладок — распределяем нагрузку на сеть
+                startup_delay = task_idx * (tab_delay_ms / 1000.0)
+                if startup_delay > 0:
+                    await asyncio.sleep(startup_delay)
+
+                # Создаём вкладку для этой карточки
+                page = await self._browser.create_page()
+
+                try:
+                    await self.enrich_listing(listing, page=page)
+                finally:
+                    # Всегда закрываем вкладку после обработки
+                    await self._browser.close_page(page)
+
+                # Обновляем и логируем прогресс
+                async with count_lock:
+                    processed_count += 1
+                    current = processed_count
+
+                logger.info(
+                    "прогресс_вкладок",
+                    current=current,
+                    total=total,
+                )
+
+        # Создаём задачи для всех карточек
+        # task_idx определяет задержку старта ТОЛЬКО для первых max_tabs задач.
+        # Остальные задачи ждут на семафоре и стартуют по мере освобождения вкладок.
+        tasks = [
+            _process_one(listing, task_idx=idx % max_tabs)
+            for idx, listing in enumerate(listings)
+        ]
+
+        # Запускаем все задачи параллельно (семафор ограничивает до max_tabs)
+        results = await asyncio.gather(*tasks, return_exceptions=True)
+
+        # Логируем ошибки, если были
+        error_count = 0
+        for idx, result in enumerate(results):
+            if isinstance(result, Exception):
+                error_count += 1
+                logger.warning(
+                    "ошибка_в_задаче_вкладки",
+                    error=str(result),
+                    error_type=type(result).__name__,
+                    step=f"карточка={idx + 1}",
+                )
+
+        logger.info(
+            "параллельные_вкладки_завершены",
+            total=total,
+            step=f"ошибок={error_count}",
+        )
+
+        return listings
+
     # ─────────────────────────────────────────────────────────────────────
     # Параллельная обработка через прокси
     # ─────────────────────────────────────────────────────────────────────
@@ -209,7 +323,8 @@ class ListingService:
         """Обогащает карточки параллельно через несколько прокси-браузеров.
 
         Каждая прокси запускает свой браузер, прогревает его на sutochno.ru,
-        затем обрабатывает свою порцию карточек. Результаты объединяются.
+        затем обрабатывает свою порцию карточек через параллельные вкладки.
+        Результаты объединяются.
 
         Args:
             settings: Настройки приложения.
@@ -227,7 +342,7 @@ class ListingService:
         logger.info(
             "параллельная_обработка",
             total=len(listings),
-            step=f"прокси={len(proxies)}",
+            step=f"прокси={len(proxies)}, вкладок_на_прокси={settings.max_tabs}",
         )
 
         # Запускаем воркеры параллельно
@@ -270,7 +385,7 @@ class ListingService:
         Последовательность:
         1. Запускает браузер с прокси.
         2. Переходит на sutochno.ru для прогрева (15 секунд).
-        3. Последовательно обрабатывает свои карточки.
+        3. Обрабатывает свои карточки через параллельные вкладки (MAX_TABS).
         4. Останавливает браузер.
 
         Args:
@@ -307,22 +422,19 @@ class ListingService:
                 step=f"воркер={worker_idx}",
             )
 
-            # Шаг 3: Создаём ListingService для этого браузера и обрабатываем карточки
+            # Шаг 3: Обрабатываем карточки через параллельные вкладки
             listing_service = ListingService(
                 settings=settings,
                 browser_service=browser_service,
             )
 
-            total = len(listings)
-            for idx, listing in enumerate(listings, start=1):
-                logger.info(
-                    "обработка_карточки",
-                    current=idx,
-                    total=total,
-                    step=f"воркер={worker_idx}",
-                )
-                await listing_service.enrich_listing(listing)
-                await browser_service.random_delay()
+            logger.info(
+                "воркер_начинает_обработку",
+                step=f"воркер={worker_idx}, вкладок={settings.max_tabs}",
+                total=len(listings),
+            )
+
+            await listing_service.enrich_listings_tabbed(listings)
 
             return listings
 
@@ -347,7 +459,7 @@ class ListingService:
     # Сбор цен по дням
     # ─────────────────────────────────────────────────────────────────────
 
-    async def _extract_prices(self, calendar: list[int]) -> list[int]:
+    async def _extract_prices(self, page: Page, calendar: list[int]) -> list[int]:
         """Собирает цены за сутки для каждого дня из 60-дневного диапазона.
 
         Для каждого свободного дня:
@@ -363,6 +475,7 @@ class ListingService:
         Для занятых дней — цена = 0.
 
         Args:
+            page: Вкладка браузера для работы с DOM.
             calendar: Список занятости (0 — свободен, 1 — занят).
 
         Returns:
@@ -411,7 +524,7 @@ class ListingService:
 
             # Получаем цену за выбранный диапазон
             price_per_night = await self._get_price_for_dates(
-                current_date, checkout_date, is_first_call=is_first_price_call
+                page, current_date, checkout_date, is_first_call=is_first_price_call
             )
             is_first_price_call = False
 
@@ -458,7 +571,7 @@ class ListingService:
         return None
 
     async def _get_price_for_dates(
-        self, checkin: date, checkout: date, *, is_first_call: bool = True
+        self, page: Page, checkin: date, checkout: date, *, is_first_call: bool = True
     ) -> int:
         """Получает цену за одну ночь для указанного диапазона дат через датепикер.
 
@@ -472,6 +585,7 @@ class ListingService:
         7. Считывает цену и вычисляет цену за ночь.
 
         Args:
+            page: Вкладка браузера для работы с DOM.
             checkin: Дата заезда.
             checkout: Дата выезда.
             is_first_call: Первый ли это вызов для данной карточки.
@@ -486,7 +600,7 @@ class ListingService:
                 step=f"заезд={checkin.isoformat()}",
                 current=f"skip_scroll={not is_first_call}",
             )
-            opened = await self._open_datepicker(skip_scroll=not is_first_call)
+            opened = await self._open_datepicker(page, skip_scroll=not is_first_call)
             if not opened:
                 logger.debug(
                     "датепикер_не_открылся_для_цены",
@@ -501,7 +615,7 @@ class ListingService:
 
             # Шаг 2: Сбрасываем даты и гарантируем, что датепикер открыт
             await self._reset_dates_and_ensure_open(
-                short_delay=not is_first_call
+                page, short_delay=not is_first_call
             )
 
             logger.debug(
@@ -510,13 +624,13 @@ class ListingService:
             )
 
             # Шаг 3: Кликаем дату заезда
-            clicked_checkin = await self._click_day_in_datepicker(checkin)
+            clicked_checkin = await self._click_day_in_datepicker(page, checkin)
             if not clicked_checkin:
                 logger.debug(
                     "не_удалось_кликнуть_заезд",
                     step=f"дата={checkin.isoformat()}",
                 )
-                await self._close_datepicker()
+                await self._close_datepicker(page)
                 return 0
 
             logger.debug(
@@ -532,13 +646,13 @@ class ListingService:
             )
 
             # Шаг 4: Кликаем дату выезда
-            clicked_checkout = await self._click_day_in_datepicker(checkout)
+            clicked_checkout = await self._click_day_in_datepicker(page, checkout)
             if not clicked_checkout:
                 logger.debug(
                     "не_удалось_кликнуть_выезд",
                     step=f"дата={checkout.isoformat()}",
                 )
-                await self._close_datepicker()
+                await self._close_datepicker(page)
                 return 0
 
             logger.debug(
@@ -555,7 +669,7 @@ class ListingService:
             await asyncio.sleep(wait_time)
 
             # Шаг 6: Проверяем ошибку минимального количества суток
-            min_nights = await self._check_min_nights_error()
+            min_nights = await self._check_min_nights_error(page)
             if min_nights is not None:
                 logger.debug(
                     "шаг_6_минимум_суток_требуется",
@@ -564,7 +678,7 @@ class ListingService:
                 )
                 # _retry_with_min_nights возвращает уже цену за ночь
                 price_per_night = await self._retry_with_min_nights(
-                    checkin, min_nights
+                    page, checkin, min_nights
                 )
                 return price_per_night
 
@@ -573,7 +687,7 @@ class ListingService:
                 "шаг_7_чтение_цены",
                 step=f"заезд={checkin.isoformat()}",
             )
-            price_total = await self._read_price()
+            price_total = await self._read_price(page)
 
             nights = (checkout - checkin).days
             if price_total > 0 and nights > 0:
@@ -597,16 +711,17 @@ class ListingService:
             )
             return 0
 
-    async def _check_min_nights_error(self) -> int | None:
+    async def _check_min_nights_error(self, page: Page) -> int | None:
         """Проверяет наличие ошибки «Минимальное количество суток — N».
 
         Ищет элемент с текстом ошибки и извлекает число минимальных суток.
 
+        Args:
+            page: Вкладка браузера для работы с DOM.
+
         Returns:
             Число минимальных суток (int) если ошибка найдена, None — если ошибки нет.
         """
-        page = self._browser.page
-
         try:
             error_el = await page.query_selector(_MIN_NIGHTS_ERROR_SELECTOR)
             if not error_el:
@@ -635,7 +750,7 @@ class ListingService:
 
         return None
 
-    async def _retry_with_min_nights(self, checkin: date, min_nights: int) -> int:
+    async def _retry_with_min_nights(self, page: Page, checkin: date, min_nights: int) -> int:
         """Повторяет получение цены с учётом минимального количества суток.
 
         Открывает датепикер, сбрасывает даты, выбирает заезд = checkin,
@@ -643,6 +758,7 @@ class ListingService:
         на min_nights для получения цены за одну ночь.
 
         Args:
+            page: Вкладка браузера для работы с DOM.
             checkin: Дата заезда.
             min_nights: Минимальное количество суток.
 
@@ -657,27 +773,27 @@ class ListingService:
         )
 
         try:
-            opened = await self._open_datepicker(skip_scroll=True)
+            opened = await self._open_datepicker(page, skip_scroll=True)
             if not opened:
                 return 0
 
-            await self._reset_dates_and_ensure_open(short_delay=True)
+            await self._reset_dates_and_ensure_open(page, short_delay=True)
 
-            clicked_checkin = await self._click_day_in_datepicker(checkin)
+            clicked_checkin = await self._click_day_in_datepicker(page, checkin)
             if not clicked_checkin:
-                await self._close_datepicker()
+                await self._close_datepicker(page)
                 return 0
 
             await asyncio.sleep(0.3)
 
-            clicked_checkout = await self._click_day_in_datepicker(checkout)
+            clicked_checkout = await self._click_day_in_datepicker(page, checkout)
             if not clicked_checkout:
-                await self._close_datepicker()
+                await self._close_datepicker(page)
                 return 0
 
             await asyncio.sleep(1.5)
 
-            price_total = await self._read_price()
+            price_total = await self._read_price(page)
 
             if price_total > 0:
                 price_per_night = round(price_total / min_nights)
@@ -696,7 +812,7 @@ class ListingService:
 
         return 0
 
-    async def _click_day_in_datepicker(self, target_date: date) -> bool:
+    async def _click_day_in_datepicker(self, page: Page, target_date: date) -> bool:
         """Кликает на конкретный день в открытом датепикере.
 
         При необходимости листает месяцы вперёд или назад.
@@ -705,15 +821,14 @@ class ListingService:
         занятые (``_disabled-both``) и прошедшие (``_disabled``).
 
         Args:
+            page: Вкладка браузера для работы с DOM.
             target_date: Дата, которую нужно выбрать.
 
         Returns:
             True если клик выполнен успешно, False — если день не найден.
         """
-        page = self._browser.page
-
         # Навигируем к нужному месяцу (вперёд или назад)
-        navigated = await self._navigate_to_month(target_date.year, target_date.month)
+        navigated = await self._navigate_to_month(page, target_date.year, target_date.month)
         if not navigated:
             logger.debug(
                 "месяц_не_найден_в_датепикере",
@@ -722,7 +837,7 @@ class ListingService:
             return False
 
         # Находим блок нужного месяца
-        month_block = await self._find_month_block(target_date.year, target_date.month)
+        month_block = await self._find_month_block(page, target_date.year, target_date.month)
         if not month_block:
             logger.debug(
                 "блок_месяца_не_найден_для_клика",
@@ -782,13 +897,14 @@ class ListingService:
         )
         return False
 
-    async def _navigate_to_month(self, year: int, month: int) -> bool:
+    async def _navigate_to_month(self, page: Page, year: int, month: int) -> bool:
         """Навигирует датепикер к указанному месяцу (вперёд или назад).
 
         Определяет, в каком направлении листать, сравнивая целевой месяц
         с текущими видимыми месяцами в датепикере.
 
         Args:
+            page: Вкладка браузера для работы с DOM.
             year: Целевой год.
             month: Целевой месяц (1-12).
 
@@ -799,24 +915,24 @@ class ListingService:
 
         for attempt in range(max_attempts):
             # Проверяем, виден ли уже нужный месяц
-            if await self._is_month_visible(year, month):
+            if await self._is_month_visible(page, year, month):
                 return True
 
             # Определяем направление листания
-            direction = await self._get_navigation_direction(year, month)
+            direction = await self._get_navigation_direction(page, year, month)
 
             if direction == "forward":
                 logger.debug(
                     "листаем_вперёд",
                     step=f"попытка={attempt + 1}, цель={year}-{month:02d}",
                 )
-                await self._click_next_month()
+                await self._click_next_month(page)
             elif direction == "backward":
                 logger.debug(
                     "листаем_назад",
                     step=f"попытка={attempt + 1}, цель={year}-{month:02d}",
                 )
-                await self._click_prev_month()
+                await self._click_prev_month(page)
             else:
                 # Не удалось определить направление
                 logger.debug(
@@ -829,19 +945,19 @@ class ListingService:
 
         return False
 
-    async def _get_navigation_direction(self, target_year: int, target_month: int) -> str:
+    async def _get_navigation_direction(self, page: Page, target_year: int, target_month: int) -> str:
         """Определяет направление листания датепикера.
 
         Сравнивает целевой месяц с первым видимым месяцем в датепикере.
 
         Args:
+            page: Вкладка браузера для работы с DOM.
             target_year: Целевой год.
             target_month: Целевой месяц.
 
         Returns:
             "forward", "backward" или "unknown".
         """
-        page = self._browser.page
         titles = await page.query_selector_all(".sc-base-datepicker-month__title")
 
         if not titles:
@@ -868,10 +984,12 @@ class ListingService:
             # но _is_month_visible вернул False — значит нужно листнуть вперёд
             return "forward"
 
-    async def _click_prev_month(self) -> None:
-        """Кликает кнопку «Назад» в датепикере для перехода к предыдущему месяцу."""
-        page = self._browser.page
+    async def _click_prev_month(self, page: Page) -> None:
+        """Кликает кнопку «Назад» в датепикере для перехода к предыдущему месяцу.
 
+        Args:
+            page: Вкладка браузера для работы с DOM.
+        """
         prev_btn = await page.query_selector(".sc-base-datepicker-modal__prev")
         if not prev_btn:
             logger.debug("кнопка_назад_не_найдена")
@@ -905,18 +1023,19 @@ class ListingService:
 
         await asyncio.sleep(0.5)
 
-    async def _read_price(self) -> int:
+    async def _read_price(self, page: Page) -> int:
         """Считывает цену из элемента на странице карточки.
 
         Пробует несколько CSS-селекторов в порядке приоритета.
         Ожидает, что текст содержит цифры (цена обновилась после выбора дат).
         Ретраит чтение до 5 раз с паузой, если текст пока пустой.
 
+        Args:
+            page: Вкладка браузера для работы с DOM.
+
         Returns:
             Цена в рублях (int). 0 — если ни один элемент не найден.
         """
-        page = self._browser.page
-
         for selector in _PRICE_SELECTORS:
             try:
                 # Ждём появления элемента
@@ -977,7 +1096,7 @@ class ListingService:
     # Извлечение календаря занятости
     # ─────────────────────────────────────────────────────────────────────
 
-    async def _extract_calendar(self) -> list[int]:
+    async def _extract_calendar(self, page: Page) -> list[int]:
         """Извлекает календарь занятости на 60 дней из датепикера.
 
         Последовательность:
@@ -986,13 +1105,16 @@ class ListingService:
         3. Считывание дней текущего и следующих месяцев.
         4. Листание месяцев кнопкой «Далее» при необходимости.
 
+        Args:
+            page: Вкладка браузера для работы с DOM.
+
         Returns:
             Список из 60 элементов (0 — свободен, 1 — занят).
         """
         logger.debug("начало_сбора_календаря")
 
         # Шаг 1: Прокручиваем к блоку дат и открываем датепикер
-        opened = await self._open_datepicker()
+        opened = await self._open_datepicker(page)
         if not opened:
             logger.warning("датепикер_не_открылся_при_сборе_календаря")
             return []
@@ -1000,7 +1122,7 @@ class ListingService:
         logger.debug("датепикер_открыт_для_календаря")
 
         # Шаг 2: Сбрасываем даты и проверяем, что датепикер остался открытым
-        await self._reset_dates_safe()
+        await self._reset_dates_safe(page)
 
         logger.debug("даты_сброшены_для_календаря")
 
@@ -1021,17 +1143,17 @@ class ListingService:
         for month_idx, (year, month) in enumerate(months_needed):
             # Листаем к нужному месяцу (первые два уже видны в датепикере)
             if month_idx >= 2:
-                is_visible = await self._is_month_visible(year, month)
+                is_visible = await self._is_month_visible(page, year, month)
                 if not is_visible:
                     logger.debug(
                         "листаем_к_месяцу_календарь",
                         step=f"{year}-{month:02d}",
                     )
-                    await self._click_next_month()
+                    await self._click_next_month(page)
                     await asyncio.sleep(1)
 
             # Считываем дни этого месяца
-            month_days = await self._read_month_days(year, month)
+            month_days = await self._read_month_days(page, year, month)
 
             logger.debug(
                 "дни_месяца_считаны",
@@ -1045,9 +1167,9 @@ class ListingService:
                     "месяц_не_найден_пробуем_листнуть",
                     step=f"{year}-{month:02d}",
                 )
-                await self._click_next_month()
+                await self._click_next_month(page)
                 await asyncio.sleep(1)
-                month_days = await self._read_month_days(year, month)
+                month_days = await self._read_month_days(page, year, month)
                 logger.debug(
                     "повторное_чтение_месяца",
                     step=f"{year}-{month:02d}",
@@ -1070,7 +1192,7 @@ class ListingService:
         calendar = calendar[:60]
 
         # Закрываем датепикер
-        await self._close_datepicker()
+        await self._close_datepicker(page)
 
         # Проверяем, что собрали достаточно данных
         if len(calendar) < 60:
@@ -1092,19 +1214,18 @@ class ListingService:
     # Вспомогательные методы работы с датепикером
     # ─────────────────────────────────────────────────────────────────────
 
-    async def _open_datepicker(self, *, skip_scroll: bool = False) -> bool:
+    async def _open_datepicker(self, page: Page, *, skip_scroll: bool = False) -> bool:
         """Открывает датепикер кликом на блок «Заезд».
 
         Args:
+            page: Вкладка браузера для работы с DOM.
             skip_scroll: Пропустить прокрутку к блоку дат (уже в позиции).
 
         Returns:
             True если датепикер открылся, False — если не удалось.
         """
-        page = self._browser.page
-
         # Проверяем, может датепикер уже открыт
-        if await self._is_datepicker_open():
+        if await self._is_datepicker_open(page):
             logger.debug("датепикер_уже_открыт")
             return True
 
@@ -1151,12 +1272,12 @@ class ListingService:
                 timeout=5000,
             )
             # Дополнительно проверяем видимость
-            if await self._is_datepicker_open():
+            if await self._is_datepicker_open(page):
                 logger.debug("датепикер_открылся_успешно")
                 return True
             # Элемент в DOM, но скрыт — ждём ещё
             await asyncio.sleep(0.5)
-            is_open = await self._is_datepicker_open()
+            is_open = await self._is_datepicker_open(page)
             logger.debug(
                 "датепикер_после_доп_ожидания",
                 step=f"открыт={is_open}",
@@ -1166,14 +1287,15 @@ class ListingService:
             logger.warning("датепикер_не_открылся_таймаут")
             return False
 
-    async def _reset_dates_safe(self) -> None:
+    async def _reset_dates_safe(self, page: Page) -> None:
         """Сбрасывает даты в датепикере с проверкой, что он остался открытым.
 
         После нажатия «Сбросить даты» датепикер может закрыться автоматически.
         В этом случае переоткрывает его.
-        """
-        page = self._browser.page
 
+        Args:
+            page: Вкладка браузера для работы с DOM.
+        """
         # Нажимаем «Сбросить даты»
         reset_button = await page.query_selector(".sc-base-datepicker__reset")
         if reset_button:
@@ -1193,7 +1315,7 @@ class ListingService:
             logger.debug("кнопка_сбросить_даты_не_найдена")
 
         # Проверяем, остался ли датепикер открытым
-        datepicker_still_open = await self._is_datepicker_open()
+        datepicker_still_open = await self._is_datepicker_open(page)
         logger.debug(
             "после_сброса_дат",
             step=f"датепикер_открыт={datepicker_still_open}",
@@ -1202,7 +1324,7 @@ class ListingService:
         if not datepicker_still_open:
             logger.debug("датепикер_закрылся_после_сброса_переоткрываем")
 
-            reopened = await self._open_datepicker(skip_scroll=True)
+            reopened = await self._open_datepicker(page, skip_scroll=True)
             if not reopened:
                 logger.warning("не_удалось_переоткрыть_датепикер_после_сброса")
                 return
@@ -1222,17 +1344,16 @@ class ListingService:
         await asyncio.sleep(0.5)
 
     async def _reset_dates_and_ensure_open(
-        self, *, short_delay: bool = False
+        self, page: Page, *, short_delay: bool = False
     ) -> None:
         """Сбрасывает даты и гарантирует, что датепикер остаётся открытым.
 
         Используется в контексте сбора цен.
 
         Args:
+            page: Вкладка браузера для работы с DOM.
             short_delay: Использовать сокращённые паузы (для повторных вызовов).
         """
-        page = self._browser.page
-
         # Нажимаем «Сбросить даты»
         reset_button = await page.query_selector(".sc-base-datepicker__reset")
         if reset_button:
@@ -1252,10 +1373,10 @@ class ListingService:
             logger.debug("кнопка_сброса_не_найдена_в_ценах")
 
         # Проверяем, что датепикер остался открытым
-        is_open = await self._is_datepicker_open()
+        is_open = await self._is_datepicker_open(page)
         if not is_open:
             logger.debug("датепикер_закрылся_после_сброса_в_ценах_переоткрываем")
-            await self._open_datepicker(skip_scroll=True)
+            await self._open_datepicker(page, skip_scroll=True)
             await asyncio.sleep(0.5 if short_delay else 1.0)
 
         # Ждём появления блоков месяцев
@@ -1269,14 +1390,15 @@ class ListingService:
 
         await asyncio.sleep(0.3)
 
-    async def _is_datepicker_open(self) -> bool:
+    async def _is_datepicker_open(self, page: Page) -> bool:
         """Проверяет, открыт ли датепикер (виден в DOM и отображается).
+
+        Args:
+            page: Вкладка браузера для работы с DOM.
 
         Returns:
             True если датепикер открыт и виден, False — если закрыт или не найден.
         """
-        page = self._browser.page
-
         try:
             is_open = await page.evaluate("""
                 () => {
@@ -1294,9 +1416,12 @@ class ListingService:
         except Exception:
             return False
 
-    async def _close_datepicker(self) -> None:
-        """Закрывает датепикер нажатием Escape или кликом вне его."""
-        page = self._browser.page
+    async def _close_datepicker(self, page: Page) -> None:
+        """Закрывает датепикер нажатием Escape или кликом вне его.
+
+        Args:
+            page: Вкладка браузера для работы с DOM.
+        """
         try:
             await page.keyboard.press("Escape")
             await asyncio.sleep(0.3)
@@ -1304,17 +1429,17 @@ class ListingService:
         except Exception:
             pass
 
-    async def _is_month_visible(self, year: int, month: int) -> bool:
+    async def _is_month_visible(self, page: Page, year: int, month: int) -> bool:
         """Проверяет, виден ли указанный месяц в датепикере.
 
         Args:
+            page: Вкладка браузера для работы с DOM.
             year: Год.
             month: Номер месяца (1-12).
 
         Returns:
             True если месяц отображается в датепикере.
         """
-        page = self._browser.page
         titles = await page.query_selector_all(".sc-base-datepicker-month__title")
 
         for title_el in titles:
@@ -1325,10 +1450,12 @@ class ListingService:
 
         return False
 
-    async def _click_next_month(self) -> None:
-        """Кликает кнопку «Далее» в датепикере для перехода к следующему месяцу."""
-        page = self._browser.page
+    async def _click_next_month(self, page: Page) -> None:
+        """Кликает кнопку «Далее» в датепикере для перехода к следующему месяцу.
 
+        Args:
+            page: Вкладка браузера для работы с DOM.
+        """
         next_btn = await page.query_selector(".sc-base-datepicker-modal__next")
         if not next_btn:
             logger.debug("кнопка_далее_не_найдена")
@@ -1362,7 +1489,7 @@ class ListingService:
 
         await asyncio.sleep(0.5)
 
-    async def _read_month_days(self, year: int, month: int) -> list[tuple[int, int]]:
+    async def _read_month_days(self, page: Page, year: int, month: int) -> list[tuple[int, int]]:
         """Считывает статус всех дней указанного месяца из датепикера.
 
         Семантика CSS-классов:
@@ -1373,6 +1500,7 @@ class ListingService:
         - Без disabled-классов — полностью свободен → статус 0.
 
         Args:
+            page: Вкладка браузера для работы с DOM.
             year: Год.
             month: Номер месяца (1-12).
 
@@ -1382,7 +1510,7 @@ class ListingService:
         days: list[tuple[int, int]] = []
 
         # Находим нужный блок месяца по заголовку
-        month_block = await self._find_month_block(year, month)
+        month_block = await self._find_month_block(page, year, month)
         if not month_block:
             logger.debug(
                 "блок_месяца_не_найден",
@@ -1413,17 +1541,17 @@ class ListingService:
 
         return days
 
-    async def _find_month_block(self, year: int, month: int) -> "any":  # type: ignore[name-defined]
+    async def _find_month_block(self, page: Page, year: int, month: int) -> "any":  # type: ignore[name-defined]
         """Находит DOM-элемент блока указанного месяца в датепикере.
 
         Args:
+            page: Вкладка браузера для работы с DOM.
             year: Год.
             month: Номер месяца (1-12).
 
         Returns:
             Элемент блока месяца или None.
         """
-        page = self._browser.page
         month_blocks = await page.query_selector_all(".sc-base-datepicker-month")
 
         for block in month_blocks:

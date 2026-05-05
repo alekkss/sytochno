@@ -27,6 +27,7 @@ class BrowserService:
     - Случайные паузы между действиями.
     - Навигацию с обработкой таймаутов.
     - Запуск через прокси-сервер.
+    - Создание дополнительных вкладок для параллельной обработки карточек.
     """
 
     def __init__(self, settings: Settings) -> None:
@@ -57,6 +58,22 @@ class BrowserService:
                 "Браузер не запущен. Вызовите start() перед использованием."
             )
         return self._page
+
+    @property
+    def context(self) -> BrowserContext:
+        """Возвращает контекст браузера.
+
+        Returns:
+            Экземпляр BrowserContext.
+
+        Raises:
+            RuntimeError: Если браузер не запущен.
+        """
+        if self._context is None:
+            raise RuntimeError(
+                "Браузер не запущен. Вызовите start() перед использованием."
+            )
+        return self._context
 
     async def start(self, proxy: ProxyConfig | None = None) -> None:
         """Запускает браузер с настройками stealth.
@@ -165,6 +182,58 @@ class BrowserService:
         """)
 
         self._page = await self._context.new_page()
+
+    async def create_page(self) -> Page:
+        """Создаёт новую вкладку (page) в существующем контексте браузера.
+
+        Используется для параллельной обработки карточек — каждая вкладка
+        работает со своим объявлением независимо, разделяя один сетевой канал.
+
+        Новая вкладка наследует все stealth-настройки контекста (user-agent,
+        скрытие webdriver, locale). Таймаут навигации устанавливается
+        из настроек приложения.
+
+        Returns:
+            Новый экземпляр Page.
+
+        Raises:
+            RuntimeError: Если браузер не запущен.
+        """
+        context = self.context
+
+        new_page = await context.new_page()
+        new_page.set_default_navigation_timeout(self._settings.navigation_timeout)
+
+        logger.debug(
+            "вкладка_создана",
+            step=f"всего_вкладок={len(context.pages)}",
+        )
+
+        return new_page
+
+    async def close_page(self, page: Page) -> None:
+        """Закрывает указанную вкладку и освобождает её ресурсы.
+
+        Не закрывает основную страницу (self._page) — только дополнительные.
+        Если передана основная страница, закрытие пропускается с предупреждением.
+
+        Args:
+            page: Вкладка для закрытия.
+        """
+        if page is self._page:
+            logger.warning("попытка_закрыть_основную_страницу_пропущена")
+            return
+
+        try:
+            if not page.is_closed():
+                await page.close()
+                logger.debug("вкладка_закрыта")
+        except Exception as e:
+            logger.debug(
+                "ошибка_при_закрытии_вкладки",
+                error=str(e),
+                error_type=type(e).__name__,
+            )
 
     async def stop(self) -> None:
         """Останавливает браузер и освобождает ресурсы."""
