@@ -17,6 +17,9 @@ from src.models.proxy import ProxyConfig
 
 logger = get_logger("browser")
 
+# Таймаут ожидания завершения Playwright (секунды)
+_PLAYWRIGHT_STOP_TIMEOUT: float = 10.0
+
 
 class BrowserService:
     """Сервис для управления браузером Playwright.
@@ -79,7 +82,7 @@ class BrowserService:
         """Запускает браузер с настройками stealth.
 
         Если передана прокси — браузер использует её для всех соединений.
-        Без прокси — запускает persistent context (как раньше).
+        Без прокси — запускает обычный браузер без прокси.
 
         Args:
             proxy: Конфигурация прокси (опционально).
@@ -108,10 +111,23 @@ class BrowserService:
         )
 
     async def _start_without_proxy(self) -> None:
-        """Запускает браузер без прокси через persistent context."""
-        self._context = await self._playwright.chromium.launch_persistent_context(
-            user_data_dir="",
+        """Запускает браузер без прокси через launch + new_context.
+
+        Использует обычный launch() вместо launch_persistent_context(),
+        чтобы гарантировать корректное завершение процесса Chromium
+        через browser.close().
+        """
+        self._browser = await self._playwright.chromium.launch(
             headless=self._settings.headless_mode,
+            args=[
+                "--disable-blink-features=AutomationControlled",
+                "--disable-dev-shm-usage",
+                "--no-sandbox",
+            ],
+            ignore_default_args=["--enable-automation"],
+        )
+
+        self._context = await self._browser.new_context(
             viewport={"width": 1920, "height": 1080},
             locale="ru-RU",
             timezone_id="Europe/Moscow",
@@ -120,12 +136,6 @@ class BrowserService:
                 "AppleWebKit/537.36 (KHTML, like Gecko) "
                 "Chrome/124.0.0.0 Safari/537.36"
             ),
-            args=[
-                "--disable-blink-features=AutomationControlled",
-                "--disable-dev-shm-usage",
-                "--no-sandbox",
-            ],
-            ignore_default_args=["--enable-automation"],
         )
 
         # Скрываем признаки автоматизации
@@ -136,11 +146,7 @@ class BrowserService:
             window.chrome = {runtime: {}};
         """)
 
-        self._page = (
-            self._context.pages[0]
-            if self._context.pages
-            else await self._context.new_page()
-        )
+        self._page = await self._context.new_page()
 
     async def _start_with_proxy(self, proxy: ProxyConfig) -> None:
         """Запускает браузер с прокси через обычный launch + context.
@@ -236,19 +242,61 @@ class BrowserService:
             )
 
     async def stop(self) -> None:
-        """Останавливает браузер и освобождает ресурсы."""
+        """Останавливает браузер и освобождает все ресурсы.
+
+        Последовательно закрывает контекст, браузер и Playwright.
+        Каждый шаг обёрнут в try/except — ошибка на одном шаге
+        не блокирует выполнение остальных. На playwright.stop()
+        установлен таймаут, чтобы избежать бесконечного зависания
+        при незавершённых процессах Chromium.
+        """
+        # Шаг 1: Закрываем контекст браузера
         if self._context is not None:
-            await self._context.close()
-            self._context = None
-            self._page = None
+            try:
+                await self._context.close()
+            except Exception as e:
+                logger.debug(
+                    "ошибка_при_закрытии_контекста",
+                    error=str(e),
+                    error_type=type(e).__name__,
+                )
+            finally:
+                self._context = None
+                self._page = None
 
+        # Шаг 2: Закрываем браузер (убивает процесс Chromium)
         if self._browser is not None:
-            await self._browser.close()
-            self._browser = None
+            try:
+                await self._browser.close()
+            except Exception as e:
+                logger.debug(
+                    "ошибка_при_закрытии_браузера",
+                    error=str(e),
+                    error_type=type(e).__name__,
+                )
+            finally:
+                self._browser = None
 
+        # Шаг 3: Останавливаем Playwright с таймаутом
         if self._playwright is not None:
-            await self._playwright.stop()
-            self._playwright = None
+            try:
+                await asyncio.wait_for(
+                    self._playwright.stop(),
+                    timeout=_PLAYWRIGHT_STOP_TIMEOUT,
+                )
+            except asyncio.TimeoutError:
+                logger.warning(
+                    "playwright_stop_таймаут",
+                    step=f"превышен_лимит={_PLAYWRIGHT_STOP_TIMEOUT}с",
+                )
+            except Exception as e:
+                logger.debug(
+                    "ошибка_при_остановке_playwright",
+                    error=str(e),
+                    error_type=type(e).__name__,
+                )
+            finally:
+                self._playwright = None
 
         logger.info("браузер_остановлен")
 

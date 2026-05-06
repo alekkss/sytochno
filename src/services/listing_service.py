@@ -63,6 +63,29 @@ _MAX_GOTO_RETRIES: int = 3
 _GOTO_RETRY_DELAY: float = 5.0
 
 
+def _format_duration(seconds: float) -> str:
+    """Форматирует длительность в секундах в человекочитаемый вид.
+
+    Примеры:
+    - 45.3 → «45с»
+    - 125.7 → «2м 5с»
+    - 3661.0 → «61м 1с»
+
+    Args:
+        seconds: Длительность в секундах.
+
+    Returns:
+        Строка вида «Xм Yс» или «Yс» если менее минуты.
+    """
+    total_seconds = int(seconds)
+    minutes = total_seconds // 60
+    secs = total_seconds % 60
+
+    if minutes > 0:
+        return f"{minutes}м {secs}с"
+    return f"{secs}с"
+
+
 def _is_day_disabled(class_attr: str) -> bool:
     """Определяет, является ли день полностью недоступным (занят или прошёл).
 
@@ -510,7 +533,8 @@ class ListingService:
 
         Каждая прокси запускает свой браузер, прогревает его на sutochno.ru,
         затем обрабатывает свою порцию карточек через параллельные вкладки.
-        Результаты объединяются.
+        Результаты объединяются. После завершения выводит сводку по времени
+        работы каждого воркера.
 
         Args:
             settings: Настройки приложения.
@@ -531,6 +555,9 @@ class ListingService:
             step=f"прокси={len(proxies)}, вкладок_на_прокси={settings.max_tabs}",
         )
 
+        # Замеряем общее время параллельной обработки
+        parallel_start = time.perf_counter()
+
         # Запускаем воркеры параллельно
         tasks = [
             ListingService._worker(settings, chunk, proxy, worker_idx)
@@ -539,8 +566,12 @@ class ListingService:
 
         results = await asyncio.gather(*tasks, return_exceptions=True)
 
-        # Собираем результаты
+        parallel_elapsed = time.perf_counter() - parallel_start
+
+        # Собираем результаты и статистику по времени воркеров
         all_enriched: list[RawListing] = []
+        worker_stats: list[tuple[int, int, float]] = []
+
         for worker_idx, result in enumerate(results, start=1):
             if isinstance(result, Exception):
                 logger.warning(
@@ -549,8 +580,38 @@ class ListingService:
                     error_type=type(result).__name__,
                     step=f"воркер={worker_idx}",
                 )
-            elif isinstance(result, list):
-                all_enriched.extend(result)
+            elif isinstance(result, tuple):
+                enriched_list, duration = result
+                all_enriched.extend(enriched_list)
+                worker_stats.append((worker_idx, len(enriched_list), duration))
+
+        # Выводим сводку по времени воркеров
+        if worker_stats:
+            logger.info("─" * 50)
+            logger.info("сводка_по_воркерам", total=len(worker_stats))
+
+            for w_idx, w_cards, w_duration in worker_stats:
+                avg_per_card = w_duration / w_cards if w_cards > 0 else 0.0
+                logger.info(
+                    "время_воркера",
+                    step=f"воркер={w_idx}",
+                    total=f"карточек={w_cards}, время={_format_duration(w_duration)}, "
+                          f"среднее={_format_duration(avg_per_card)}/карточка",
+                )
+
+            durations = [d for _, _, d in worker_stats]
+            fastest_idx = min(worker_stats, key=lambda x: x[2])
+            slowest_idx = max(worker_stats, key=lambda x: x[2])
+            total_cards = sum(c for _, c, _ in worker_stats)
+
+            logger.info(
+                "итого_параллельная_обработка",
+                step=f"карточек={total_cards}, воркеров={len(worker_stats)}",
+                total=f"общее_время={_format_duration(parallel_elapsed)}, "
+                      f"быстрейший=воркер_{fastest_idx[0]}({_format_duration(fastest_idx[2])}), "
+                      f"медленнейший=воркер_{slowest_idx[0]}({_format_duration(slowest_idx[2])})",
+            )
+            logger.info("─" * 50)
 
         logger.info(
             "параллельная_обработка_завершена",
@@ -565,8 +626,10 @@ class ListingService:
         listings: list[RawListing],
         proxy: ProxyConfig,
         worker_idx: int,
-    ) -> list[RawListing]:
+    ) -> tuple[list[RawListing], float]:
         """Воркер — обрабатывает порцию карточек через один прокси-браузер.
+
+        Замеряет полное время работы от запуска браузера до его остановки.
 
         Последовательность:
         1. Запускает браузер с прокси.
@@ -581,11 +644,12 @@ class ListingService:
             worker_idx: Номер воркера (для логов).
 
         Returns:
-            Список обогащённых карточек.
+            Кортеж (список обогащённых карточек, время работы в секундах).
         """
         if not listings:
-            return []
+            return ([], 0.0)
 
+        worker_start = time.perf_counter()
         browser_service = BrowserService(settings=settings)
 
         try:
@@ -622,16 +686,25 @@ class ListingService:
 
             await listing_service.enrich_listings_tabbed(listings)
 
-            return listings
+            worker_elapsed = time.perf_counter() - worker_start
+
+            logger.info(
+                "воркер_завершил_обработку",
+                step=f"воркер={worker_idx}",
+                total=f"карточек={len(listings)}, время={_format_duration(worker_elapsed)}",
+            )
+
+            return (listings, worker_elapsed)
 
         except Exception as e:
+            worker_elapsed = time.perf_counter() - worker_start
             logger.warning(
                 "ошибка_воркера",
                 error=str(e),
                 error_type=type(e).__name__,
-                step=f"воркер={worker_idx}",
+                step=f"воркер={worker_idx}, время={_format_duration(worker_elapsed)}",
             )
-            return listings
+            return (listings, worker_elapsed)
 
         finally:
             # Шаг 4: Останавливаем браузер
