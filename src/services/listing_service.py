@@ -62,6 +62,12 @@ _MAX_GOTO_RETRIES: int = 3
 # Пауза между повторными попытками загрузки (секунды)
 _GOTO_RETRY_DELAY: float = 5.0
 
+# Таймаут остановки одного прокси-браузера (секунды)
+_WORKER_STOP_TIMEOUT: float = 15.0
+
+# Таймаут на работу одного воркера целиком (секунды, 0 = без ограничения)
+_WORKER_TOTAL_TIMEOUT: float = 0
+
 
 def _format_duration(seconds: float) -> str:
     """Форматирует длительность в секундах в человекочитаемый вид.
@@ -115,6 +121,40 @@ def _is_day_disabled(class_attr: str) -> bool:
         return True
 
     return False
+
+
+async def _safe_stop_browser(browser_service: BrowserService, worker_idx: int) -> None:
+    """Безопасно останавливает прокси-браузер с таймаутом.
+
+    Изолирует ошибку при остановке — если один браузер завис,
+    остальные не блокируются. При превышении таймаута просто
+    логирует предупреждение и переходит дальше.
+
+    Args:
+        browser_service: Экземпляр BrowserService для остановки.
+        worker_idx: Номер воркера (для логов).
+    """
+    try:
+        await asyncio.wait_for(
+            browser_service.stop(),
+            timeout=_WORKER_STOP_TIMEOUT,
+        )
+        logger.info(
+            "воркер_браузер_остановлен",
+            step=f"воркер={worker_idx}",
+        )
+    except asyncio.TimeoutError:
+        logger.warning(
+            "воркер_браузер_таймаут_остановки",
+            step=f"воркер={worker_idx}, лимит={_WORKER_STOP_TIMEOUT}с",
+        )
+    except Exception as e:
+        logger.warning(
+            "воркер_ошибка_остановки_браузера",
+            error=str(e),
+            error_type=type(e).__name__,
+            step=f"воркер={worker_idx}",
+        )
 
 
 class ListingService:
@@ -533,8 +573,11 @@ class ListingService:
 
         Каждая прокси запускает свой браузер, прогревает его на sutochno.ru,
         затем обрабатывает свою порцию карточек через параллельные вкладки.
-        Результаты объединяются. После завершения выводит сводку по времени
-        работы каждого воркера.
+
+        Остановка браузеров выполняется ОТДЕЛЬНО от обработки карточек:
+        сначала все воркеры завершают работу, затем браузеры останавливаются
+        последовательно с индивидуальным таймаутом. Это гарантирует, что
+        зависание при остановке одного браузера не блокирует остальных.
 
         Args:
             settings: Настройки приложения.
@@ -568,9 +611,10 @@ class ListingService:
 
         parallel_elapsed = time.perf_counter() - parallel_start
 
-        # Собираем результаты и статистику по времени воркеров
+        # Собираем результаты, статистику и browser_service для остановки
         all_enriched: list[RawListing] = []
         worker_stats: list[tuple[int, int, float]] = []
+        browsers_to_stop: list[tuple[BrowserService, int]] = []
 
         for worker_idx, result in enumerate(results, start=1):
             if isinstance(result, Exception):
@@ -580,10 +624,23 @@ class ListingService:
                     error_type=type(result).__name__,
                     step=f"воркер={worker_idx}",
                 )
-            elif isinstance(result, tuple):
-                enriched_list, duration = result
+            elif isinstance(result, tuple) and len(result) == 3:
+                enriched_list, duration, browser_svc = result
                 all_enriched.extend(enriched_list)
                 worker_stats.append((worker_idx, len(enriched_list), duration))
+                browsers_to_stop.append((browser_svc, worker_idx))
+
+        # --- Остановка браузеров: последовательно, с таймаутом, изолированно ---
+        if browsers_to_stop:
+            logger.info(
+                "остановка_прокси_браузеров",
+                total=len(browsers_to_stop),
+            )
+
+            for browser_svc, w_idx in browsers_to_stop:
+                await _safe_stop_browser(browser_svc, w_idx)
+
+            logger.info("все_прокси_браузеры_остановлены")
 
         # Выводим сводку по времени воркеров
         if worker_stats:
@@ -599,7 +656,6 @@ class ListingService:
                           f"среднее={_format_duration(avg_per_card)}/карточка",
                 )
 
-            durations = [d for _, _, d in worker_stats]
             fastest_idx = min(worker_stats, key=lambda x: x[2])
             slowest_idx = max(worker_stats, key=lambda x: x[2])
             total_cards = sum(c for _, c, _ in worker_stats)
@@ -626,16 +682,20 @@ class ListingService:
         listings: list[RawListing],
         proxy: ProxyConfig,
         worker_idx: int,
-    ) -> tuple[list[RawListing], float]:
+    ) -> tuple[list[RawListing], float, BrowserService]:
         """Воркер — обрабатывает порцию карточек через один прокси-браузер.
 
-        Замеряет полное время работы от запуска браузера до его остановки.
+        НЕ останавливает браузер самостоятельно — возвращает BrowserService
+        в результате, чтобы вызывающий код мог остановить все браузеры
+        контролируемо после завершения всех воркеров. Это предотвращает
+        зависание: если один браузер не может остановиться, остальные
+        воркеры продолжают работу.
 
         Последовательность:
         1. Запускает браузер с прокси.
         2. Переходит на sutochno.ru для прогрева (15 секунд).
         3. Обрабатывает свои карточки через параллельные вкладки (MAX_TABS).
-        4. Останавливает браузер.
+        4. Возвращает результат вместе с browser_service для последующей остановки.
 
         Args:
             settings: Настройки приложения.
@@ -644,10 +704,11 @@ class ListingService:
             worker_idx: Номер воркера (для логов).
 
         Returns:
-            Кортеж (список обогащённых карточек, время работы в секундах).
+            Кортеж (список обогащённых карточек, время работы в секундах, browser_service).
         """
         if not listings:
-            return ([], 0.0)
+            # Пустой BrowserService — не запускался, stop() ничего не сделает
+            return ([], 0.0, BrowserService(settings=settings))
 
         worker_start = time.perf_counter()
         browser_service = BrowserService(settings=settings)
@@ -694,7 +755,8 @@ class ListingService:
                 total=f"карточек={len(listings)}, время={_format_duration(worker_elapsed)}",
             )
 
-            return (listings, worker_elapsed)
+            # Возвращаем browser_service — остановка будет выполнена вызывающим кодом
+            return (listings, worker_elapsed, browser_service)
 
         except Exception as e:
             worker_elapsed = time.perf_counter() - worker_start
@@ -704,15 +766,8 @@ class ListingService:
                 error_type=type(e).__name__,
                 step=f"воркер={worker_idx}, время={_format_duration(worker_elapsed)}",
             )
-            return (listings, worker_elapsed)
-
-        finally:
-            # Шаг 4: Останавливаем браузер
-            await browser_service.stop()
-            logger.info(
-                "воркер_остановлен",
-                step=f"воркер={worker_idx}",
-            )
+            # Даже при ошибке возвращаем browser_service для корректной остановки
+            return (listings, worker_elapsed, browser_service)
 
     # ─────────────────────────────────────────────────────────────────────
     # Сбор цен по дням
