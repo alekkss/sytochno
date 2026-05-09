@@ -68,6 +68,25 @@ _WORKER_STOP_TIMEOUT: float = 15.0
 # Таймаут на работу одного воркера целиком (секунды, 0 = без ограничения)
 _WORKER_TOTAL_TIMEOUT: float = 0
 
+# Таймаут ожидания networkidle после загрузки DOM (мс).
+# Мягкий: если не наступил — продолжаем работу.
+_NETWORKIDLE_SOFT_TIMEOUT_MS: int = 10000
+
+# Таймаут wait_for_selector для цены (мс)
+_PRICE_WAIT_TIMEOUT_MS: int = 12000
+
+# Количество retry при чтении текста цены
+_PRICE_READ_RETRIES: int = 8
+
+# Максимум попыток найти блок месяца после листания
+_MONTH_FIND_RETRIES: int = 6
+
+# Интервал между retry поиска блока месяца (секунды)
+_MONTH_FIND_INTERVAL: float = 0.7
+
+# Таймаут ожидания появления нового месяца после клика «Далее» (мс)
+_NEXT_MONTH_WAIT_TIMEOUT_MS: int = 5000
+
 
 def _format_duration(seconds: float) -> str:
     """Форматирует длительность в секундах в человекочитаемый вид.
@@ -187,12 +206,13 @@ class ListingService:
     async def _goto_with_retry(self, page: Page, url: str) -> bool:
         """Загружает страницу карточки с повторными попытками при сетевых ошибках.
 
-        Стратегия загрузки:
-        1. Попытка с wait_until="networkidle" (полная загрузка JS).
-        2. При таймауте — fallback на "domcontentloaded".
-        3. При сетевых ошибках (ERR_TIMED_OUT, ERR_CONNECTION_RESET) —
-           повторная попытка после паузы.
-        4. После успешной загрузки — ожидание появления ключевых элементов.
+        Стратегия загрузки (исправлена):
+        1. Выполняет goto с wait_until="domcontentloaded" — быстро и надёжно.
+        2. Отдельно пытается дождаться networkidle (мягкий таймаут).
+           Если networkidle не наступает — это НЕ ошибка (фоновые запросы
+           аналитики, вебсокеты не дают состоянию наступить на SPA-сайте).
+        3. При сетевых ошибках (ERR_TIMED_OUT и т.д.) — повторная попытка.
+        4. После загрузки — ожидание появления ключевых элементов карточки.
 
         Args:
             page: Вкладка браузера.
@@ -203,21 +223,29 @@ class ListingService:
         """
         for attempt in range(1, _MAX_GOTO_RETRIES + 1):
             try:
-                # Пробуем загрузить с полным ожиданием сети
                 logger.debug(
                     "goto_попытка",
                     step=f"попытка={attempt}/{_MAX_GOTO_RETRIES}",
                     path=url,
                 )
+
+                # Единственный goto — ждём только DOM (быстро, без зависаний)
+                await page.goto(url, wait_until="domcontentloaded", timeout=30000)
+
+                # Мягкое ожидание networkidle — если не наступит, продолжаем
                 try:
-                    await page.goto(url, wait_until="networkidle", timeout=45000)
-                except Exception:
-                    # Fallback: хотя бы DOM загрузился
+                    await page.wait_for_load_state(
+                        "networkidle", timeout=_NETWORKIDLE_SOFT_TIMEOUT_MS
+                    )
                     logger.debug(
-                        "networkidle_таймаут_пробуем_domcontentloaded",
+                        "networkidle_достигнут",
                         step=f"попытка={attempt}",
                     )
-                    await page.goto(url, wait_until="domcontentloaded")
+                except Exception:
+                    logger.debug(
+                        "networkidle_не_достигнут_продолжаем",
+                        step=f"попытка={attempt}, таймаут={_NETWORKIDLE_SOFT_TIMEOUT_MS}мс",
+                    )
 
                 # Ждём появления ключевых элементов карточки
                 page_ready = await self._wait_for_page_ready(page)
@@ -232,7 +260,8 @@ class ListingService:
                     "страница_загрузилась_но_элементы_не_найдены",
                     step=f"попытка={attempt}",
                 )
-                # Страница загрузилась, но элементы не появились — всё равно пробуем работать
+                # Страница загрузилась, но элементы не появились —
+                # всё равно пробуем работать (элементы могут подгрузиться позже)
                 return True
 
             except Exception as e:
@@ -246,6 +275,7 @@ class ListingService:
                         "ERR_CONNECTION_REFUSED",
                         "ERR_PROXY_CONNECTION_FAILED",
                         "ERR_TUNNEL_CONNECTION_FAILED",
+                        "NS_ERROR_NET_RESET",
                     ]
                 )
 
@@ -269,10 +299,11 @@ class ListingService:
 
         return False
 
-    async def _wait_for_page_ready(self, page: Page, timeout: int = 10000) -> bool:
+    async def _wait_for_page_ready(self, page: Page, timeout: int = 15000) -> bool:
         """Ожидает появления ключевых элементов на странице карточки.
 
         Пробует несколько селекторов — достаточно, чтобы хотя бы один появился.
+        Увеличен таймаут до 15 секунд для медленных страниц.
 
         Args:
             page: Вкладка браузера.
@@ -982,6 +1013,9 @@ class ListingService:
             )
             await asyncio.sleep(wait_time)
 
+            # Дополнительно ждём, пока элемент цены появится в DOM
+            await self._wait_for_price_element(page)
+
             # Шаг 6: Проверяем ошибку минимального количества суток
             min_nights = await self._check_min_nights_error(page)
             if min_nights is not None:
@@ -1024,6 +1058,42 @@ class ListingService:
                 step=f"заезд={checkin.isoformat()}",
             )
             return 0
+
+    async def _wait_for_price_element(self, page: Page) -> None:
+        """Ожидает появления элемента цены в DOM после выбора дат.
+
+        Пробует все известные селекторы цены. Не выбрасывает исключение
+        при таймауте — это мягкое ожидание, после которого _read_price
+        попытается прочитать цену с retry.
+
+        Args:
+            page: Вкладка браузера для работы с DOM.
+        """
+        for selector in _PRICE_SELECTORS:
+            try:
+                el = await page.query_selector(selector)
+                if el:
+                    # Элемент уже в DOM — ждём, пока в нём появятся цифры
+                    await page.wait_for_function(
+                        """(selector) => {
+                            const el = document.querySelector(selector);
+                            if (!el) return false;
+                            const text = el.innerText || '';
+                            return /\\d/.test(text);
+                        }""",
+                        selector,
+                        timeout=8000,
+                    )
+                    logger.debug(
+                        "элемент_цены_готов",
+                        step=f"selector='{selector}'",
+                    )
+                    return
+            except Exception:
+                continue
+
+        # Если ни один элемент не найден — не фатально, _read_price попробует сам
+        logger.debug("элемент_цены_не_найден_предварительно")
 
     async def _check_min_nights_error(self, page: Page) -> int | None:
         """Проверяет наличие ошибки «Минимальное количество суток — N».
@@ -1107,6 +1177,9 @@ class ListingService:
 
             await asyncio.sleep(1.5)
 
+            # Ждём появления цены в элементе
+            await self._wait_for_price_element(page)
+
             price_total = await self._read_price(page)
 
             if price_total > 0:
@@ -1150,7 +1223,7 @@ class ListingService:
             )
             return False
 
-        # Находим блок нужного месяца
+        # Находим блок нужного месяца (с retry)
         month_block = await self._find_month_block(page, target_date.year, target_date.month)
         if not month_block:
             logger.debug(
@@ -1255,7 +1328,40 @@ class ListingService:
                 )
                 return False
 
-            await asyncio.sleep(0.5)
+            # Ждём, пока новый месяц станет видимым (вместо фиксированного sleep)
+            appeared = await self._wait_for_month_visible(page, year, month, timeout_ms=3000)
+            if appeared:
+                return True
+
+            # Не появился за 3с — продолжаем попытки листания
+
+        return False
+
+    async def _wait_for_month_visible(
+        self, page: Page, year: int, month: int, timeout_ms: int = 3000
+    ) -> bool:
+        """Ожидает появления указанного месяца в видимых блоках датепикера.
+
+        Проверяет с интервалом 300мс до истечения таймаута.
+
+        Args:
+            page: Вкладка браузера для работы с DOM.
+            year: Целевой год.
+            month: Целевой месяц.
+            timeout_ms: Максимальное время ожидания (мс).
+
+        Returns:
+            True если месяц появился в датепикере.
+        """
+        interval = 0.3
+        elapsed = 0.0
+        max_seconds = timeout_ms / 1000.0
+
+        while elapsed < max_seconds:
+            if await self._is_month_visible(page, year, month):
+                return True
+            await asyncio.sleep(interval)
+            elapsed += interval
 
         return False
 
@@ -1341,8 +1447,8 @@ class ListingService:
         """Считывает цену из элемента на странице карточки.
 
         Пробует несколько CSS-селекторов в порядке приоритета.
+        Увеличен таймаут ожидания до 12 секунд и количество retry до 8.
         Ожидает, что текст содержит цифры (цена обновилась после выбора дат).
-        Ретраит чтение до 5 раз с паузой, если текст пока пустой.
 
         Args:
             page: Вкладка браузера для работы с DOM.
@@ -1352,10 +1458,10 @@ class ListingService:
         """
         for selector in _PRICE_SELECTORS:
             try:
-                # Ждём появления элемента
+                # Ждём появления элемента с увеличенным таймаутом
                 price_el = await page.wait_for_selector(
                     selector,
-                    timeout=5000,
+                    timeout=_PRICE_WAIT_TIMEOUT_MS,
                 )
                 if not price_el:
                     logger.debug(
@@ -1364,8 +1470,8 @@ class ListingService:
                     )
                     continue
 
-                # Ждём, пока текст цены содержит цифры
-                for retry in range(5):
+                # Ждём, пока текст цены содержит цифры (увеличено до 8 попыток)
+                for retry in range(_PRICE_READ_RETRIES):
                     price_text = await price_el.inner_text()
                     cleaned = price_text.replace("\xa0", "").replace(" ", "")
                     digits = re.sub(r"[^\d]", "", cleaned)
@@ -1387,11 +1493,13 @@ class ListingService:
                             return price
 
                     # Текст пока пустой или без цифр — ждём обновления
-                    await asyncio.sleep(0.5)
+                    # Увеличиваем интервал с каждой попыткой (0.5, 0.7, 0.9, ...)
+                    wait = 0.5 + retry * 0.2
+                    await asyncio.sleep(wait)
 
                 logger.debug(
                     "цена_не_появилась_после_ретраев",
-                    step=f"selector='{selector}'",
+                    step=f"selector='{selector}', попыток={_PRICE_READ_RETRIES}",
                 )
 
             except Exception as e:
@@ -1417,7 +1525,7 @@ class ListingService:
         1. Прокрутка к блоку дат и клик на «Заезд» для открытия датепикера.
         2. Нажатие «Сбросить даты» с проверкой, что датепикер остался открытым.
         3. Считывание дней текущего и следующих месяцев.
-        4. Листание месяцев кнопкой «Далее» при необходимости.
+        4. Листание месяцев кнопкой «Далее» с ожиданием появления нового месяца.
 
         Args:
             page: Вкладка браузера для работы с DOM.
@@ -1455,7 +1563,7 @@ class ListingService:
         )
 
         for month_idx, (year, month) in enumerate(months_needed):
-            # Листаем к нужному месяцу (первые два уже видны в датепикере)
+            # Первые два месяца должны быть видны сразу; для остальных — листаем
             if month_idx >= 2:
                 is_visible = await self._is_month_visible(page, year, month)
                 if not is_visible:
@@ -1464,9 +1572,23 @@ class ListingService:
                         step=f"{year}-{month:02d}",
                     )
                     await self._click_next_month(page)
-                    await asyncio.sleep(1)
 
-            # Считываем дни этого месяца
+                    # Ожидаем появления нового месяца (вместо фиксированного sleep)
+                    appeared = await self._wait_for_month_visible(
+                        page, year, month, timeout_ms=5000
+                    )
+                    if not appeared:
+                        logger.debug(
+                            "месяц_не_появился_после_листания",
+                            step=f"{year}-{month:02d}",
+                        )
+                        # Пробуем листнуть ещё раз
+                        await self._click_next_month(page)
+                        await self._wait_for_month_visible(
+                            page, year, month, timeout_ms=5000
+                        )
+
+            # Считываем дни этого месяца (с retry через _find_month_block)
             month_days = await self._read_month_days(page, year, month)
 
             logger.debug(
@@ -1476,13 +1598,13 @@ class ListingService:
             )
 
             # Если блок месяца не найден — пробуем листнуть и повторить
-            if not month_days and month_idx < len(months_needed):
+            if not month_days:
                 logger.debug(
-                    "месяц_не_найден_пробуем_листнуть",
+                    "месяц_пуст_пробуем_листнуть_и_повторить",
                     step=f"{year}-{month:02d}",
                 )
                 await self._click_next_month(page)
-                await asyncio.sleep(1)
+                await self._wait_for_month_visible(page, year, month, timeout_ms=5000)
                 month_days = await self._read_month_days(page, year, month)
                 logger.debug(
                     "повторное_чтение_месяца",
@@ -1583,14 +1705,14 @@ class ListingService:
         try:
             await page.wait_for_selector(
                 ".sc-base-datepicker-modal",
-                timeout=5000,
+                timeout=8000,
             )
             # Дополнительно проверяем видимость
             if await self._is_datepicker_open(page):
                 logger.debug("датепикер_открылся_успешно")
                 return True
             # Элемент в DOM, но скрыт — ждём ещё
-            await asyncio.sleep(0.5)
+            await asyncio.sleep(1.0)
             is_open = await self._is_datepicker_open(page)
             logger.debug(
                 "датепикер_после_доп_ожидания",
@@ -1649,7 +1771,7 @@ class ListingService:
         try:
             await page.wait_for_selector(
                 ".sc-base-datepicker-month",
-                timeout=5000,
+                timeout=8000,
             )
             logger.debug("блоки_месяцев_найдены")
         except Exception:
@@ -1697,7 +1819,7 @@ class ListingService:
         try:
             await page.wait_for_selector(
                 ".sc-base-datepicker-month",
-                timeout=3000,
+                timeout=5000,
             )
         except Exception:
             logger.debug("блоки_месяцев_не_найдены_после_сброса_в_ценах")
@@ -1767,9 +1889,20 @@ class ListingService:
     async def _click_next_month(self, page: Page) -> None:
         """Кликает кнопку «Далее» в датепикере для перехода к следующему месяцу.
 
+        После клика ожидает изменения заголовков месяцев (вместо фиксированного sleep).
+        Если заголовки не изменились за таймаут — логирует предупреждение.
+
         Args:
             page: Вкладка браузера для работы с DOM.
         """
+        # Запоминаем текущие заголовки месяцев для сравнения
+        titles_before = await page.evaluate("""
+            () => {
+                const titles = document.querySelectorAll('.sc-base-datepicker-month__title');
+                return Array.from(titles).map(t => t.innerText.trim());
+            }
+        """)
+
         next_btn = await page.query_selector(".sc-base-datepicker-modal__next")
         if not next_btn:
             logger.debug("кнопка_далее_не_найдена")
@@ -1801,7 +1934,26 @@ class ListingService:
             """)
             logger.debug("кнопка_далее_нажата_js")
 
-        await asyncio.sleep(0.5)
+        # Ждём, пока заголовки месяцев изменятся (DOM обновился)
+        try:
+            titles_before_json = str(titles_before)
+            await page.wait_for_function(
+                """(oldTitles) => {
+                    const titles = document.querySelectorAll('.sc-base-datepicker-month__title');
+                    const current = Array.from(titles).map(t => t.innerText.trim());
+                    return JSON.stringify(current) !== JSON.stringify(oldTitles);
+                }""",
+                titles_before,
+                timeout=_NEXT_MONTH_WAIT_TIMEOUT_MS,
+            )
+            logger.debug("заголовки_месяцев_обновились")
+        except Exception:
+            # Fallback: если wait_for_function не сработал, ждём фиксированно
+            logger.debug(
+                "заголовки_не_обновились_ждём_фиксированно",
+                step=f"таймаут={_NEXT_MONTH_WAIT_TIMEOUT_MS}мс",
+            )
+            await asyncio.sleep(1.5)
 
     async def _read_month_days(self, page: Page, year: int, month: int) -> list[tuple[int, int]]:
         """Считывает статус всех дней указанного месяца из датепикера.
@@ -1823,7 +1975,7 @@ class ListingService:
         """
         days: list[tuple[int, int]] = []
 
-        # Находим нужный блок месяца по заголовку
+        # Находим нужный блок месяца по заголовку (с retry)
         month_block = await self._find_month_block(page, year, month)
         if not month_block:
             logger.debug(
@@ -1858,6 +2010,9 @@ class ListingService:
     async def _find_month_block(self, page: Page, year: int, month: int) -> "any":  # type: ignore[name-defined]
         """Находит DOM-элемент блока указанного месяца в датепикере.
 
+        Реализует retry-логику: если блок не найден сразу (асинхронный рендеринг
+        после листания), ждёт с интервалами и проверяет повторно.
+
         Args:
             page: Вкладка браузера для работы с DOM.
             year: Год.
@@ -1866,17 +2021,30 @@ class ListingService:
         Returns:
             Элемент блока месяца или None.
         """
-        month_blocks = await page.query_selector_all(".sc-base-datepicker-month")
+        for attempt in range(_MONTH_FIND_RETRIES):
+            month_blocks = await page.query_selector_all(".sc-base-datepicker-month")
 
-        for block in month_blocks:
-            title_el = await block.query_selector(".sc-base-datepicker-month__title")
-            if not title_el:
-                continue
+            for block in month_blocks:
+                title_el = await block.query_selector(".sc-base-datepicker-month__title")
+                if not title_el:
+                    continue
 
-            title_text = await title_el.inner_text()
-            parsed = self._parse_month_title(title_text)
-            if parsed and parsed == (year, month):
-                return block
+                title_text = await title_el.inner_text()
+                parsed = self._parse_month_title(title_text)
+                if parsed and parsed == (year, month):
+                    logger.debug(
+                        "блок_месяца_найден",
+                        step=f"{year}-{month:02d}, попытка={attempt + 1}",
+                    )
+                    return block
+
+            # Блок не найден — ждём и пробуем снова
+            if attempt < _MONTH_FIND_RETRIES - 1:
+                logger.debug(
+                    "блок_месяца_не_найден_ждём",
+                    step=f"{year}-{month:02d}, попытка={attempt + 1}/{_MONTH_FIND_RETRIES}",
+                )
+                await asyncio.sleep(_MONTH_FIND_INTERVAL)
 
         return None
 
