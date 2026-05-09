@@ -1,0 +1,477 @@
+{
+  "meta": {
+    "target_url": "https://sutochno.ru/front/searchapp/detail/709383?type=city&id=397367&term=%D0%A1%D0%B0%D0%BD%D0%BA%D1%82-%D0%9F%D0%B5%D1%82%D0%B5%D1%80%D0%B1%D1%83%D1%80%D0%B3&guests_adults=2&occupied=2026-05-11%3B2026-05-12&price_per=1&SW.lat=59.744315&SW.lng=30.043382&NE.lat=60.09071&NE.lng=30.566435&is_apartment=1",
+    "timestamp": "2026-05-09T20:14:42.230972",
+    "total_requests": 152,
+    "interesting_responses": 17
+  },
+  "all_xhr_fetch_requests": [
+    {
+      "url": "https://sentry.sutochno.ru/api/9/envelope/?sentry_version=7&sentry_key=555b213bdad1470d80b1e39d52f77597&sentry_client=sentry.javascript.nuxt%2F10.32.1",
+      "method": "POST",
+      "status": 200,
+      "resource_type": "fetch",
+      "content_type": "application/json"
+    },
+    {
+      "url": "https://gb-api.sutochno.ru/api/features/sdk-IqgvsfXlcgvHb6l5",
+      "method": "GET",
+      "status": 200,
+      "resource_type": "fetch",
+      "content_type": "application/json; charset=utf-8"
+    },
+    {
+      "url": "https://sutochno.ru/api/json/locations/getLocationByIdAndType?locationId=397367&locationType=city",
+      "method": "GET",
+      "status": 200,
+      "resource_type": "xhr",
+      "content_type": "application/json; charset=UTF-8"
+    },
+    {
+      "url": "https://sentry.sutochno.ru/api/9/envelope/?sentry_version=7&sentry_key=555b213bdad1470d80b1e39d52f77597&sentry_client=sentry.javascript.nuxt%2F10.32.1",
+      "method": "POST",
+      "status": 200,
+      "resource_type": "fetch",
+      "content_type": "application/json"
+    },
+    {
+      "url": "https://sentry.sutochno.ru/api/9/envelope/?sentry_version=7&sentry_key=555b213bdad1470d80b1e39d52f77597&sentry_client=sentry.javascript.nuxt%2F10.32.1",
+      "method": "POST",
+      "status": 200,
+      "resource_type": "fetch",
+      "content_type": "application/json"
+    },
+    {
+      "url": "https://sutochno.ru/doc/files/settings_phone.js",
+      "method": "GET",
+      "status": 200,
+      "resource_type": "xhr",
+      "content_type": "application/x-javascript"
+    },
+    {
+      "url": "https://uaas.yandex.ru/v1/exps/?client_id=metrika.8562148&url=https%3A%2F%2Fsutochno.ru%2Ffront%2Fsearchapp%2Fdetail%2F709383%3Ftype%3Dcity%26id%3D397367%26term%3D%25D0%25A1%25D0%25B0%25D0%25BD%25D0%25BA%25D1%2582-%25D0%259F%25D0%25B5%25D1%2582%25D0%25B5%25D1%2580%25D0%25B1%25D1%2583%25D1%2580%25D0%25B3%26guests_adults%3D2%26occupied%3D2026-05-11%253B2026-05-12%26price_per%3D1%26SW.lat%3D59.744315%26SW.lng%3D30.043382%26NE.lat%3D60.09071%26NE.lng%3D30.566435%26is_apartment%3D1&i=&duid=&client_features=%7B%7D",
+      "method": "GET",
+      "status": 200,
+      "resource_type": "xhr",
+      "content_type": "application/json"
+    },
+    {
+      "url": "https://sutochno.ru/api/json/locations/getLocationsCntObjects",
+      "method": "POST",
+      "status": 200,
+      "resource_type": "xhr",
+      "content_type": "application/json; charset=UTF-8"
+    },
+    {
+      "url": "https://api.ipify.org/?format=json",
+      "method": "GET",
+      "status": 200,
+      "resource_type": "fetch",
+      "content_type": "application/json"
+    },
+    {
+      "url": "https://sutochno.ru/api/json/currencies/getList",
+      "method": "POST",
+      "status": 200,
+      "resource_type": "xhr",
+      "content_type": "application/json; charset=UTF-8"
+    },
+    {
+      "url": "https://sutochno.ru/api/json/users/initSessionDomain/",
+      "method": "POST",
+      "status": 200,
+      "resource_type": "xhr",
+      "content_type": "application/json; charset=UTF-8"
+    },
+    {
+      "url": "https://sutochno.ru/api/json/currencies/getRates?id=1",
+      "method": "GET",
+      "status": 200,
+      "resource_type": "xhr",
+      "content_type": "application/json; charset=UTF-8"
+    },
+    {
+      "url": "https://sutochno.ru/api/json/locations/getDistanceSights?object_id=709383",
+      "method": "GET",
+      "status": 200,
+      "resource_type": "xhr",
+      "content_type": "application/json; charset=UTF-8"
+    },
+    {
+      "url": "https://sutochno.ru/api/json/currencies/getList",
+      "method": "POST",
+      "status": 200,
+      "resource_type": "xhr",
+      "content_type": "application/json; charset=UTF-8"
+    },
+    {
+      "url": "https://privacy-cs.mail.ru/fp/?id=dzZbNJMnGfxIERvVsPIK-",
+      "method": "POST",
+      "status": 200,
+      "resource_type": "fetch",
+      "content_type": "application/octet-stream"
+    },
+    {
+      "url": "https://api.ipify.org/?format=json",
+      "method": "GET",
+      "status": 200,
+      "resource_type": "fetch",
+      "content_type": "application/json"
+    },
+    {
+      "url": "https://metrika.sutochno.ru/?sid=e47c3a2fc3abe&cookie=0d250b8e0431b&pid=81015b216b716e4c579448947894499e&dim=1554x882&url=https%3A%2F%2Fsutochno.ru%2Ffront%2Fsearchapp%2Fdetail%2F709383%3Ftype%3Dcity%26id%3D397367%26term%3D%25D0%25A1%25D0%25B0%25D0%25BD%25D0%25BA%25D1%2582-%25D0%259F%25D0%25B5%25D1%2582%25D0%25B5%25D1%2580%25D0%25B1%25D1%2583%25D1%2580%25D0%25B3%26guests_adults%3D2%26occupied%3D2026-05-11%253B2026-05-12%26price_per%3D1%26SW.lat%3D59.744315%26SW.lng%3D30.043382%26NE.lat%3D60.09071%26NE.lng%3D30.566435%26is_apartment%3D1&ua=Mozilla%2F5.0+%28Windows+NT+10.0%3B+Win64%3B+x64%29+AppleWebKit%2F537.36+%28KHTML%2C+like+Gecko%29+Chrome%2F124.0.0.0+Safari%2F537.36&ip=95.72.209.154&a=scroll&o=709383&d1=2026-05-11&d2=2026-05-12&g=%7B%22adults%22%3A2%2C%22childrens%22%3A%5B%5D%2C%22pets%22%3A%7B%22value%22%3Afalse%2C%22description%22%3A%22%22%7D%7D&page=detail&b=photo",
+      "method": "GET",
+      "status": 200,
+      "resource_type": "fetch",
+      "content_type": "image/gif"
+    },
+    {
+      "url": "https://sutochno.ru/api/json/objects/checkBookingAbility",
+      "method": "POST",
+      "status": 200,
+      "resource_type": "xhr",
+      "content_type": "application/json; charset=UTF-8"
+    },
+    {
+      "url": "https://sutochno.ru/api/json/objects/getPricesAndAvailabilities",
+      "method": "POST",
+      "status": 200,
+      "resource_type": "xhr",
+      "content_type": "application/json; charset=UTF-8"
+    },
+    {
+      "url": "https://sutochno.ru/api/json/objects/getPricesAndAvailabilities",
+      "method": "POST",
+      "status": 200,
+      "resource_type": "xhr",
+      "content_type": "application/json; charset=UTF-8"
+    },
+    {
+      "url": "https://sutochno.ru/api/json/objects/calculateBookingPrice",
+      "method": "POST",
+      "status": 200,
+      "resource_type": "xhr",
+      "content_type": "application/json; charset=UTF-8"
+    },
+    {
+      "url": "https://sutochno.ru/api/json/payments/calculatePayment",
+      "method": "POST",
+      "status": 200,
+      "resource_type": "xhr",
+      "content_type": "application/json; charset=UTF-8"
+    },
+    {
+      "url": "https://privacy-cs.mail.ru/fp/?id=dzZbNJMnGfxIERvVsPIK-",
+      "method": "POST",
+      "status": 200,
+      "resource_type": "fetch",
+      "content_type": "application/octet-stream"
+    },
+    {
+      "url": "https://sutochno.ru/api/json/objects/getCancellationRules?objectId=709383&dateBegin=2026-05-11+14:00:00&precostFull=1008&precostVirtual=0&currencyId=1",
+      "method": "GET",
+      "status": 200,
+      "resource_type": "xhr",
+      "content_type": "application/json; charset=UTF-8"
+    },
+    {
+      "url": "https://mc.yandex.ru/watch/8562148?wmode=7&page-url=https%3A%2F%2Fsutochno.ru%2Ffront%2Fsearchapp%2Fdetail%2F709383%3Ftype%3Dcity%26id%3D397367%26term%3D%25D0%25A1%25D0%25B0%25D0%25BD%25D0%25BA%25D1%2582-%25D0%259F%25D0%25B5%25D1%2582%25D0%25B5%25D1%2580%25D0%25B1%25D1%2583%25D1%2580%25D0%25B3%26guests_adults%3D2%26occupied%3D2026-05-11%253B2026-05-12%26price_per%3D1%26SW.lat%3D59.744315%26SW.lng%3D30.043382%26NE.lat%3D60.09071%26NE.lng%3D30.566435%26is_apartment%3D1&charset=utf-8&uah=chu%0A%22Chromium%22%3Bv%3D%22147%22%2C%22Not.A%2FBrand%22%3Bv%3D%228%22%0Acha%0Ax86%0Achb%0A64%0Achf%0A147.0.7727.15%0Achl%0A%22Chromium%22%3Bv%3D%22147.0.7727.15%22%2C%22Not.A%2FBrand%22%3Bv%3D%228.0.0.0%22%0Achm%0A%3F0%0Achp%0AWindows%0Achv%0A10.0&browser-info=pv%3A1%3Avf%3Apudvqnsfv6ib5kxc1gvz1plajlgbj%3Afu%3A0%3Aen%3Autf-8%3Ala%3Aru-RU%3Av%3A2500%3Acn%3A1%3Adp%3A0%3Als%3A543124568261%3Ahid%3A810677583%3Az%3A180%3Ai%3A20260509201417%3Aet%3A1778346857%3Ac%3A1%3Arn%3A739887199%3Arqn%3A1%3Au%3A1778346857821515290%3Aw%3A1904x1080%3As%3A1920x1080x32%3Ask%3A1.0000000149011612%3Afp%3A3368%3Awv%3A2%3Ads%3A16%2C47%2C2318%2C60%2C1%2C0%2C%2C330%2C1%2C4114%2C4115%2C0%2C3002%3Aco%3A0%3Ans%3A1778346851183%3Arqnl%3A1%3Ast%3A1778346857%3At%3A%D0%90%D0%BF%D0%B0%D1%80%D1%82%D0%B0%D0%BC%D0%B5%D0%BD%D1%82%D1%8B%20%D0%B4%D0%B2%D1%83%D1%85%D1%83%D1%80%D0%BE%D0%B2%D0%BD%D0%B5%D0%B2%D1%8B%D0%B9%20%D1%81%D1%82%D0%B0%D0%BD%D0%B4%D0%B0%D1%80%D1%82%20%D1%82%D1%80%D0%B5%D1%85%D0%BC%D0%B5%D1%81%D1%82%D0%BD%D1%8B%D0%B9%20%D0%BF%D0%BE%D1%81%D1%83%D1%82%D0%BE%D1%87%D0%BD%D0%BE%2C%20%D0%A1%D0%B0%D0%BD%D0%BA%D1%82-%D0%9F%D0%B5%D1%82%D0%B5%D1%80%D0%B1%D1%83%D1%80%D0%B3%2C%20%D0%92%D0%BB%D0%B0%D0%B4%D0%B8%D0%BC%D0%B8%D1%80%D1%81%D0%BA%D0%B8%D0%B9%20%D0%BF%D1%80%D0%BE%D1%81%D0%BF%D0%B5%D0%BA%D1%82%2C%2016%2C%20%D0%BE%D0%B1%D1%8A%D1%8F%D0%B2%D0%BB%D0%B5%D0%BD%D0%B8%D0%B5%20709383%20-%20%D0%A1%D1%83%D1%82%D0%BE%D1%87%D0%BD%D0%BE.%D1%80%D1%83&t=clt(151)gdpr(14)clc(0-0-0)rqnt(1)aw(1)rcm(1)cdl(na)eco(42271236)ti(1)",
+      "method": "GET",
+      "status": 302,
+      "resource_type": "fetch",
+      "content_type": ""
+    },
+    {
+      "url": "https://mc.yandex.ru/watch/8562148/1?wmode=7&page-url=https%3A%2F%2Fsutochno.ru%2Ffront%2Fsearchapp%2Fdetail%2F709383%3Ftype%3Dcity%26id%3D397367%26term%3D%25D0%25A1%25D0%25B0%25D0%25BD%25D0%25BA%25D1%2582-%25D0%259F%25D0%25B5%25D1%2582%25D0%25B5%25D1%2580%25D0%25B1%25D1%2583%25D1%2580%25D0%25B3%26guests_adults%3D2%26occupied%3D2026-05-11%253B2026-05-12%26price_per%3D1%26SW.lat%3D59.744315%26SW.lng%3D30.043382%26NE.lat%3D60.09071%26NE.lng%3D30.566435%26is_apartment%3D1&charset=utf-8&uah=chu%0A%22Chromium%22%3Bv%3D%22147%22%2C%22Not.A%2FBrand%22%3Bv%3D%228%22%0Acha%0Ax86%0Achb%0A64%0Achf%0A147.0.7727.15%0Achl%0A%22Chromium%22%3Bv%3D%22147.0.7727.15%22%2C%22Not.A%2FBrand%22%3Bv%3D%228.0.0.0%22%0Achm%0A%3F0%0Achp%0AWindows%0Achv%0A10.0&browser-info=pv%3A1%3Avf%3Apudvqnsfv6ib5kxc1gvz1plajlgbj%3Afu%3A0%3Aen%3Autf-8%3Ala%3Aru-RU%3Av%3A2500%3Acn%3A1%3Adp%3A0%3Als%3A543124568261%3Ahid%3A810677583%3Az%3A180%3Ai%3A20260509201417%3Aet%3A1778346857%3Ac%3A1%3Arn%3A739887199%3Arqn%3A1%3Au%3A1778346857821515290%3Aw%3A1904x1080%3As%3A1920x1080x32%3Ask%3A1.0000000149011612%3Afp%3A3368%3Awv%3A2%3Ads%3A16%2C47%2C2318%2C60%2C1%2C0%2C%2C330%2C1%2C4114%2C4115%2C0%2C3002%3Aco%3A0%3Ans%3A1778346851183%3Arqnl%3A1%3Ast%3A1778346857%3At%3A%D0%90%D0%BF%D0%B0%D1%80%D1%82%D0%B0%D0%BC%D0%B5%D0%BD%D1%82%D1%8B%20%D0%B4%D0%B2%D1%83%D1%85%D1%83%D1%80%D0%BE%D0%B2%D0%BD%D0%B5%D0%B2%D1%8B%D0%B9%20%D1%81%D1%82%D0%B0%D0%BD%D0%B4%D0%B0%D1%80%D1%82%20%D1%82%D1%80%D0%B5%D1%85%D0%BC%D0%B5%D1%81%D1%82%D0%BD%D1%8B%D0%B9%20%D0%BF%D0%BE%D1%81%D1%83%D1%82%D0%BE%D1%87%D0%BD%D0%BE%2C%20%D0%A1%D0%B0%D0%BD%D0%BA%D1%82-%D0%9F%D0%B5%D1%82%D0%B5%D1%80%D0%B1%D1%83%D1%80%D0%B3%2C%20%D0%92%D0%BB%D0%B0%D0%B4%D0%B8%D0%BC%D0%B8%D1%80%D1%81%D0%BA%D0%B8%D0%B9%20%D0%BF%D1%80%D0%BE%D1%81%D0%BF%D0%B5%D0%BA%D1%82%2C%2016%2C%20%D0%BE%D0%B1%D1%8A%D1%8F%D0%B2%D0%BB%D0%B5%D0%BD%D0%B8%D0%B5%20709383%20-%20%D0%A1%D1%83%D1%82%D0%BE%D1%87%D0%BD%D0%BE.%D1%80%D1%83&t=clt%28151%29gdpr%2814%29clc%280-0-0%29rqnt%281%29aw%281%29rcm%281%29cdl%28na%29eco%2842271236%29ti%281%29",
+      "method": "GET",
+      "status": 200,
+      "resource_type": "fetch",
+      "content_type": "application/json; charset=utf-8"
+    },
+    {
+      "url": "https://mc.yandex.ru/watch/8562148/1?page-url=https%3A%2F%2Fsutochno.ru%2Ffront%2Fsearchapp%2Fdetail%2F709383%3Ftype%3Dcity%26id%3D397367%26term%3D%25D0%25A1%25D0%25B0%25D0%25BD%25D0%25BA%25D1%2582-%25D0%259F%25D0%25B5%25D1%2582%25D0%25B5%25D1%2580%25D0%25B1%25D1%2583%25D1%2580%25D0%25B3%26guests_adults%3D2%26occupied%3D2026-05-11%253B2026-05-12%26price_per%3D1%26SW.lat%3D59.744315%26SW.lng%3D30.043382%26NE.lat%3D60.09071%26NE.lng%3D30.566435%26is_apartment%3D1&charset=utf-8&uah=chu%0A%22Chromium%22%3Bv%3D%22147%22%2C%22Not.A%2FBrand%22%3Bv%3D%228%22%0Acha%0Ax86%0Achb%0A64%0Achf%0A147.0.7727.15%0Achl%0A%22Chromium%22%3Bv%3D%22147.0.7727.15%22%2C%22Not.A%2FBrand%22%3Bv%3D%228.0.0.0%22%0Achm%0A%3F0%0Achp%0AWindows%0Achv%0A10.0&hidv2=2485015459579297819&hittoken=1778346781_7f17b322446f929b603e40dcb87a92683b54946b02606e6ba89374dce1a3b589&browser-info=pa%3A1%3Aar%3A1%3Avf%3Apudvqnsfv6ib5kxc1gvz1plajlgbj%3Afu%3A0%3Aen%3Autf-8%3Ala%3Aru-RU%3Av%3A2500%3Acn%3A1%3Adp%3A0%3Als%3A543124568261%3Ahid%3A810677583%3Az%3A180%3Ai%3A20260509201417%3Aet%3A1778346857%3Ac%3A1%3Arn%3A281061152%3Arqn%3A2%3Au%3A1778346857821515290%3Aw%3A1904x1080%3As%3A1920x1080x32%3Ask%3A1.0000000149011612%3Awv%3A2%3Aco%3A0%3Ans%3A1778346851183%3Aadb%3A2%3Arqnl%3A1%3Ast%3A1778346858&t=gdpr(14)mc(p-1-ex-1)clc(0-0-0)rqnt(2)aw(1)rcm(1)ecs(0)cdl(na)eco(42271236)ti(1)",
+      "method": "POST",
+      "status": 200,
+      "resource_type": "fetch",
+      "content_type": "image/gif"
+    },
+    {
+      "url": "https://mc.yandex.ru/watch/8562148?page-url=https%3A%2F%2Fsutochno.ru%2Ffront%2Fsearchapp%2Fdetail%2F709383%3Ftype%3Dcity%26id%3D397367%26term%3D%25D0%25A1%25D0%25B0%25D0%25BD%25D0%25BA%25D1%2582-%25D0%259F%25D0%25B5%25D1%2582%25D0%25B5%25D1%2580%25D0%25B1%25D1%2583%25D1%2580%25D0%25B3%26guests_adults%3D2%26occupied%3D2026-05-11%253B2026-05-12%26price_per%3D1%26SW.lat%3D59.744315%26SW.lng%3D30.043382%26NE.lat%3D60.09071%26NE.lng%3D30.566435%26is_apartment%3D1&exp=P54lnS9LcLo%2C&charset=utf-8&uah=chu%0A%22Chromium%22%3Bv%3D%22147%22%2C%22Not.A%2FBrand%22%3Bv%3D%228%22%0Acha%0Ax86%0Achb%0A64%0Achf%0A147.0.7727.15%0Achl%0A%22Chromium%22%3Bv%3D%22147.0.7727.15%22%2C%22Not.A%2FBrand%22%3Bv%3D%228.0.0.0%22%0Achm%0A%3F0%0Achp%0AWindows%0Achv%0A10.0&hidv2=2485015459579297819&hittoken=1778346781_7f17b322446f929b603e40dcb87a92683b54946b02606e6ba89374dce1a3b589&browser-info=ex%3A1%3Aar%3A1%3Avf%3Apudvqnsfv6ib5kxc1gvz1plajlgbj%3Afu%3A0%3Aen%3Autf-8%3Ala%3Aru-RU%3Av%3A2500%3Acn%3A1%3Adp%3A0%3Als%3A543124568261%3Ahid%3A810677583%3Az%3A180%3Ai%3A20260509201417%3Aet%3A1778346857%3Ac%3A1%3Arn%3A1007263465%3Arqn%3A3%3Au%3A1778346857821515290%3Aw%3A1904x1080%3As%3A1920x1080x32%3Ask%3A1.0000000149011612%3Awv%3A2%3Aco%3A0%3Ans%3A1778346851183%3Aadb%3A2%3Arqnl%3A1%3Ast%3A1778346858%3At%3A%D0%90%D0%BF%D0%B0%D1%80%D1%82%D0%B0%D0%BC%D0%B5%D0%BD%D1%82%D1%8B%20%D0%B4%D0%B2%D1%83%D1%85%D1%83%D1%80%D0%BE%D0%B2%D0%BD%D0%B5%D0%B2%D1%8B%D0%B9%20%D1%81%D1%82%D0%B0%D0%BD%D0%B4%D0%B0%D1%80%D1%82%20%D1%82%D1%80%D0%B5%D1%85%D0%BC%D0%B5%D1%81%D1%82%D0%BD%D1%8B%D0%B9%20%D0%BF%D0%BE%D1%81%D1%83%D1%82%D0%BE%D1%87%D0%BD%D0%BE%2C%20%D0%A1%D0%B0%D0%BD%D0%BA%D1%82-%D0%9F%D0%B5%D1%82%D0%B5%D1%80%D0%B1%D1%83%D1%80%D0%B3%2C%20%D0%92%D0%BB%D0%B0%D0%B4%D0%B8%D0%BC%D0%B8%D1%80%D1%81%D0%BA%D0%B8%D0%B9%20%D0%BF%D1%80%D0%BE%D1%81%D0%BF%D0%B5%D0%BA%D1%82%2C%2016%2C%20%D0%BE%D0%B1%D1%8A%D1%8F%D0%B2%D0%BB%D0%B5%D0%BD%D0%B8%D0%B5%20709383%20-%20%D0%A1%D1%83%D1%82%D0%BE%D1%87%D0%BD%D0%BE.%D1%80%D1%83&t=gdpr(14)mc(p-1-ex-1)clc(0-0-0)rqnt(3)aw(1)rcm(1)ecs(0)cdl(na)eco(42271236)ti(1)",
+      "method": "GET",
+      "status": 200,
+      "resource_type": "fetch",
+      "content_type": "image/gif"
+    },
+    {
+      "url": "https://assets.sutochno.ru/shared/css/fonts/inter.css",
+      "method": "GET",
+      "status": 200,
+      "resource_type": "xhr",
+      "content_type": "text/css; charset=utf-8"
+    },
+    {
+      "url": "https://metrika.sutochno.ru/?sid=e47c3a2fc3abe&cookie=0d250b8e0431b&pid=81015b216b716e4c579448947894499e&dim=1554x882&url=https%3A%2F%2Fsutochno.ru%2Ffront%2Fsearchapp%2Fdetail%2F709383%3Ftype%3Dcity%26id%3D397367%26term%3D%25D0%25A1%25D0%25B0%25D0%25BD%25D0%25BA%25D1%2582-%25D0%259F%25D0%25B5%25D1%2582%25D0%25B5%25D1%2580%25D0%25B1%25D1%2583%25D1%2580%25D0%25B3%26guests_adults%3D2%26occupied%3D2026-05-11%253B2026-05-12%26price_per%3D1%26SW.lat%3D59.744315%26SW.lng%3D30.043382%26NE.lat%3D60.09071%26NE.lng%3D30.566435%26is_apartment%3D1&ua=Mozilla%2F5.0+%28Windows+NT+10.0%3B+Win64%3B+x64%29+AppleWebKit%2F537.36+%28KHTML%2C+like+Gecko%29+Chrome%2F124.0.0.0+Safari%2F537.36&ip=95.72.209.154&a=view&o=709383&d1=2026-05-11&d2=2026-05-12&g=%7B%22adults%22%3A2%2C%22childrens%22%3A%5B%5D%2C%22pets%22%3A%7B%22value%22%3Afalse%2C%22description%22%3A%22%22%7D%7D&cost=5040&page=detail",
+      "method": "GET",
+      "status": 200,
+      "resource_type": "fetch",
+      "content_type": "image/gif"
+    },
+    {
+      "url": "https://sentry.sutochno.ru/api/9/envelope/?sentry_version=7&sentry_key=555b213bdad1470d80b1e39d52f77597&sentry_client=sentry.javascript.nuxt%2F10.32.1",
+      "method": "POST",
+      "status": 200,
+      "resource_type": "fetch",
+      "content_type": "application/json"
+    },
+    {
+      "url": "https://metrika.sutochno.ru/?sid=e47c3a2fc3abe&cookie=0d250b8e0431b&pid=81015b216b716e4c579448947894499e&dim=1554x882&url=https%3A%2F%2Fsutochno.ru%2Ffront%2Fsearchapp%2Fdetail%2F709383%3Ftype%3Dcity%26id%3D397367%26term%3D%25D0%25A1%25D0%25B0%25D0%25BD%25D0%25BA%25D1%2582-%25D0%259F%25D0%25B5%25D1%2582%25D0%25B5%25D1%2580%25D0%25B1%25D1%2583%25D1%2580%25D0%25B3%26guests_adults%3D2%26occupied%3D2026-05-11%253B2026-05-12%26price_per%3D1%26SW.lat%3D59.744315%26SW.lng%3D30.043382%26NE.lat%3D60.09071%26NE.lng%3D30.566435%26is_apartment%3D1&ua=Mozilla%2F5.0+%28Windows+NT+10.0%3B+Win64%3B+x64%29+AppleWebKit%2F537.36+%28KHTML%2C+like+Gecko%29+Chrome%2F124.0.0.0+Safari%2F537.36&ip=95.72.209.154&a=scroll&o=709383&d1=2026-05-11&d2=2026-05-12&g=%7B%22adults%22%3A2%2C%22childrens%22%3A%5B%5D%2C%22pets%22%3A%7B%22value%22%3Afalse%2C%22description%22%3A%22%22%7D%7D&cost=5040&page=detail&b=photo",
+      "method": "GET",
+      "status": 200,
+      "resource_type": "fetch",
+      "content_type": "image/gif"
+    },
+    {
+      "url": "https://mc.yandex.ru/clmap/8562148?page-url=https%3A%2F%2Fsutochno.ru%2Ffront%2Fsearchapp%2Fdetail%2F709383%3Ftype%3Dcity%26id%3D397367%26term%3D%25D0%25A1%25D0%25B0%25D0%25BD%25D0%25BA%25D1%2582-%25D0%259F%25D0%25B5%25D1%2582%25D0%25B5%25D1%2580%25D0%25B1%25D1%2583%25D1%2580%25D0%25B3%26guests_adults%3D2%26occupied%3D2026-05-11%253B2026-05-12%26price_per%3D1%26SW.lat%3D59.744315%26SW.lng%3D30.043382%26NE.lat%3D60.09071%26NE.lng%3D30.566435%26is_apartment%3D1&pointer-click=rn%3A961030440%3Ax%3A32555%3Ay%3A32767%3At%3A144%3Ap%3AAAAAAA%C2%849A1AAA%3AX%3A485%3AY%3A4053&hidv2=2485015459579297819&browser-info=u%3A1778346857821515290%3Av%3A2500%3Avf%3Apudvqnsfv6ib5kxc1gvz1plajlgbj%3Arqnl%3A1%3Ast%3A1778346872&t=gdpr(14)ti(1)",
+      "method": "GET",
+      "status": 200,
+      "resource_type": "fetch",
+      "content_type": "image/gif"
+    },
+    {
+      "url": "https://metrika.sutochno.ru/?sid=e47c3a2fc3abe&cookie=0d250b8e0431b&pid=81015b216b716e4c579448947894499e&dim=1554x882&url=https%3A%2F%2Fsutochno.ru%2Ffront%2Fsearchapp%2Fdetail%2F709383%3Ftype%3Dcity%26id%3D397367%26term%3D%25D0%25A1%25D0%25B0%25D0%25BD%25D0%25BA%25D1%2582-%25D0%259F%25D0%25B5%25D1%2582%25D0%25B5%25D1%2580%25D0%25B1%25D1%2583%25D1%2580%25D0%25B3%26guests_adults%3D2%26occupied%3D2026-05-11%253B2026-05-12%26price_per%3D1%26SW.lat%3D59.744315%26SW.lng%3D30.043382%26NE.lat%3D60.09071%26NE.lng%3D30.566435%26is_apartment%3D1&ua=Mozilla%2F5.0+%28Windows+NT+10.0%3B+Win64%3B+x64%29+AppleWebKit%2F537.36+%28KHTML%2C+like+Gecko%29+Chrome%2F124.0.0.0+Safari%2F537.36&ip=95.72.209.154&a=click&o=709383&d1=2026-05-11&d2=2026-05-12&g=%7B%22adults%22%3A2%2C%22childrens%22%3A%5B%5D%2C%22pets%22%3A%7B%22value%22%3Afalse%2C%22description%22%3A%22%22%7D%7D&cost=5040&page=detail&b=dates",
+      "method": "GET",
+      "status": 200,
+      "resource_type": "fetch",
+      "content_type": "image/gif"
+    },
+    {
+      "url": "https://mc.yandex.ru/clmap/8562148?page-url=https%3A%2F%2Fsutochno.ru%2Ffront%2Fsearchapp%2Fdetail%2F709383%3Ftype%3Dcity%26id%3D397367%26term%3D%25D0%25A1%25D0%25B0%25D0%25BD%25D0%25BA%25D1%2582-%25D0%259F%25D0%25B5%25D1%2582%25D0%25B5%25D1%2580%25D0%25B1%25D1%2583%25D1%2580%25D0%25B3%26guests_adults%3D2%26occupied%3D2026-05-11%253B2026-05-12%26price_per%3D1%26SW.lat%3D59.744315%26SW.lng%3D30.043382%26NE.lat%3D60.09071%26NE.lng%3D30.566435%26is_apartment%3D1&pointer-click=rn%3A480881968%3Ax%3A32767%3Ay%3A31207%3At%3A175%3Ap%3AW%5D5b1%5BAAAA2AA2AAAAA%C2%849A1AAA%3AX%3A656%3AY%3A4268&hidv2=2485015459579297819&browser-info=u%3A1778346857821515290%3Av%3A2500%3Avf%3Apudvqnsfv6ib5kxc1gvz1plajlgbj%3Arqnl%3A1%3Ast%3A1778346875&t=gdpr(14)ti(1)",
+      "method": "GET",
+      "status": 200,
+      "resource_type": "fetch",
+      "content_type": "image/gif"
+    },
+    {
+      "url": "https://sentry.sutochno.ru/api/9/envelope/?sentry_version=7&sentry_key=555b213bdad1470d80b1e39d52f77597&sentry_client=sentry.javascript.nuxt%2F10.32.1",
+      "method": "POST",
+      "status": 200,
+      "resource_type": "fetch",
+      "content_type": "application/json"
+    },
+    {
+      "url": "https://assets.sutochno.ru/shared/css/fonts/inter.css",
+      "method": "GET",
+      "status": 200,
+      "resource_type": "xhr",
+      "content_type": "text/css; charset=utf-8"
+    },
+    {
+      "url": "https://sentry.sutochno.ru/api/9/envelope/?sentry_version=7&sentry_key=555b213bdad1470d80b1e39d52f77597&sentry_client=sentry.javascript.nuxt%2F10.32.1",
+      "method": "POST",
+      "status": 200,
+      "resource_type": "fetch",
+      "content_type": "application/json"
+    },
+    {
+      "url": "https://sutochno.ru/api/json/objects/checkBookingAbility",
+      "method": "POST",
+      "status": 200,
+      "resource_type": "xhr",
+      "content_type": "application/json; charset=UTF-8"
+    },
+    {
+      "url": "https://mc.yandex.ru/clmap/8562148?page-url=https%3A%2F%2Fsutochno.ru%2Ffront%2Fsearchapp%2Fdetail%2F709383%3Ftype%3Dcity%26id%3D397367%26term%3D%25D0%25A1%25D0%25B0%25D0%25BD%25D0%25BA%25D1%2582-%25D0%259F%25D0%25B5%25D1%2582%25D0%25B5%25D1%2580%25D0%25B1%25D1%2583%25D1%2580%25D0%25B3%26guests_adults%3D2%26occupied%3D2026-05-09%253B2026-05-12%26price_per%3D1%26SW.lat%3D59.744315%26SW.lng%3D30.043382%26NE.lat%3D60.09071%26NE.lng%3D30.566435%26is_apartment%3D1&pointer-click=rn%3A946167605%3Ax%3A32767%3Ay%3A31207%3At%3A196%3Ap%3AW%5D5b1%5BAAAA2AA2AAAAA%C2%849A1AAA%3AX%3A656%3AY%3A4268&hidv2=2485015459579297819&browser-info=u%3A1778346857821515290%3Av%3A2500%3Avf%3Apudvqnsfv6ib5kxc1gvz1plajlgbj%3Arqnl%3A1%3Ast%3A1778346877&t=gdpr(14)ti(1)",
+      "method": "GET",
+      "status": 200,
+      "resource_type": "fetch",
+      "content_type": "image/gif"
+    },
+    {
+      "url": "https://sutochno.ru/api/json/objects/getPricesAndAvailabilities",
+      "method": "POST",
+      "status": 200,
+      "resource_type": "xhr",
+      "content_type": "application/json; charset=UTF-8"
+    },
+    {
+      "url": "https://sutochno.ru/api/json/objects/getPricesAndAvailabilities",
+      "method": "POST",
+      "status": 200,
+      "resource_type": "xhr",
+      "content_type": "application/json; charset=UTF-8"
+    },
+    {
+      "url": "https://sutochno.ru/api/json/objects/calculateBookingPrice",
+      "method": "POST",
+      "status": 200,
+      "resource_type": "xhr",
+      "content_type": "application/json; charset=UTF-8"
+    },
+    {
+      "url": "https://sutochno.ru/api/json/payments/calculatePayment",
+      "method": "POST",
+      "status": 200,
+      "resource_type": "xhr",
+      "content_type": "application/json; charset=UTF-8"
+    },
+    {
+      "url": "https://sutochno.ru/api/json/objects/getCancellationRules?objectId=709383&dateBegin=2026-05-09+22:00:00&precostFull=3593&precostVirtual=0&currencyId=1",
+      "method": "GET",
+      "status": 200,
+      "resource_type": "xhr",
+      "content_type": "application/json; charset=UTF-8"
+    }
+  ],
+  "interesting_responses": [
+    {
+      "url": "https://uaas.yandex.ru/v1/exps/?client_id=metrika.8562148&url=https%3A%2F%2Fsutochno.ru%2Ffront%2Fsearchapp%2Fdetail%2F709383%3Ftype%3Dcity%26id%3D397367%26term%3D%25D0%25A1%25D0%25B0%25D0%25BD%25D0%25BA%25D1%2582-%25D0%259F%25D0%25B5%25D1%2582%25D0%25B5%25D1%2580%25D0%25B1%25D1%2583%25D1%2580%25D0%25B3%26guests_adults%3D2%26occupied%3D2026-05-11%253B2026-05-12%26price_per%3D1%26SW.lat%3D59.744315%26SW.lng%3D30.043382%26NE.lat%3D60.09071%26NE.lng%3D30.566435%26is_apartment%3D1&i=&duid=&client_features=%7B%7D",
+      "method": "GET",
+      "status": 200,
+      "content_type": "application/json",
+      "body_preview": "{\n  \"i\": \"eF6VbSjfjwpeTkBgfZofwGgccYCZO3V84FIFBGccr8ZBmhDugSci4VXOl66f6iHof-jvxZL5LRN9yMKHYGGP92WH8so\",\n  \"experiments\": \"P54lnS9LcLo,\",\n  \"testids\": [],\n  \"flags\": [],\n  \"formatVersion\": 2\n}",
+      "body_length": 173
+    },
+    {
+      "url": "https://sutochno.ru/api/json/locations/getLocationsCntObjects",
+      "method": "POST",
+      "status": 200,
+      "content_type": "application/json; charset=UTF-8",
+      "body_preview": "{\n  \"success\": true,\n  \"data\": {\n    \"country\": [\n      {\n        \"cnt\": 8186,\n        \"id\": 242,\n        \"title\": \"Абхазия\",\n        \"url\": \"//abkhazia.sutochno.ru\"\n      },\n      {\n        \"cnt\": 1,\n        \"id\": 3,\n        \"title\": \"Австрия\",\n        \"url\": \"//sutochno.ru/austria\"\n      },\n      {\n        \"cnt\": 548,\n        \"id\": 241,\n        \"title\": \"Азербайджан\",\n        \"url\": \"//sutochno.ru/azerbaijan\"\n      },\n      {\n        \"cnt\": 10,\n        \"id\": 4,\n        \"title\": \"Албания\",\n        \"url\": \"//sutochno.ru/albaniya\"\n      },\n      {\n        \"cnt\": 1261,\n        \"id\": 238,\n        \"title\": \"Армения\",\n        \"url\": \"//sutochno.ru/armenia\"\n      },\n      {\n        \"cnt\": 9798,\n        \"id\": 18,\n        \"title\": \"Беларусь\",\n        \"url\": \"//sutochno.ru/belarus\"\n      },\n      {\n        \"cnt\": 43,\n        \"id\": 22,\n        \"title\": \"Болгария\",\n        \"url\": \"//sutochno.ru/bulgaria\"\n      },\n      {\n        \"cnt\": 1,\n        \"id\": 34,\n        \"title\": \"Вьетнам\",\n        \"url\": \"//sutochno.ru/vietnam\"\n      },\n      {\n        \"cnt\": 4,\n        \"id\": 43,\n        \"title\": \"Германия\",\n        \"url\": \"//sutochno.ru/germany\"\n      },\n      {\n        \"cnt\": 23,\n        \"id\": 48,\n        \"title\": \"Греция\",\n        \"url\": \"//sutochno.ru/greece\"\n      },\n      {\n        \"cnt\": 2831,\n        \"id\": 239,\n        \"title\": \"Грузия\",\n        \"url\": \"//sutochno.ru/georgia\"\n      },\n      {\n        \"cnt\": 2,\n        \"id\": 53,\n        \"title\": \"Доминикана\",\n        \"url\": \"//sutochno.ru/dominican-republic\"\n      },\n      {\n        \"cnt\": 47,\n        \"id\": 240,\n        \"title\": \"Египет\",\n        \"url\": \"//sutochno.ru/egypt\"\n      },\n      {\n        \"cnt\": 86,\n        \"id\": 57,\n        \"title\": \"Израиль\",\n        \"url\": \"//sutochno.ru/israel\"\n      },\n      {\n        \"cnt\": 16,\n        \"id\": 59,\n        \"title\": \"Индонезия\",\n        \"url\": \"//sutochno.ru/indonesia\"\n      },\n      {\n        \"cnt\": 1,\n        \"id\": 63,\n        \"title\": \"Ирландия\",\n        \"url\": \"//sutochno.ru/irlandiya\"\n      },\n      {\n        \"cnt\": 82,\n        \"id\": 65,\n        \"title\": \"Испания\",\n        \"url\": \"//sutochno.ru/spain\"\n      },\n      {\n        \"cnt\": 23,\n        \"id\": 66,\n        \"title\": \"Италия\",\n        \"url\": \"//sutochno.ru/italy\"\n      },\n      {\n        \"cnt\": 3438,\n        \"id\": 69,\n        \"title\": \"Казахстан\",\n        \"url\": \"//sutochno.ru/kazakhstan\"\n      },\n      {\n        \"cnt\": 1,\n        \"id\": 197,\n        \"title\": \"Кения\",\n        \"url\": \"//sutochno.ru/kenya\"\n      },\n      {\n        \"cnt\": 31,\n        \"id\": 75,\n        \"title\": \"Кипр\",\n        \"url\": \"//sutochno.ru/cyprus\"\n      },\n      {\n        \"cnt\": 355,\n        \"id\": 76,\n        \"title\": \"Киргизия\",\n        \"url\": \"//sutochno.ru/kyrgyzstan\"\n      },\n      {\n        \"cnt\": 4,\n        \"id\": 78,\n        \"title\": \"Китай\",\n        \"url\": \"//sutochno.ru/china\"\n      },\n      {\n        \"cnt\": 7,\n        \"id\": 86,\n        \"title\": \"Куба\",\n        \"url\": \"//sutochno.ru/cuba\"\n      },\n      {\n        \"cnt\": 25",
+      "body_length": 28536
+    },
+    {
+      "url": "https://sutochno.ru/api/json/currencies/getRates?id=1",
+      "method": "GET",
+      "status": 200,
+      "content_type": "application/json; charset=UTF-8",
+      "body_preview": "{\n  \"success\": true,\n  \"data\": {\n    \"1\": 1,\n    \"2\": 74.2963,\n    \"3\": 88.549,\n    \"4\": 1.69414,\n    \"5\": 0.160325,\n    \"7\": 26.4654,\n    \"8\": 43.7037,\n    \"9\": 47.0602,\n    \"10\": 54.4894,\n    \"11\": 10.9306,\n    \"12\": 3.59823,\n    \"13\": 0.246104,\n    \"14\": 0.849873,\n    \"15\": 20.6683,\n    \"16\": 8.07822,\n    \"17\": 7.93162,\n    \"18\": 1.64382,\n    \"19\": 0.20134,\n    \"20\": 16.6984,\n    \"21\": 0.006119,\n    \"22\": 4.33124,\n    \"24\": 0.002959,\n    \"26\": 27.6462,\n    \"28\": 22.3714,\n    \"30\": 0.004279,\n    \"32\": 3.09568,\n    \"34\": 8.8542,\n    \"36\": 0.742899,\n    \"38\": 95.4597,\n    \"40\": 0.2758,\n    \"42\": 2.30476\n  },\n  \"errors\": [],\n  \"actions\": [],\n  \"platform\": \"js\",\n  \"uuid\": null,\n  \"timestamp\": 1778292006\n}",
+      "body_length": 494
+    },
+    {
+      "url": "https://sutochno.ru/api/json/locations/getDistanceSights?object_id=709383",
+      "method": "GET",
+      "status": 200,
+      "content_type": "application/json; charset=UTF-8",
+      "body_preview": "{\n  \"success\": true,\n  \"data\": {\n    \"objectId\": 709383,\n    \"maxDistance\": 100,\n    \"sights\": [\n      {\n        \"id\": 23561,\n        \"title\": \"Московский вокзал\",\n        \"distance\": 760,\n        \"lat\": 59.929028,\n        \"lng\": 30.362278,\n        \"groupId\": 142,\n        \"groupTitle\": \"Инфраструктура\",\n        \"typeId\": 485,\n        \"typeTitle\": \"Ж/д вокзалы РЖД\",\n        \"urls\": null\n      },\n      {\n        \"id\": 23131,\n        \"title\": \"Манежная площадь\",\n        \"distance\": 839,\n        \"lat\": 59.935912,\n        \"lng\": 30.340764,\n        \"groupId\": 2,\n        \"groupTitle\": \"Культура\",\n        \"typeId\": 4,\n        \"typeTitle\": \"Архитектура\",\n        \"urls\": null\n      },\n      {\n        \"id\": 23131,\n        \"title\": \"Манежная площадь\",\n        \"distance\": 839,\n        \"lat\": 59.935912,\n        \"lng\": 30.340764,\n        \"groupId\": 2,\n        \"groupTitle\": \"Культура\",\n        \"typeId\": 306,\n        \"typeTitle\": \"Городское пространство\",\n        \"urls\": null\n      },\n      {\n        \"id\": 23558,\n        \"title\": \"Витебский вокзал\",\n        \"distance\": 1505,\n        \"lat\": 59.92006775845745,\n        \"lng\": 30.32929321438542,\n        \"groupId\": 142,\n        \"groupTitle\": \"Инфраструктура\",\n        \"typeId\": 485,\n        \"typeTitle\": \"Ж/д вокзалы РЖД\",\n        \"urls\": null\n      },\n      {\n        \"id\": 23559,\n        \"title\": \"Финляндский вокзал\",\n        \"distance\": 2957,\n        \"lat\": 59.9557823625304,\n        \"lng\": 30.3566732040096,\n        \"groupId\": 142,\n        \"groupTitle\": \"Инфраструктура\",\n        \"typeId\": 485,\n        \"typeTitle\": \"Ж/д вокзалы РЖД\",\n        \"urls\": null\n      },\n      {\n        \"id\": 23557,\n        \"title\": \"Балтийский вокзал\",\n        \"distance\": 3747,\n        \"lat\": 59.90692903918925,\n        \"lng\": 30.29874413812744,\n        \"groupId\": 142,\n        \"groupTitle\": \"Инфраструктура\",\n        \"typeId\": 485,\n        \"typeTitle\": \"Ж/д вокзалы РЖД\",\n        \"urls\": null\n      },\n      {\n        \"id\": 23560,\n        \"title\": \"Ладожский вокзал\",\n        \"distance\": 5156,\n        \"lat\": 59.93192665834646,\n        \"lng\": 30.44107695728897,\n        \"groupId\": 142,\n        \"groupTitle\": \"Инфраструктура\",\n        \"typeId\": 485,\n        \"typeTitle\": \"Ж/д вокзалы РЖД\",\n        \"urls\": null\n      },\n      {\n        \"id\": 23704,\n        \"title\": \"Аэропорт «Пулково»\",\n        \"distance\": 14356,\n        \"lat\": 59.80660742043592,\n        \"lng\": 30.26978397822835,\n        \"groupId\": 142,\n        \"groupTitle\": \"Инфраструктура\",\n        \"typeId\": 746,\n        \"typeTitle\": \"Аэропорты\",\n        \"urls\": null\n      }\n    ]\n  },\n  \"errors\": [],\n  \"actions\": [],\n  \"platform\": null,\n  \"uuid\": null,\n  \"timestamp\": 1778340106\n}",
+      "body_length": 1705
+    },
+    {
+      "url": "https://sutochno.ru/api/json/objects/checkBookingAbility",
+      "method": "POST",
+      "status": 200,
+      "content_type": "application/json; charset=UTF-8",
+      "body_preview": "{\n  \"success\": true,\n  \"data\": {\n    \"confirmationRequired\": false,\n    \"restrictions\": null,\n    \"warnings\": null\n  },\n  \"errors\": [],\n  \"actions\": [],\n  \"platform\": null,\n  \"uuid\": null,\n  \"timestamp\": 1778346780\n}",
+      "body_length": 166
+    },
+    {
+      "url": "https://sutochno.ru/api/json/objects/getPricesAndAvailabilities",
+      "method": "POST",
+      "status": 200,
+      "content_type": "application/json; charset=UTF-8",
+      "body_preview": "{\n  \"success\": true,\n  \"data\": {\n    \"objects\": [\n      {\n        \"success\": true,\n        \"data\": {\n          \"price\": 5040,\n          \"detail\": [\n            {\n              \"date_begin\": \"2026-05-11 00:00:00\",\n              \"date_end\": \"2026-05-14 23:59:59\",\n              \"cost_old\": null,\n              \"base\": 0,\n              \"nights\": 1,\n              \"type\": \"season_price\",\n              \"cost\": 5040,\n              \"guests\": null\n            }\n          ],\n          \"detail_dop\": [],\n          \"object_hot\": {\n            \"date_off\": null,\n            \"date_on\": null,\n            \"sale\": 0,\n            \"min_nights\": 0,\n            \"max_guests\": 0\n          },\n          \"cnt\": 1,\n          \"currency\": {\n            \"id\": 1,\n            \"title\": \"Российский рубль\",\n            \"code\": \"RUB\",\n            \"sign\": \"₽\",\n            \"sign_html\": \"&#8381;\",\n            \"sign_position\": \"postfix\",\n            \"sort\": 0,\n            \"visible\": 1,\n            \"step\": 100\n          },\n          \"bonus\": 202,\n          \"precost\": 1008,\n          \"service_fee\": 1008,\n          \"precost_max\": 1008,\n          \"date_begin\": \"2026-05-11 14:00:00\",\n          \"date_end\": \"2026-05-12 11:00:00\",\n          \"cnt_guests\": 2,\n          \"max_guests\": 3,\n          \"is_booking_now\": true,\n          \"price_default\": 5000,\n          \"rooms_available\": 4,\n          \"busy\": \"unbusy\",\n          \"is_hot\": false,\n          \"errors\": [],\n          \"mb_before_hours\": 2,\n          \"payment\": 1008,\n          \"using_bonuses\": 0,\n          \"real_balance\": 0,\n          \"real_balance_remain\": 0\n        },\n        \"errors\": [],\n        \"actions\": [],\n        \"can_hold\": false,\n        \"id\": 709383\n      }\n    ]\n  },\n  \"errors\": [],\n  \"actions\": [],\n  \"platform\": \"js\",\n  \"uuid\": null,\n  \"timestamp\": 1778346780\n}",
+      "body_length": 994
+    },
+    {
+      "url": "https://sutochno.ru/api/json/objects/getPricesAndAvailabilities",
+      "method": "POST",
+      "status": 200,
+      "content_type": "application/json; charset=UTF-8",
+      "body_preview": "{\n  \"success\": true,\n  \"data\": {\n    \"objects\": [\n      {\n        \"success\": true,\n        \"data\": {\n          \"price\": 5712,\n          \"detail\": [\n            {\n              \"date_begin\": \"2026-05-11 00:00:00\",\n              \"date_end\": \"2026-05-14 23:59:59\",\n              \"cost_old\": null,\n              \"base\": 0,\n              \"nights\": 1,\n              \"type\": \"season_price\",\n              \"cost\": 5712,\n              \"guests\": null\n            }\n          ],\n          \"detail_dop\": [],\n          \"object_hot\": {\n            \"date_off\": null,\n            \"date_on\": null,\n            \"sale\": 0,\n            \"min_nights\": 0,\n            \"max_guests\": 0\n          },\n          \"cnt\": 1,\n          \"currency\": {\n            \"id\": 1,\n            \"title\": \"Российский рубль\",\n            \"code\": \"RUB\",\n            \"sign\": \"₽\",\n            \"sign_html\": \"&#8381;\",\n            \"sign_position\": \"postfix\",\n            \"sort\": 0,\n            \"visible\": 1,\n            \"step\": 100\n          },\n          \"bonus\": 229,\n          \"precost\": 1142.4,\n          \"service_fee\": 1142.4,\n          \"precost_max\": 1142.4,\n          \"date_begin\": \"2026-05-11 14:00:00\",\n          \"date_end\": \"2026-05-12 11:00:00\",\n          \"cnt_guests\": 2,\n          \"max_guests\": 2,\n          \"is_booking_now\": true,\n          \"price_default\": 5700,\n          \"rooms_available\": 1,\n          \"busy\": \"unbusy\",\n          \"is_hot\": false,\n          \"errors\": [],\n          \"mb_before_hours\": 2,\n          \"payment\": 1142.4,\n          \"using_bonuses\": 0,\n          \"real_balance\": 0,\n          \"real_balance_remain\": 0\n        },\n        \"errors\": [],\n        \"actions\": [],\n        \"can_hold\": false,\n        \"id\": 698867\n      }\n    ]\n  },\n  \"errors\": [],\n  \"actions\": [],\n  \"platform\": \"js\",\n  \"uuid\": null,\n  \"timestamp\": 1778346780\n}",
+      "body_length": 1002
+    },
+    {
+      "url": "https://sutochno.ru/api/json/objects/calculateBookingPrice",
+      "method": "POST",
+      "status": 200,
+      "content_type": "application/json; charset=UTF-8",
+      "body_preview": "{\n  \"success\": true,\n  \"data\": {\n    \"calculation\": {\n      \"currencyId\": 1,\n      \"cost\": 5040,\n      \"costBase\": 5040,\n      \"costWithoutDiscounts\": 5040,\n      \"precost\": 1008,\n      \"checkInCosts\": [\n        {\n          \"currencyId\": 1,\n          \"amount\": 4032,\n          \"type\": \"user\"\n        }\n      ],\n      \"pricePerDay\": 5040,\n      \"surcharges\": [],\n      \"discounts\": []\n    },\n    \"cntGuests\": 2,\n    \"cntNights\": 1,\n    \"cashback\": 202\n  },\n  \"errors\": [],\n  \"actions\": [],\n  \"platform\": null,\n  \"uuid\": null,\n  \"timestamp\": 1778346780\n}",
+      "body_length": 358
+    },
+    {
+      "url": "https://sutochno.ru/api/json/payments/calculatePayment",
+      "method": "POST",
+      "status": 200,
+      "content_type": "application/json; charset=UTF-8",
+      "body_preview": "{\n  \"success\": true,\n  \"data\": {\n    \"cost\": [\n      {\n        \"cost\": 5040,\n        \"pricePerDay\": 5040,\n        \"currencyId\": 1,\n        \"type\": \"default\"\n      },\n      {\n        \"cost\": 5040,\n        \"pricePerDay\": 5040,\n        \"currencyId\": 1,\n        \"type\": \"user\"\n      }\n    ],\n    \"payment\": [\n      {\n        \"forPayment\": 1008,\n        \"toDeposit\": 1008,\n        \"charge\": {\n          \"real\": 0,\n          \"virtual\": 0\n        },\n        \"currencyId\": 1,\n        \"type\": \"default\"\n      },\n      {\n        \"forPayment\": 1008,\n        \"toDeposit\": 1008,\n        \"charge\": {\n          \"real\": 0,\n          \"virtual\": 0\n        },\n        \"currencyId\": 1,\n        \"type\": \"user\"\n      }\n    ]\n  },\n  \"errors\": [],\n  \"actions\": [],\n  \"platform\": \"js\",\n  \"uuid\": null,\n  \"timestamp\": 1778346780\n}",
+      "body_length": 448
+    },
+    {
+      "url": "https://sutochno.ru/api/json/objects/getCancellationRules?objectId=709383&dateBegin=2026-05-11+14:00:00&precostFull=1008&precostVirtual=0&currencyId=1",
+      "method": "GET",
+      "status": 200,
+      "content_type": "application/json; charset=UTF-8",
+      "body_preview": "{\n  \"success\": true,\n  \"data\": {\n    \"conditions\": [\n      {\n        \"dateFrom\": \"2026-05-09 20:13:00\",\n        \"dateTo\": \"2026-05-11 14:00:00\",\n        \"retentionReal\": 1008,\n        \"retentionVirtual\": 0,\n        \"days\": 0,\n        \"retentionPercent\": 100\n      }\n    ]\n  },\n  \"errors\": [],\n  \"actions\": [],\n  \"platform\": null,\n  \"uuid\": null,\n  \"timestamp\": 1778346780\n}",
+      "body_length": 256
+    },
+    {
+      "url": "https://mc.yandex.ru/watch/8562148/1?wmode=7&page-url=https%3A%2F%2Fsutochno.ru%2Ffront%2Fsearchapp%2Fdetail%2F709383%3Ftype%3Dcity%26id%3D397367%26term%3D%25D0%25A1%25D0%25B0%25D0%25BD%25D0%25BA%25D1%2582-%25D0%259F%25D0%25B5%25D1%2582%25D0%25B5%25D1%2580%25D0%25B1%25D1%2583%25D1%2580%25D0%25B3%26guests_adults%3D2%26occupied%3D2026-05-11%253B2026-05-12%26price_per%3D1%26SW.lat%3D59.744315%26SW.lng%3D30.043382%26NE.lat%3D60.09071%26NE.lng%3D30.566435%26is_apartment%3D1&charset=utf-8&uah=chu%0A%22Chromium%22%3Bv%3D%22147%22%2C%22Not.A%2FBrand%22%3Bv%3D%228%22%0Acha%0Ax86%0Achb%0A64%0Achf%0A147.0.7727.15%0Achl%0A%22Chromium%22%3Bv%3D%22147.0.7727.15%22%2C%22Not.A%2FBrand%22%3Bv%3D%228.0.0.0%22%0Achm%0A%3F0%0Achp%0AWindows%0Achv%0A10.0&browser-info=pv%3A1%3Avf%3Apudvqnsfv6ib5kxc1gvz1plajlgbj%3Afu%3A0%3Aen%3Autf-8%3Ala%3Aru-RU%3Av%3A2500%3Acn%3A1%3Adp%3A0%3Als%3A543124568261%3Ahid%3A810677583%3Az%3A180%3Ai%3A20260509201417%3Aet%3A1778346857%3Ac%3A1%3Arn%3A739887199%3Arqn%3A1%3Au%3A1778346857821515290%3Aw%3A1904x1080%3As%3A1920x1080x32%3Ask%3A1.0000000149011612%3Afp%3A3368%3Awv%3A2%3Ads%3A16%2C47%2C2318%2C60%2C1%2C0%2C%2C330%2C1%2C4114%2C4115%2C0%2C3002%3Aco%3A0%3Ans%3A1778346851183%3Arqnl%3A1%3Ast%3A1778346857%3At%3A%D0%90%D0%BF%D0%B0%D1%80%D1%82%D0%B0%D0%BC%D0%B5%D0%BD%D1%82%D1%8B%20%D0%B4%D0%B2%D1%83%D1%85%D1%83%D1%80%D0%BE%D0%B2%D0%BD%D0%B5%D0%B2%D1%8B%D0%B9%20%D1%81%D1%82%D0%B0%D0%BD%D0%B4%D0%B0%D1%80%D1%82%20%D1%82%D1%80%D0%B5%D1%85%D0%BC%D0%B5%D1%81%D1%82%D0%BD%D1%8B%D0%B9%20%D0%BF%D0%BE%D1%81%D1%83%D1%82%D0%BE%D1%87%D0%BD%D0%BE%2C%20%D0%A1%D0%B0%D0%BD%D0%BA%D1%82-%D0%9F%D0%B5%D1%82%D0%B5%D1%80%D0%B1%D1%83%D1%80%D0%B3%2C%20%D0%92%D0%BB%D0%B0%D0%B4%D0%B8%D0%BC%D0%B8%D1%80%D1%81%D0%BA%D0%B8%D0%B9%20%D0%BF%D1%80%D0%BE%D1%81%D0%BF%D0%B5%D0%BA%D1%82%2C%2016%2C%20%D0%BE%D0%B1%D1%8A%D1%8F%D0%B2%D0%BB%D0%B5%D0%BD%D0%B8%D0%B5%20709383%20-%20%D0%A1%D1%83%D1%82%D0%BE%D1%87%D0%BD%D0%BE.%D1%80%D1%83&t=clt%28151%29gdpr%2814%29clc%280-0-0%29rqnt%281%29aw%281%29rcm%281%29cdl%28na%29eco%2842271236%29ti%281%29",
+      "method": "GET",
+      "status": 200,
+      "content_type": "application/json; charset=utf-8",
+      "body_preview": "{\n  \"settings\": {\n    \"auto_goals\": 1,\n    \"button_goals\": 1,\n    \"c_recp\": \"1.00000\",\n    \"form_goals\": 1,\n    \"pcs\": \"1\",\n    \"publisher\": {\n      \"schema\": \"json_ld\"\n    },\n    \"webvisor\": {\n      \"arch_type\": \"load\",\n      \"date\": \"2026-03-30 22:39:06\",\n      \"forms\": 1,\n      \"recp\": \"0.03990\",\n      \"urls\": \"cabinet/\"\n    },\n    \"sbp\": {\n      \"a\": \"uxbqwQwDq94I7NfOzyG/o3e3CQAuUtwlJLZa6F+N4Odq9P8VYyYXp2Qg3Kb8N2af\",\n      \"b\": \"CEmbtNSOSSVOpd48YsSFEVQWb1HgjUf5N3UNXhcCrHEBPUKgzT7OILdcFGH/5pbi\"\n    },\n    \"eu\": 0,\n    \"rt\": 1,\n    \"hittoken\": \"1778346781_7f17b322446f929b603e40dcb87a92683b54946b02606e6ba89374dce1a3b589\",\n    \"cf\": 1,\n    \"mcf\": 1,\n    \"yb\": 1,\n    \"oauth\": 1,\n    \"wstoken\": \"11026.laeqSt2xpNzKEkwRw-TTaZJgVK2rQOwlm19mHmreyCI_7gMIoLph7-pQPLbDGrY2MiX75-jciJv99iBuEdnOaLS1_YicFhC6UeBhPVJza-o,.gfhBALmO73677cIrQ92udqK7QYU,\",\n    \"ev\": {\n      \"pvt\": 1778346781\n    },\n    \"hidv2\": \"2485015459579297819\",\n    \"ymclid\": \"2485015459579297819\"\n  },\n  \"userData\": {}\n}",
+      "body_length": 771
+    },
+    {
+      "url": "https://sutochno.ru/api/json/objects/checkBookingAbility",
+      "method": "POST",
+      "status": 200,
+      "content_type": "application/json; charset=UTF-8",
+      "body_preview": "{\n  \"success\": true,\n  \"data\": {\n    \"confirmationRequired\": true,\n    \"restrictions\": [\n      {\n        \"name\": \"before_hours\",\n        \"message\": \"Хозяин не оформляет быстрое бронирование, если до заезда осталось меньше 2 часов. Запрос уйдёт на согласование.\",\n        \"value\": 2\n      }\n    ],\n    \"warnings\": null\n  },\n  \"errors\": [],\n  \"actions\": [],\n  \"platform\": null,\n  \"uuid\": null,\n  \"timestamp\": 1778346801\n}",
+      "body_length": 320
+    },
+    {
+      "url": "https://sutochno.ru/api/json/objects/getPricesAndAvailabilities",
+      "method": "POST",
+      "status": 200,
+      "content_type": "application/json; charset=UTF-8",
+      "body_preview": "{\n  \"success\": true,\n  \"data\": {\n    \"objects\": [\n      {\n        \"success\": true,\n        \"data\": {\n          \"price\": 17965,\n          \"detail\": [\n            {\n              \"date_begin\": \"2026-05-08 00:00:00\",\n              \"date_end\": \"2026-05-09 23:59:59\",\n              \"cost_old\": null,\n              \"base\": 0,\n              \"nights\": 1,\n              \"type\": \"season_price\",\n              \"cost\": 7280,\n              \"guests\": null\n            },\n            {\n              \"date_begin\": \"2026-05-10 00:00:00\",\n              \"date_end\": \"2026-05-10 23:59:59\",\n              \"cost_old\": null,\n              \"base\": 0,\n              \"nights\": 1,\n              \"type\": \"season_price\",\n              \"cost\": 5645,\n              \"guests\": null\n            },\n            {\n              \"date_begin\": \"2026-05-11 00:00:00\",\n              \"date_end\": \"2026-05-14 23:59:59\",\n              \"cost_old\": null,\n              \"base\": 0,\n              \"nights\": 1,\n              \"type\": \"season_price\",\n              \"cost\": 5040,\n              \"guests\": null\n            }\n          ],\n          \"detail_dop\": [],\n          \"object_hot\": {\n            \"date_off\": null,\n            \"date_on\": null,\n            \"sale\": 0,\n            \"min_nights\": 0,\n            \"max_guests\": 0\n          },\n          \"cnt\": 3,\n          \"currency\": {\n            \"id\": 1,\n            \"title\": \"Российский рубль\",\n            \"code\": \"RUB\",\n            \"sign\": \"₽\",\n            \"sign_html\": \"&#8381;\",\n            \"sign_position\": \"postfix\",\n            \"sort\": 0,\n            \"visible\": 1,\n            \"step\": 100\n          },\n          \"bonus\": 719,\n          \"precost\": 3593,\n          \"service_fee\": 3593,\n          \"precost_max\": 3593,\n          \"date_begin\": \"2026-05-09 22:00:00\",\n          \"date_end\": \"2026-05-12 11:00:00\",\n          \"cnt_guests\": 2,\n          \"max_guests\": 3,\n          \"is_booking_now\": false,\n          \"price_default\": 18000,\n          \"rooms_available\": 3,\n          \"busy\": \"unbusy\",\n          \"is_hot\": false,\n          \"warnings\": [\n            {\n              \"type\": \"before\",\n              \"translit\": \"before_hours\"\n            }\n          ],\n          \"errors\": [\n            \"Хозяин не оформляет быстрое бронирование, если до заезда осталось меньше 2 часов. Запрос уйдёт на согласование.\"\n          ],\n          \"mb_before_hours\": 2,\n          \"payment\": 3593,\n          \"using_bonuses\": 0,\n          \"real_balance\": 0,\n          \"real_balance_remain\": 0\n        },\n        \"errors\": [],\n        \"actions\": [],\n        \"can_hold\": false,\n        \"id\": 709383\n      }\n    ]\n  },\n  \"errors\": [],\n  \"actions\": [],\n  \"platform\": \"js\",\n  \"uuid\": null,\n  \"timestamp\": 1778346801\n}",
+      "body_length": 1475
+    },
+    {
+      "url": "https://sutochno.ru/api/json/objects/getPricesAndAvailabilities",
+      "method": "POST",
+      "status": 200,
+      "content_type": "application/json; charset=UTF-8",
+      "body_preview": "{\n  \"success\": true,\n  \"data\": {\n    \"objects\": [\n      {\n        \"success\": true,\n        \"data\": {\n          \"price\": 17360,\n          \"detail\": [\n            {\n              \"date_begin\": \"2026-05-08 00:00:00\",\n              \"date_end\": \"2026-05-09 23:59:59\",\n              \"cost_old\": null,\n              \"base\": 0,\n              \"nights\": 1,\n              \"type\": \"season_price\",\n              \"cost\": 6272,\n              \"guests\": null\n            },\n            {\n              \"date_begin\": \"2026-05-10 00:00:00\",\n              \"date_end\": \"2026-05-10 23:59:59\",\n              \"cost_old\": null,\n              \"base\": 0,\n              \"nights\": 1,\n              \"type\": \"season_price\",\n              \"cost\": 5376,\n              \"guests\": null\n            },\n            {\n              \"date_begin\": \"2026-05-11 00:00:00\",\n              \"date_end\": \"2026-05-14 23:59:59\",\n              \"cost_old\": null,\n              \"base\": 0,\n              \"nights\": 1,\n              \"type\": \"season_price\",\n              \"cost\": 5712,\n              \"guests\": null\n            }\n          ],\n          \"detail_dop\": [],\n          \"object_hot\": {\n            \"date_off\": null,\n            \"date_on\": null,\n            \"sale\": 0,\n            \"min_nights\": 0,\n            \"max_guests\": 0\n          },\n          \"cnt\": 3,\n          \"currency\": {\n            \"id\": 1,\n            \"title\": \"Российский рубль\",\n            \"code\": \"RUB\",\n            \"sign\": \"₽\",\n            \"sign_html\": \"&#8381;\",\n            \"sign_position\": \"postfix\",\n            \"sort\": 0,\n            \"visible\": 1,\n            \"step\": 100\n          },\n          \"bonus\": 695,\n          \"precost\": 3472,\n          \"service_fee\": 3472,\n          \"precost_max\": 3472,\n          \"date_begin\": \"2026-05-09 22:00:00\",\n          \"date_end\": \"2026-05-12 11:00:00\",\n          \"cnt_guests\": 2,\n          \"max_guests\": 2,\n          \"is_booking_now\": false,\n          \"price_default\": 17400,\n          \"rooms_available\": 1,\n          \"busy\": \"unbusy\",\n          \"is_hot\": false,\n          \"warnings\": [\n            {\n              \"type\": \"before\",\n              \"translit\": \"before_hours\"\n            }\n          ],\n          \"errors\": [\n            \"Хозяин не оформляет быстрое бронирование, если до заезда осталось меньше 2 часов. Запрос уйдёт на согласование.\"\n          ],\n          \"mb_before_hours\": 2,\n          \"payment\": 3472,\n          \"using_bonuses\": 0,\n          \"real_balance\": 0,\n          \"real_balance_remain\": 0\n        },\n        \"errors\": [],\n        \"actions\": [],\n        \"can_hold\": false,\n        \"id\": 698867\n      }\n    ]\n  },\n  \"errors\": [],\n  \"actions\": [],\n  \"platform\": \"js\",\n  \"uuid\": null,\n  \"timestamp\": 1778346801\n}",
+      "body_length": 1475
+    },
+    {
+      "url": "https://sutochno.ru/api/json/objects/calculateBookingPrice",
+      "method": "POST",
+      "status": 200,
+      "content_type": "application/json; charset=UTF-8",
+      "body_preview": "{\n  \"success\": true,\n  \"data\": {\n    \"calculation\": {\n      \"currencyId\": 1,\n      \"cost\": 17965,\n      \"costBase\": 17965,\n      \"costWithoutDiscounts\": 17965,\n      \"precost\": 3593,\n      \"checkInCosts\": [\n        {\n          \"currencyId\": 1,\n          \"amount\": 14372,\n          \"type\": \"user\"\n        }\n      ],\n      \"pricePerDay\": 5988.33,\n      \"surcharges\": [],\n      \"discounts\": []\n    },\n    \"cntGuests\": 2,\n    \"cntNights\": 3,\n    \"cashback\": 719\n  },\n  \"errors\": [],\n  \"actions\": [],\n  \"platform\": null,\n  \"uuid\": null,\n  \"timestamp\": 1778346802\n}",
+      "body_length": 365
+    },
+    {
+      "url": "https://sutochno.ru/api/json/payments/calculatePayment",
+      "method": "POST",
+      "status": 200,
+      "content_type": "application/json; charset=UTF-8",
+      "body_preview": "{\n  \"success\": true,\n  \"data\": {\n    \"cost\": [\n      {\n        \"cost\": 17965,\n        \"pricePerDay\": 5988.33,\n        \"currencyId\": 1,\n        \"type\": \"default\"\n      },\n      {\n        \"cost\": 17965,\n        \"pricePerDay\": 5988.33,\n        \"currencyId\": 1,\n        \"type\": \"user\"\n      }\n    ],\n    \"payment\": [\n      {\n        \"forPayment\": 3593,\n        \"toDeposit\": 3593,\n        \"charge\": {\n          \"real\": 0,\n          \"virtual\": 0\n        },\n        \"currencyId\": 1,\n        \"type\": \"default\"\n      },\n      {\n        \"forPayment\": 3593,\n        \"toDeposit\": 3593,\n        \"charge\": {\n          \"real\": 0,\n          \"virtual\": 0\n        },\n        \"currencyId\": 1,\n        \"type\": \"user\"\n      }\n    ]\n  },\n  \"errors\": [],\n  \"actions\": [],\n  \"platform\": \"js\",\n  \"uuid\": null,\n  \"timestamp\": 1778346802\n}",
+      "body_length": 456
+    },
+    {
+      "url": "https://sutochno.ru/api/json/objects/getCancellationRules?objectId=709383&dateBegin=2026-05-09+22:00:00&precostFull=3593&precostVirtual=0&currencyId=1",
+      "method": "GET",
+      "status": 200,
+      "content_type": "application/json; charset=UTF-8",
+      "body_preview": "{\n  \"success\": true,\n  \"data\": {\n    \"conditions\": [\n      {\n        \"dateFrom\": \"2026-05-09 20:13:22\",\n        \"dateTo\": \"2026-05-09 22:00:00\",\n        \"retentionReal\": 3593,\n        \"retentionVirtual\": 0,\n        \"days\": 0,\n        \"retentionPercent\": 100\n      }\n    ]\n  },\n  \"errors\": [],\n  \"actions\": [],\n  \"platform\": null,\n  \"uuid\": null,\n  \"timestamp\": 1778346802\n}",
+      "body_length": 256
+    }
+  ],
+  "vue_state_initial": {
+    "found_vue_app": true,
+    "nuxt_data": "{\n  \"__ym_indexer\": 3777,\n  \"__mutation_summary_node_map_id__\": 3769\n}",
+    "component_data": [],
+    "pinia_stores": null,
+    "window_nuxt": "{\n  \"data\": {\n    \"detail:709383\": {\n      \"detail\": {\n        \"id\": 709383,\n        \"status\": {\n          \"id\": 1,\n          \"name\": \"approved\",\n          \"title\": \"Опубликовано\"\n        },\n        \"url\": \"https://sutochno.ru/front/searchapp/detail/709383\",\n        \"title\": \"1-комнатная квартира\",\n        \"type\": {\n          \"id\": 1,\n          \"name\": \"apartment\",\n          \"title\": \"квартиры, апартаменты\"\n        },\n        \"timezoneOffset\": 180,\n        \"propertyGroups\": [\n          {\n            \"name\": \"additional_properties\",\n            \"title\": \"Дополнительные свойства\",\n            \"properties\": [\n              {\n                \"name\": \"position\",\n                \"title\": \"Расположение\",\n                \"value\": 1\n              },\n              {\n                \"name\": \"subtype_id\",\n                \"title\": \"Подтип\",\n                \"value\": 0\n              }\n            ]\n          },\n          {\n            \"name\": \"basic_properties\",\n            \"title\": \"Основные свойства\",\n            \"properties\": [\n              {\n                \"name\": \"beds\",\n                \"title\": \"Спальных мест\",\n                \"value\": \"3\"\n              },\n              {\n                \"name\": \"self_number_object\",\n                \"title\": \"Свой номер объекта\",\n                \"value\": \"жв3\"\n              },\n              {\n                \"name\": \"max_guests\",\n                \"title\": \"Максимум гостей\",\n                \"value\": 3\n              },\n              {\n                \"name\": \"rooms\",\n                \"title\": \"Количество комнат\",\n                \"value\": 1\n              },\n              {\n                \"name\": \"area\",\n                \"title\": \"Площадь (м2)\",\n                \"value\": 11\n              },\n              {\n                \"name\": \"floor\",\n                \"title\": \"Этаж\",\n                \"value\": 2\n              },\n              {\n                \"name\": \"max_floor\",\n                \"title\": \"Всего этажей\",\n                \"value\": 6\n              },\n              {\n                \"name\": \"bedrooms\",\n                \"title\": \"Спален\",\n                \"value\": 0\n              },\n              {\n                \"name\": \"single_bed\",\n                \"title\": \"Односпальных кроватей\",\n                \"value\": 0\n              },\n              {\n                \"name\": \"double_bed\",\n                \"title\": \"Двуспальных кроватей\",\n                \"value\": 1\n              },\n              {\n                \"name\": \"quality_repair\",\n                \"title\": \"Ремонт\",\n                \"value\": 3\n              },\n              {\n                \"name\": \"kitchen_flat\",\n                \"title\": \"Кухня\",\n                \"value\": 3\n              },\n              {\n                \"name\": \"king_bed\",\n                \"title\": \"Кроватей king-size\",\n                \"value\": 0\n              },\n              {\n                \"name\": \"super_king_bed\",\n                \"title\": \"Особо широких двуспальных\",\n                \"value\": 0\n              },\n              {\n                \"name\": \"yarus_bed\",\n                \"title\": \"Двухъярусных кроватей\",\n                \"value\": 0\n              },\n              {\n                \"name\": \"bsofa_bed\",\n                \"title\": \"Односпальных диван-кроватей\",\n                \"value\": 1\n              }\n            ]\n          },\n          {\n            \"name\": \"kitchen_equipment\",\n            \"title\": \"Кухонное оборудование\",\n            \"properties\": [\n              {\n                \"name\": \"microwave\",\n                \"title\": \"микроволновка\",\n                \"value\": true\n              },\n              {\n                \"name\": \"crockery\",\n                \"title\": \"посуда и принадлежности\",\n                \"value\": true\n              },\n              {\n                \"name\": \"cutlery\",\n                \"title\": \"столовые приборы\",\n                \"value\": true\n              },\n              {\n                \"name\": \"kettle\",\n                \"title\": \"электрический чайник\",\n                \"value\": true\n              },\n              {\n                \"name\": \"refrigerator\",\n                \"title\": \"холодильник\",\n                \"value\": true\n              },\n              {\n                \"name\": \"kitchen\",\n                \"title\": \"кухонный гарнитур\",\n                \"value\": true\n              },\n              {\n                \"name\": \"dinner_table\",\n                \"title\": \"обеденный стол\",\n                \"value\": true\n              }\n            ]\n          },\n          {\n            \"name\": \"equipment\",\n            \"title\": \"Оснащение\",\n            \"properties\": [\n              {\n                \"name\": \"bedclothes\",\n                \"title\": \"постельное белье\",\n                \"value\": true\n              },\n              {\n                \"name\": \"washmachine\",\n                \"title\": \"стиральная машина\",\n                \"value\": true\n              },\n              {\n                \"name\": \"wifi\",\n                \"title\": \"беспроводной интернет Wi-Fi\",\n                \"value\": true\n              },\n              {\n                \"name\": \"heating\",\n                \"title\": \"центральное отопление\",\n                \"value\": true\n              },\n              {\n                \"name\": \"iron\",\n                \"title\": \"утюг с гладильной доской\",\n                \"value\": true\n              },\n              {\n                \"name\": \"mosquito_net\",\n                \"title\": \"москитная сетка\",\n                \"value\": true\n              },\n              {\n                \"name\": \"cleaning_products\",\n                \"title\": \"чистящие средства\",\n                \"value\": true\n              },\n              {\n                \"name\": \"heater\",\n                \"title\": \"обогреватель\",\n                \"value\": true\n              },\n              {\n                \"name\": \"laminate\",\n                \"title\": \"ламинат\",\n                \"value\": true\n              }\n            ]\n          },\n          {\n            \"name\": \"for_leisure\",\n            \"title\": \"Для отдыха в помещении\",\n            \"properties\": [\n              {\n                \"name\": \"tv\",\n                \"title\": \"телевизор\",\n                \"value\": true\n              },\n              {\n                \"name\": \"tv_cable\",\n                \"title\": \"кабельное ТВ\",\n                \"value\": true\n              }\n            ]\n          },\n          {\n            \"name\": \"pay_attention\",\n            \"title\": \"Правила дома\",\n            \"properties\": [\n              {\n                \"name\": \"isolation\",\n                \"title\": \"самоизоляция разрешена\",\n                \"value\": true\n              }\n            ]\n          },\n          {\n            \"name\": \"leisure_around\",\n            \"title\": \"Инфраструктура и досуг рядом\",\n            \"properties\": [\n              {\n                \"name\": \"cinema\",\n                \"title\": \"кинотеатр\",\n                \"value\": true\n              },\n              {\n                \"name\": \"theater\",\n                \"title\": \"театр\",\n                \"value\": true\n              },\n              {\n                \"name\": \"nightclub\",\n                \"title\": \"ночной клуб\",\n                \"value\": true\n              },\n              {\n                \"name\": \"spa\",\n                \"title\": \"spa-центр\",\n                \"value\": true\n              }\n            ]\n          },\n          {\n            \"name\": \"additional_payment\",\n            \"title\": \"Дополнительная оплата\",\n            \"properties\": [\n              {\n                \"name\": \"rates_info\",\n                \"title\": \"Описание к ценам\",\n                \"value\": null\n              },\n              {\n                \"name\": \"deposit\",\n                \"title\": \"Страховой депозит\",\n                \"value\": 3000\n              },\n              {\n                \"name\": \"gethering\",\n                \"title\": \"Уборка\",\n                \"value\": 0\n              },\n              {\n                \"name\": \"min_nights\",\n                \"title\": \"Минимальный срок\",\n                \"value\": 1\n              },\n              {\n                \"name\": \"cleaning\",\n                \"title\": \"Уборка\",\n                \"value\": 0\n              }\n            ]\n          },\n          {\n            \"name\": \"detail_description\",\n            \"title\": \"Подробное описание\",\n            \"properties\": [\n              {\n                \"name\": \"description\",\n                \"title\": \"Дополнительная информация\",\n                \"value\": \"Уютная студия в самом центре Санкт-Петербурга, оснащенная самой современной мебелью и оборудованием для комфортного проживания: на втором уровне - большая постель с ортопедическим матрасом, а внизу расположен санузел, гостиная и кухня. Имеется раскладной диван.\\r\\n\\r\\nСтудия полностью автономна: своя мини-кухня оснащена индукционной плиткой и специальной посудой для быстрого приготовления завтрака и приёма пищи. В студии располагается санузел с душем. \\r\\n\\r\\nГостям предоставляется wi-fi, фен, свежее постельное бельё, комплект полотенец по количеству гостей, моющие средства, одноразовые салфетки, бесплатные туалетно-косметические принадлежности, чай, кофе, сахар, соль.\\r\\nВ каждой студии есть бесплатные средства для чистки одежды и обуви, дополнительный удлинитель для электрических приборов, зонт и сушилка для обуви. \\r\\nВ общей зоне  расположена гладильная доска, стиральная машина, кофеварка, кулер, микроволновая печь.\\r\\n\\r\\nУдобства:\\r\\n- Чистое постельное бельё;\\r\\n- Одеяла, подушки;\\r\\n- Комплект полотенец по количеству гостей;\\r\\n- Туалетная бумага;\\r\\n- Гель для душа, шампунь, жидкое мыло;\\r\\n- Собственная кухня;\\r\\n- Стол;\\r\\n- Стулья;\\r\\n- Индукционная плита;\\r\\n- Посуда для приготовления еды;\\r\\n- Посуда для употребления еды (чашки, тарелки, столовые приборы - по количеству гостей);\\r\\n- Заварной чайник;\\r\\n- Микроволновая печь;\\r\\n- Чайник;\\r\\n- Средство для мытья посуды и губки;\\r\\n- Сушилка для белья;\\r\\n- Раскладной диван-кровать;\\r\\n- Плед и диванные подушки;\\r\\n- Фен;\\r\\n- Утюг и гладильная доска;\\r\\n",
+    "window_initial_state": {
+      "dataLayer_metrika": "[\n  {\n    \"ecommerce\": {\n      \"currencyCode\": \"RUB\",\n      \"detail\": {\n        \"products\": [\n          {\n            \"id\": 709383,\n            \"name\": \"1-комнатная квартира\",\n            \"price\": null,\n            \"brand\": null,\n            \"variant\": 1,\n            \"category\": \"отельный объект/Апартаменты двухуровневый стандарт трехместный\",\n            \"quantity\": null\n          }\n        ]\n      }\n    }\n  }\n]"
+    }
+  },
+  "vue_state_after_interaction": {
+    "pinia_stores_after": null,
+    "component_data_after": []
+  }
+}

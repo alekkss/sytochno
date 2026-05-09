@@ -1,0 +1,295 @@
+[
+  {
+    "type": "request",
+    "url": "https://sutochno.ru/api/json/objects/getPricesAndAvailabilities",
+    "method": "POST",
+    "post_body": "{\"objects\":[698867],\"rooms_cnt\":{},\"guests\":2,\"date_begin\":\"2026-05-11 14:00:00\",\"date_end\":\"2026-05-12 11:00:00\",\"currency_id\":1,\"is_pets\":0,\"documents\":0,\"target\":0,\"ages\":[],\"no_time\":1}",
+    "headers": {
+      "sec-ch-ua-platform": "\"Windows\"",
+      "referer": "https://sutochno.ru/front/searchapp/detail/709383?type=city&id=397367&term=%D0%A1%D0%B0%D0%BD%D0%BA%D1%82-%D0%9F%D0%B5%D1%82%D0%B5%D1%80%D0%B1%D1%83%D1%80%D0%B3&guests_adults=2&occupied=2026-05-11%3B2026-05-12&price_per=1&SW.lat=59.744315&SW.lng=30.043382&NE.lat=60.09071&NE.lng=30.566435&is_apartment=1",
+      "accept-language": "ru-RU",
+      "sec-ch-ua": "\"Chromium\";v=\"147\", \"Not.A/Brand\";v=\"8\"",
+      "api-version": "1.13",
+      "sec-ch-ua-mobile": "?0",
+      "baggage": "sentry-environment=production,sentry-release=f604d676,sentry-public_key=555b213bdad1470d80b1e39d52f77597,sentry-trace_id=2065b45722d68dc84ac61c90d766f97e,sentry-sampled=false,sentry-sample_rand=0.8120278503077263,sentry-sample_rate=0.1",
+      "sentry-trace": "2065b45722d68dc84ac61c90d766f97e-831de320c9e95878-0",
+      "user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+      "accept": "application/json, text/plain, */*",
+      "content-type": "application/json",
+      "token": "Hy6U3z61fflbgT2yJ/VdlQ2719",
+      "platform": "js"
+    }
+  },
+  {
+    "type": "request",
+    "url": "https://sutochno.ru/api/json/objects/getPricesAndAvailabilities",
+    "method": "POST",
+    "post_body": "{\"objects\":[709383],\"rooms_cnt\":{\"709383\":1},\"guests\":2,\"date_begin\":\"2026-05-11 14:00:00\",\"date_end\":\"2026-05-12 11:00:00\",\"currency_id\":1,\"is_pets\":0,\"documents\":0,\"target\":0,\"ages\":[],\"no_time\":0}",
+    "headers": {
+      "sec-ch-ua-platform": "\"Windows\"",
+      "referer": "https://sutochno.ru/front/searchapp/detail/709383?type=city&id=397367&term=%D0%A1%D0%B0%D0%BD%D0%BA%D1%82-%D0%9F%D0%B5%D1%82%D0%B5%D1%80%D0%B1%D1%83%D1%80%D0%B3&guests_adults=2&occupied=2026-05-11%3B2026-05-12&price_per=1&SW.lat=59.744315&SW.lng=30.043382&NE.lat=60.09071&NE.lng=30.566435&is_apartment=1",
+      "accept-language": "ru-RU",
+      "sec-ch-ua": "\"Chromium\";v=\"147\", \"Not.A/Brand\";v=\"8\"",
+      "api-version": "1.13",
+      "sec-ch-ua-mobile": "?0",
+      "baggage": "sentry-environment=production,sentry-release=f604d676,sentry-public_key=555b213bdad1470d80b1e39d52f77597,sentry-trace_id=2065b45722d68dc84ac61c90d766f97e,sentry-sampled=false,sentry-sample_rand=0.8120278503077263,sentry-sample_rate=0.1",
+      "sentry-trace": "2065b45722d68dc84ac61c90d766f97e-a9b71854169a3800-0",
+      "user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+      "accept": "application/json, text/plain, */*",
+      "content-type": "application/json",
+      "token": "Hy6U3z61fflbgT2yJ/VdlQ2719",
+      "platform": "js"
+    }
+  },
+  {
+    "type": "request",
+    "url": "https://sutochno.ru/api/json/objects/checkBookingAbility",
+    "method": "POST",
+    "post_body": "{\"objectId\":709383,\"dateBegin\":\"2026-05-11 14:00:00\",\"dateEnd\":\"2026-05-12 11:00:00\",\"guests\":2,\"currencyId\":1,\"childAges\":[],\"conditions\":[]}",
+    "headers": {
+      "sec-ch-ua-platform": "\"Windows\"",
+      "referer": "https://sutochno.ru/front/searchapp/detail/709383?type=city&id=397367&term=%D0%A1%D0%B0%D0%BD%D0%BA%D1%82-%D0%9F%D0%B5%D1%82%D0%B5%D1%80%D0%B1%D1%83%D1%80%D0%B3&guests_adults=2&occupied=2026-05-11%3B2026-05-12&price_per=1&SW.lat=59.744315&SW.lng=30.043382&NE.lat=60.09071&NE.lng=30.566435&is_apartment=1",
+      "accept-language": "ru-RU",
+      "sec-ch-ua": "\"Chromium\";v=\"147\", \"Not.A/Brand\";v=\"8\"",
+      "api-version": "2.0",
+      "sec-ch-ua-mobile": "?0",
+      "baggage": "sentry-environment=production,sentry-release=f604d676,sentry-public_key=555b213bdad1470d80b1e39d52f77597,sentry-trace_id=2065b45722d68dc84ac61c90d766f97e,sentry-sampled=false,sentry-sample_rand=0.8120278503077263,sentry-sample_rate=0.1",
+      "sentry-trace": "2065b45722d68dc84ac61c90d766f97e-85b27d74b41b6801-0",
+      "user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+      "accept": "application/json, text/plain, */*",
+      "content-type": "application/json",
+      "token": "Hy6U3z61fflbgT2yJ/VdlQ2719",
+      "platform": "js"
+    }
+  },
+  {
+    "type": "request",
+    "url": "https://sutochno.ru/api/json/objects/calculateBookingPrice",
+    "method": "POST",
+    "post_body": "{\"objectId\":709383,\"dateBegin\":\"2026-05-11 14:00:00\",\"dateEnd\":\"2026-05-12 11:00:00\",\"guests\":2,\"currencyId\":1,\"childAges\":[],\"conditions\":[]}",
+    "headers": {
+      "sec-ch-ua-platform": "\"Windows\"",
+      "referer": "https://sutochno.ru/front/searchapp/detail/709383?type=city&id=397367&term=%D0%A1%D0%B0%D0%BD%D0%BA%D1%82-%D0%9F%D0%B5%D1%82%D0%B5%D1%80%D0%B1%D1%83%D1%80%D0%B3&guests_adults=2&occupied=2026-05-11%3B2026-05-12&price_per=1&SW.lat=59.744315&SW.lng=30.043382&NE.lat=60.09071&NE.lng=30.566435&is_apartment=1",
+      "accept-language": "ru-RU",
+      "sec-ch-ua": "\"Chromium\";v=\"147\", \"Not.A/Brand\";v=\"8\"",
+      "api-version": "2.0",
+      "sec-ch-ua-mobile": "?0",
+      "baggage": "sentry-environment=production,sentry-release=f604d676,sentry-public_key=555b213bdad1470d80b1e39d52f77597,sentry-trace_id=2065b45722d68dc84ac61c90d766f97e,sentry-sampled=false,sentry-sample_rand=0.8120278503077263,sentry-sample_rate=0.1",
+      "sentry-trace": "2065b45722d68dc84ac61c90d766f97e-ba83be6219bfcf83-0",
+      "user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+      "accept": "application/json, text/plain, */*",
+      "content-type": "application/json",
+      "token": "Hy6U3z61fflbgT2yJ/VdlQ2719",
+      "platform": "js"
+    }
+  },
+  {
+    "type": "response",
+    "url": "https://sutochno.ru/api/json/objects/checkBookingAbility",
+    "status": 200,
+    "body": {
+      "success": true,
+      "data": {
+        "confirmationRequired": false,
+        "restrictions": null,
+        "warnings": null
+      },
+      "errors": [],
+      "actions": [],
+      "platform": null,
+      "uuid": null,
+      "timestamp": 1778346973
+    }
+  },
+  {
+    "type": "response",
+    "url": "https://sutochno.ru/api/json/objects/getPricesAndAvailabilities",
+    "status": 200,
+    "body": {
+      "success": true,
+      "data": {
+        "objects": [
+          {
+            "success": true,
+            "data": {
+              "price": 5712,
+              "detail": [
+                {
+                  "date_begin": "2026-05-11 00:00:00",
+                  "date_end": "2026-05-14 23:59:59",
+                  "cost_old": null,
+                  "base": 0,
+                  "nights": 1,
+                  "type": "season_price",
+                  "cost": 5712,
+                  "guests": null
+                }
+              ],
+              "detail_dop": [],
+              "object_hot": {
+                "date_off": null,
+                "date_on": null,
+                "sale": 0,
+                "min_nights": 0,
+                "max_guests": 0
+              },
+              "cnt": 1,
+              "currency": {
+                "id": 1,
+                "title": "Российский рубль",
+                "code": "RUB",
+                "sign": "₽",
+                "sign_html": "&#8381;",
+                "sign_position": "postfix",
+                "sort": 0,
+                "visible": 1,
+                "step": 100
+              },
+              "bonus": 229,
+              "precost": 1142.4,
+              "service_fee": 1142.4,
+              "precost_max": 1142.4,
+              "date_begin": "2026-05-11 14:00:00",
+              "date_end": "2026-05-12 11:00:00",
+              "cnt_guests": 2,
+              "max_guests": 2,
+              "is_booking_now": true,
+              "price_default": 5700,
+              "rooms_available": 1,
+              "busy": "unbusy",
+              "is_hot": false,
+              "errors": [],
+              "mb_before_hours": 2,
+              "payment": 1142.4,
+              "using_bonuses": 0,
+              "real_balance": 0,
+              "real_balance_remain": 0
+            },
+            "errors": [],
+            "actions": [],
+            "can_hold": false,
+            "id": 698867
+          }
+        ]
+      },
+      "errors": [],
+      "actions": [],
+      "platform": "js",
+      "uuid": null,
+      "timestamp": 1778346973
+    }
+  },
+  {
+    "type": "response",
+    "url": "https://sutochno.ru/api/json/objects/getPricesAndAvailabilities",
+    "status": 200,
+    "body": {
+      "success": true,
+      "data": {
+        "objects": [
+          {
+            "success": true,
+            "data": {
+              "price": 5040,
+              "detail": [
+                {
+                  "date_begin": "2026-05-11 00:00:00",
+                  "date_end": "2026-05-14 23:59:59",
+                  "cost_old": null,
+                  "base": 0,
+                  "nights": 1,
+                  "type": "season_price",
+                  "cost": 5040,
+                  "guests": null
+                }
+              ],
+              "detail_dop": [],
+              "object_hot": {
+                "date_off": null,
+                "date_on": null,
+                "sale": 0,
+                "min_nights": 0,
+                "max_guests": 0
+              },
+              "cnt": 1,
+              "currency": {
+                "id": 1,
+                "title": "Российский рубль",
+                "code": "RUB",
+                "sign": "₽",
+                "sign_html": "&#8381;",
+                "sign_position": "postfix",
+                "sort": 0,
+                "visible": 1,
+                "step": 100
+              },
+              "bonus": 202,
+              "precost": 1008,
+              "service_fee": 1008,
+              "precost_max": 1008,
+              "date_begin": "2026-05-11 14:00:00",
+              "date_end": "2026-05-12 11:00:00",
+              "cnt_guests": 2,
+              "max_guests": 3,
+              "is_booking_now": true,
+              "price_default": 5000,
+              "rooms_available": 4,
+              "busy": "unbusy",
+              "is_hot": false,
+              "errors": [],
+              "mb_before_hours": 2,
+              "payment": 1008,
+              "using_bonuses": 0,
+              "real_balance": 0,
+              "real_balance_remain": 0
+            },
+            "errors": [],
+            "actions": [],
+            "can_hold": false,
+            "id": 709383
+          }
+        ]
+      },
+      "errors": [],
+      "actions": [],
+      "platform": "js",
+      "uuid": null,
+      "timestamp": 1778346973
+    }
+  },
+  {
+    "type": "response",
+    "url": "https://sutochno.ru/api/json/objects/calculateBookingPrice",
+    "status": 200,
+    "body": {
+      "success": true,
+      "data": {
+        "calculation": {
+          "currencyId": 1,
+          "cost": 5040,
+          "costBase": 5040,
+          "costWithoutDiscounts": 5040,
+          "precost": 1008,
+          "checkInCosts": [
+            {
+              "currencyId": 1,
+              "amount": 4032,
+              "type": "user"
+            }
+          ],
+          "pricePerDay": 5040,
+          "surcharges": [],
+          "discounts": []
+        },
+        "cntGuests": 2,
+        "cntNights": 1,
+        "cashback": 202
+      },
+      "errors": [],
+      "actions": [],
+      "platform": null,
+      "uuid": null,
+      "timestamp": 1778346973
+    }
+  }
+]
