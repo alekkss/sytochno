@@ -1,6 +1,7 @@
 """Сервис парсинга карточки объявления — извлечение календаря занятости и цен через API."""
 
 import asyncio
+import re
 import time
 from datetime import date, timedelta
 
@@ -62,7 +63,11 @@ _MIN_NIGHTS_ERROR_KEYWORDS: list[str] = [
     "min_nights",
     "minimum_nights",
     "минимальный срок",
+    "минимальное количество суток",
+    "минимальное количество",
     "минимум",
+    "суток",
+    "сут.",
     "nights_min",
     "min_duration",
     "minimalnoe_kolichestvo",
@@ -305,10 +310,15 @@ class ListingService:
         Выполняет пакетные fetch-запросы к getPricesAndAvailabilities
         прямо в контексте страницы (сохраняя cookies и сессию).
 
-        Для каждого дня из 60 отправляет запрос с date_begin=день 14:00,
-        date_end=день+nights 11:00. Из ответа:
-        - busy == "unbusy" → день свободен, цена = detail[0].cost
-        - иначе → день занят, цена = 0
+        Для каждого дня из 60 отправляет запрос с:
+        - date_begin = день 14:00
+        - date_end = день + nights 11:00
+
+        Из ответа определяет:
+        - Занятость: busy == "unbusy" → свободен; busy == "busy" → занят
+        - Цену за ПЕРВЫЙ день: detail[0].cost (даже если запрос на 2+ ночи)
+        - При success=false с ошибкой min_nights → помечает как ошибку
+          (НЕ как занятый день)
 
         Запросы группируются в пакеты по _API_BATCH_SIZE для контроля нагрузки.
 
@@ -390,7 +400,8 @@ class ListingService:
 
                             if (!resp.ok) {
                                 return {
-                                    busy: true,
+                                    status: 'error',
+                                    busy: null,
                                     price: 0,
                                     error: 'http_' + resp.status,
                                     error_body: responseText.substring(0, 500)
@@ -402,16 +413,25 @@ class ListingService:
                                 data = JSON.parse(responseText);
                             } catch (parseErr) {
                                 return {
-                                    busy: true,
+                                    status: 'error',
+                                    busy: null,
                                     price: 0,
                                     error: 'json_parse_error',
                                     error_body: responseText.substring(0, 500)
                                 };
                             }
 
+                            // Внешний success=false — ошибка на уровне API
                             if (!data.success) {
+                                // Проверяем: это ответ с объектом внутри (формат 2)
+                                // или ответ верхнего уровня (формат 1)?
+                                if (data.data && data.data.objects && data.data.objects[0]) {
+                                    // Формат: {success: true, data: {objects: [{...}]}}
+                                    // но success=false на верхнем уровне — странный случай
+                                }
                                 return {
-                                    busy: true,
+                                    status: 'error',
+                                    busy: null,
                                     price: 0,
                                     error: 'api_success_false',
                                     error_body: responseText.substring(0, 500)
@@ -420,37 +440,50 @@ class ListingService:
 
                             if (!data.data || !data.data.objects || !data.data.objects[0]) {
                                 return {
-                                    busy: true,
+                                    status: 'error',
+                                    busy: null,
                                     price: 0,
-                                    error: 'no_data',
+                                    error: 'no_objects_in_response',
                                     error_body: responseText.substring(0, 500)
                                 };
                             }
 
                             const obj = data.data.objects[0];
 
+                            // Объект вернул success=false — возможно min_nights
                             if (!obj.success) {
+                                const objErrors = obj.errors || [];
                                 return {
-                                    busy: true,
+                                    status: 'obj_error',
+                                    busy: null,
                                     price: 0,
                                     error: 'obj_not_success',
+                                    errors: objErrors,
                                     error_body: JSON.stringify(obj).substring(0, 500)
                                 };
                             }
 
                             const objData = obj.data;
-                            const isBusy = objData.busy !== 'unbusy';
+                            const busyStatus = objData.busy;
+                            const isBusy = busyStatus === 'busy';
                             let price = 0;
 
-                            if (!isBusy && objData.detail && objData.detail.length > 0) {
+                            // Извлекаем цену первого дня из detail[0].cost
+                            if (objData.detail && objData.detail.length > 0) {
                                 price = objData.detail[0].cost || 0;
                             }
 
-                            return {busy: isBusy, price: Math.round(price)};
+                            return {
+                                status: 'ok',
+                                busy: isBusy,
+                                price: Math.round(price),
+                                rooms_available: objData.rooms_available || 0
+                            };
 
                         } catch (e) {
                             return {
-                                busy: true,
+                                status: 'error',
+                                busy: null,
                                 price: 0,
                                 error: 'exception_' + e.message,
                                 error_body: e.stack ? e.stack.substring(0, 300) : ''
@@ -487,30 +520,52 @@ class ListingService:
         errors_details: list[dict[str, str | int]] = []
 
         for day_idx, day_result in enumerate(result):
-            if day_result.get("error"):
+            status = day_result.get("status", "error")
+
+            if status == "ok":
+                # Успешный ответ — определяем занятость по полю busy
+                if day_result.get("busy", False):
+                    calendar.append(1)
+                    # Для занятых дней тоже сохраняем цену (если есть) —
+                    # она показывает, сколько бы стоило, если бы было свободно
+                    prices.append(0)
+                else:
+                    calendar.append(0)
+                    price = day_result.get("price", 0)
+                    prices.append(int(price) if price else 0)
+
+            elif status == "obj_error":
+                # Объект вернул ошибку (вероятно min_nights) —
+                # это НЕ означает что день занят!
+                errors_details.append({
+                    "day": day_idx,
+                    "error": day_result.get("error", ""),
+                    "errors": str(day_result.get("errors", [])),
+                    "error_body": day_result.get("error_body", ""),
+                })
+                # Помечаем как ошибку — НЕ как занятый
+                calendar.append(-1)
+                prices.append(0)
+
+            else:
+                # Прочие ошибки (сеть, парсинг, HTTP)
                 errors_details.append({
                     "day": day_idx,
                     "error": day_result.get("error", ""),
                     "error_body": day_result.get("error_body", ""),
                 })
-
-            if day_result.get("busy", True):
-                calendar.append(1)
+                calendar.append(-1)
                 prices.append(0)
-            else:
-                calendar.append(0)
-                price = day_result.get("price", 0)
-                prices.append(int(price) if price else 0)
 
         # Статистика
         free_days = sum(1 for c in calendar if c == 0)
         busy_days = sum(1 for c in calendar if c == 1)
-        errors_count = len(errors_details)
+        error_days = sum(1 for c in calendar if c == -1)
 
         logger.debug(
             "api_результат",
             step=f"id={object_id}, ночей={nights}",
-            total=f"свободных={free_days}, занятых={busy_days}, ошибок={errors_count}",
+            total=f"свободных={free_days}, занятых={busy_days}, ошибок={error_days}",
         )
 
         return calendar, prices, errors_details
@@ -540,18 +595,20 @@ class ListingService:
         for error_info in sample_errors:
             error_body = str(error_info.get("error_body", "")).lower()
             error_code = str(error_info.get("error", "")).lower()
+            errors_list = str(error_info.get("errors", "")).lower()
+
+            # Объединяем все тексты для поиска
+            combined_text = f"{error_body} {error_code} {errors_list}"
 
             # Проверяем ключевые слова
             is_min_nights_error = any(
-                keyword in error_body or keyword in error_code
+                keyword in combined_text
                 for keyword in _MIN_NIGHTS_ERROR_KEYWORDS
             )
 
             if is_min_nights_error:
                 # Пытаемся извлечь число из текста
-                import re
-
-                numbers = re.findall(r"(\d+)", error_body)
+                numbers = re.findall(r"(\d+)", combined_text)
                 for num_str in numbers:
                     num = int(num_str)
                     if 2 <= num <= 30:
@@ -568,19 +625,58 @@ class ListingService:
                 )
                 return 2
 
-        # Если все 60 запросов вернули одинаковую ошибку 'obj_not_success' или
-        # 'api_success_false' — вероятно min_nights ограничение
-        unique_errors = set(str(e.get("error", "")) for e in errors_details)
-        if len(errors_details) == 60 and len(unique_errors) <= 2:
-            # Все ошибки одинаковые — предполагаем min_nights
-            first_body = str(errors_details[0].get("error_body", ""))
-            logger.info(
-                "все_60_дней_одинаковая_ошибка_предполагаем_min_nights",
-                step=f"ошибка={list(unique_errors)}, первый_ответ={first_body[:200]}",
-            )
-            return 2
+        # Если все запросы вернули одинаковую ошибку 'obj_not_success' —
+        # вероятно min_nights ограничение
+        error_count = len(errors_details)
+        if error_count >= 55:  # Почти все 60 дней ошибки
+            unique_errors = set(str(e.get("error", "")) for e in errors_details)
+            if len(unique_errors) <= 2:
+                first_body = str(errors_details[0].get("error_body", ""))
+                logger.info(
+                    "массовая_ошибка_предполагаем_min_nights",
+                    step=f"ошибок={error_count}/60, "
+                         f"типы={list(unique_errors)}, "
+                         f"пример={first_body[:200]}",
+                )
+                return 2
 
         return None
+
+    # ─────────────────────────────────────────────────────────────────────
+    # Нормализация календаря: замена -1 (ошибки) на корректные значения
+    # ─────────────────────────────────────────────────────────────────────
+
+    def _normalize_calendar(
+        self, calendar: list[int], prices: list[int]
+    ) -> tuple[list[int], list[int]]:
+        """Нормализует календарь: заменяет -1 (ошибки API) на 0 или 1.
+
+        Логика: если день помечен как -1 (ошибка min_nights) и при этом
+        соседние дни свободны (0) — вероятно день тоже свободен.
+        Если нет информации — помечаем как свободный (0), т.к. ошибка
+        min_nights не означает занятость.
+
+        Args:
+            calendar: Список из 0/1/-1 (свободен/занят/ошибка).
+            prices: Список цен (соответствует calendar).
+
+        Returns:
+            Кортеж (нормализованный_календарь, нормализованные_цены)
+            где все значения в календаре — 0 или 1.
+        """
+        normalized_cal: list[int] = []
+        normalized_prices: list[int] = list(prices)
+
+        for i, status in enumerate(calendar):
+            if status == -1:
+                # Ошибка min_nights — НЕ означает занятость.
+                # Помечаем как свободный (0), цена останется 0
+                # (будет уточнена при втором проходе с увеличенным nights)
+                normalized_cal.append(0)
+            else:
+                normalized_cal.append(status)
+
+        return normalized_cal, normalized_prices
 
     # ─────────────────────────────────────────────────────────────────────
     # Retry-логика с адаптацией min_nights и перезагрузкой
@@ -593,13 +689,12 @@ class ListingService:
 
         Алгоритм:
         1. Первый запрос с nights=1.
-        2. Если все 60 дней — ошибки:
-           a) Логирует тела ответов API для диагностики.
-           b) Пытается определить min_nights из ошибок.
-           c) Если min_nights найден — повторяет запрос с увеличенным периодом.
-           d) Если не помогло — перезагружает страницу, ждёт 15 секунд,
-              перехватывает новый токен и повторяет.
-        3. Максимум _MAX_API_RETRIES попыток с перезагрузкой.
+        2. Если много ошибок (дни с -1):
+           a) Анализирует тексты ошибок для определения min_nights.
+           b) Повторяет запрос с увеличенным периодом.
+           c) Из ответа берёт detail[0].cost как цену первого дня в окне.
+        3. Если адаптация не помогла — перезагружает страницу.
+        4. Нормализует итоговый календарь (заменяет -1 на 0/1).
 
         Args:
             page: Вкладка браузера.
@@ -608,7 +703,7 @@ class ListingService:
             url: URL карточки (для перезагрузки).
 
         Returns:
-            Кортеж (calendar_60_days, prices_60_days).
+            Кортеж (calendar_60_days, prices_60_days) — значения 0/1 и цены.
         """
         current_token = token
 
@@ -617,32 +712,31 @@ class ListingService:
             page, object_id, current_token, nights=1
         )
 
-        errors_count = len(errors_details)
+        error_days = sum(1 for c in calendar if c == -1)
         free_days = sum(1 for c in calendar if c == 0)
+        busy_days = sum(1 for c in calendar if c == 1)
 
-        # Если есть хотя бы 1 свободный день — результат валиден
-        if free_days > 0 or errors_count < 60:
+        # Если ошибок мало или нет — результат валиден
+        if error_days == 0:
             return calendar, prices
 
-        # ── Все 60 дней = ошибки. Логируем подробности. ──
-        logger.warning(
-            "все_60_дней_ошибка_начинаем_диагностику",
-            step=f"id={object_id}, ошибок={errors_count}",
-        )
-
-        # Логируем первые 3 тела ответов для диагностики
-        for i, err_info in enumerate(errors_details[:3]):
-            logger.debug(
-                "api_ошибка_подробности",
-                step=f"id={object_id}, день={err_info.get('day')}, "
-                     f"ошибка={err_info.get('error')}",
-                path=str(err_info.get("error_body", ""))[:300],
+        # Если есть и успешные ответы и ошибки — частично валидный результат
+        if free_days > 0 or busy_days > 0:
+            logger.info(
+                "частичный_результат_есть_ошибки",
+                step=f"id={object_id}, свободных={free_days}, "
+                     f"занятых={busy_days}, ошибок={error_days}",
             )
 
         # ── Попытка адаптации: определяем min_nights ──
         detected_min_nights = self._detect_min_nights(errors_details)
 
         if detected_min_nights is not None:
+            logger.info(
+                "обнаружен_min_nights_адаптация",
+                step=f"id={object_id}, min_nights={detected_min_nights}",
+            )
+
             # Пробуем варианты min_nights
             nights_to_try = [n for n in _MIN_NIGHTS_VARIANTS if n >= detected_min_nights]
             if detected_min_nights not in nights_to_try:
@@ -654,97 +748,96 @@ class ListingService:
                     step=f"id={object_id}, ночей={nights}",
                 )
 
-                calendar, prices, errors_details = await self._fetch_prices_via_api(
+                calendar_retry, prices_retry, errors_retry = await self._fetch_prices_via_api(
                     page, object_id, current_token, nights=nights
                 )
 
-                errors_count = len(errors_details)
-                free_days = sum(1 for c in calendar if c == 0)
+                error_days_retry = sum(1 for c in calendar_retry if c == -1)
+                free_days_retry = sum(1 for c in calendar_retry if c == 0)
 
-                if free_days > 0 or errors_count < 60:
+                if error_days_retry < error_days:
+                    # Улучшение — используем новый результат
+                    calendar = calendar_retry
+                    prices = prices_retry
+                    errors_details = errors_retry
+                    error_days = error_days_retry
+
                     logger.info(
-                        "адаптация_min_nights_успешна",
-                        step=f"id={object_id}, ночей={nights}, свободных={free_days}",
+                        "адаптация_min_nights_улучшение",
+                        step=f"id={object_id}, ночей={nights}, "
+                             f"ошибок={error_days_retry}, свободных={free_days_retry}",
+                    )
+
+                    if error_days_retry == 0:
+                        # Полностью решено
+                        return calendar, prices
+                else:
+                    logger.debug(
+                        "адаптация_не_улучшила",
+                        step=f"id={object_id}, ночей={nights}, "
+                             f"ошибок={error_days_retry}",
+                    )
+
+        # Если остались ошибки — нормализуем (заменяем -1 → 0)
+        if error_days > 0:
+            calendar, prices = self._normalize_calendar(calendar, prices)
+            logger.info(
+                "календарь_нормализован",
+                step=f"id={object_id}, ошибок_заменено={error_days}",
+            )
+
+        # Если после адаптации всё ещё нет данных — retry с перезагрузкой
+        free_after_norm = sum(1 for c in calendar if c == 0)
+        busy_after_norm = sum(1 for c in calendar if c == 1)
+
+        if free_after_norm == 0 and busy_after_norm == 0:
+            # Полный провал — пробуем перезагрузку
+            for retry_attempt in range(1, _MAX_API_RETRIES + 1):
+                logger.info(
+                    "перезагрузка_страницы_для_повтора",
+                    step=f"id={object_id}, попытка={retry_attempt}/{_MAX_API_RETRIES}",
+                )
+
+                await asyncio.sleep(_RELOAD_WAIT_SECONDS)
+
+                loaded, new_token = await self._goto_and_capture_token(page, url)
+
+                if not loaded or not new_token:
+                    logger.warning(
+                        "перезагрузка_не_удалась",
+                        step=f"id={object_id}, попытка={retry_attempt}",
+                    )
+                    continue
+
+                current_token = new_token
+                await self._browser.random_delay()
+
+                nights_for_retry = detected_min_nights if detected_min_nights else 1
+
+                calendar, prices, errors_details = await self._fetch_prices_via_api(
+                    page, object_id, current_token, nights=nights_for_retry
+                )
+
+                error_days = sum(1 for c in calendar if c == -1)
+
+                if error_days < 60:
+                    if error_days > 0:
+                        calendar, prices = self._normalize_calendar(calendar, prices)
+                    logger.info(
+                        "retry_после_перезагрузки_успешен",
+                        step=f"id={object_id}, попытка={retry_attempt}",
                     )
                     return calendar, prices
 
-                logger.debug(
-                    "адаптация_не_помогла",
-                    step=f"id={object_id}, ночей={nights}, ошибок={errors_count}",
-                )
-
-        # ── Retry с перезагрузкой страницы ──
-        for retry_attempt in range(1, _MAX_API_RETRIES + 1):
-            logger.info(
-                "перезагрузка_страницы_для_повтора",
-                step=f"id={object_id}, попытка={retry_attempt}/{_MAX_API_RETRIES}",
-            )
-
-            # Ждём перед перезагрузкой
-            logger.debug(
-                "ожидание_перед_перезагрузкой",
-                step=f"пауза={_RELOAD_WAIT_SECONDS}с",
-            )
-            await asyncio.sleep(_RELOAD_WAIT_SECONDS)
-
-            # Перезагружаем страницу и перехватываем новый токен
-            loaded, new_token = await self._goto_and_capture_token(page, url)
-
-            if not loaded:
-                logger.warning(
-                    "перезагрузка_не_удалась",
-                    step=f"id={object_id}, попытка={retry_attempt}",
-                )
-                continue
-
-            if not new_token:
-                logger.warning(
-                    "токен_не_получен_после_перезагрузки",
-                    step=f"id={object_id}, попытка={retry_attempt}",
-                )
-                continue
-
-            current_token = new_token
-            await self._browser.random_delay()
-
-            # Определяем с каким количеством ночей пробовать
-            nights_for_retry = detected_min_nights if detected_min_nights else 1
-
-            calendar, prices, errors_details = await self._fetch_prices_via_api(
-                page, object_id, current_token, nights=nights_for_retry
-            )
-
-            errors_count = len(errors_details)
-            free_days = sum(1 for c in calendar if c == 0)
-
-            if free_days > 0 or errors_count < 60:
-                logger.info(
-                    "retry_после_перезагрузки_успешен",
-                    step=f"id={object_id}, попытка={retry_attempt}, "
-                         f"свободных={free_days}",
-                )
-                return calendar, prices
-
-            logger.warning(
-                "retry_после_перезагрузки_не_помог",
-                step=f"id={object_id}, попытка={retry_attempt}, ошибок={errors_count}",
-            )
-
-            # Логируем ошибки после retry
-            for i, err_info in enumerate(errors_details[:2]):
-                logger.debug(
-                    "api_ошибка_после_retry",
-                    step=f"id={object_id}, день={err_info.get('day')}, "
-                         f"ошибка={err_info.get('error')}",
-                    path=str(err_info.get("error_body", ""))[:300],
-                )
-
         # ── Все попытки исчерпаны ──
+        if sum(1 for c in calendar if c == -1) > 0:
+            calendar, prices = self._normalize_calendar(calendar, prices)
+
         logger.warning(
-            "все_попытки_исчерпаны_данные_не_получены",
+            "получены_данные_с_возможными_неточностями",
             step=f"id={object_id}",
-            total=f"retry={_MAX_API_RETRIES}, min_nights_пробовали="
-                  f"{detected_min_nights or 'не_определён'}",
+            total=f"свободных={sum(1 for c in calendar if c == 0)}, "
+                  f"занятых={sum(1 for c in calendar if c == 1)}",
         )
 
         return calendar, prices
