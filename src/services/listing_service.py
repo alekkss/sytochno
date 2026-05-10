@@ -1,11 +1,10 @@
 """Сервис парсинга карточки объявления — извлечение календаря занятости и цен через API."""
 
 import asyncio
-import json
 import time
 from datetime import date, timedelta
 
-from playwright.async_api import Page, Response
+from playwright.async_api import Page
 
 from src.config.logger import get_logger
 from src.config.settings import Settings
@@ -46,11 +45,30 @@ _PAGE_READY_SELECTORS: list[str] = [
 # Таймаут ожидания готовности страницы (мс)
 _PAGE_READY_TIMEOUT_MS: int = 15000
 
-# Таймаут перехвата токена из сетевых запросов (секунды)
-_TOKEN_INTERCEPT_TIMEOUT: float = 10.0
-
 # Количество гостей по умолчанию (используется в API-запросе)
 _DEFAULT_GUESTS: int = 2
+
+# Максимальное количество retry при полном провале (все 60 дней — ошибки)
+_MAX_API_RETRIES: int = 2
+
+# Пауза перед повторной попыткой после перезагрузки страницы (секунды)
+_RELOAD_WAIT_SECONDS: float = 15.0
+
+# Варианты min_nights для адаптивного запроса (по возрастанию)
+_MIN_NIGHTS_VARIANTS: list[int] = [2, 3, 5, 7]
+
+# Ключевые слова в ответе API, указывающие на ограничение min_nights
+_MIN_NIGHTS_ERROR_KEYWORDS: list[str] = [
+    "min_nights",
+    "minimum_nights",
+    "минимальный срок",
+    "минимум",
+    "nights_min",
+    "min_duration",
+    "minimalnoe_kolichestvo",
+    "minimum_stay",
+    "min_stay",
+]
 
 
 def _format_duration(seconds: float) -> str:
@@ -108,10 +126,10 @@ class ListingService:
     вместо кликов по датепикеру. Это в 10-20 раз быстрее и надёжнее.
 
     Алгоритм:
-    1. Загружает страницу карточки в браузере.
-    2. Перехватывает сессионный токен из сетевых запросов.
-    3. Вызывает API getPricesAndAvailabilities через fetch() в контексте страницы.
-    4. Из ответа формирует calendar_60_days и prices_60_days.
+    1. Загружает страницу карточки, перехватывая токен из исходящих запросов сайта.
+    2. Вызывает API getPricesAndAvailabilities через fetch() в контексте страницы.
+    3. Из ответа формирует calendar_60_days и prices_60_days.
+    4. При ошибках (min_nights, rate-limit) адаптирует запрос и повторяет.
 
     Поддерживает три режима обработки:
     - Последовательный: одна вкладка, карточки по очереди.
@@ -130,16 +148,59 @@ class ListingService:
         self._browser = browser_service
 
     # ─────────────────────────────────────────────────────────────────────
-    # Загрузка страницы карточки с retry и перехватом токена
+    # Загрузка страницы с перехватом токена
     # ─────────────────────────────────────────────────────────────────────
+
+    async def _goto_and_capture_token(self, page: Page, url: str) -> tuple[bool, str | None]:
+        """Загружает страницу карточки и перехватывает токен API из исходящих запросов.
+
+        Подписывается на событие 'request' ДО загрузки страницы.
+        При загрузке карточки сайт автоматически отправляет запросы к
+        /api/json/ (getPricesAndAvailabilities, checkBookingAbility и т.д.)
+        с заголовком 'token'. Мы перехватываем этот заголовок.
+
+        Args:
+            page: Вкладка браузера.
+            url: URL карточки.
+
+        Returns:
+            Кортеж (страница_загружена, токен_или_None).
+        """
+        captured_token: list[str] = []
+
+        def on_request(request: "any") -> None:  # type: ignore[name-defined]
+            """Синхронный обработчик — перехватывает токен из заголовков."""
+            if captured_token:
+                return
+            req_url = request.url
+            if "sutochno.ru/api/json" in req_url:
+                token_header = request.headers.get("token")
+                if token_header:
+                    captured_token.append(token_header)
+
+        # Подписываемся ДО загрузки страницы
+        page.on("request", on_request)
+
+        try:
+            loaded = await self._goto_with_retry(page, url)
+        finally:
+            # Отписываемся после загрузки
+            page.remove_listener("request", on_request)
+
+        token = captured_token[0] if captured_token else None
+
+        if token:
+            logger.debug(
+                "токен_перехвачен",
+                step=f"длина={len(token)}, источник=request_header",
+            )
+        else:
+            logger.debug("токен_не_перехвачен_при_загрузке")
+
+        return loaded, token
 
     async def _goto_with_retry(self, page: Page, url: str) -> bool:
         """Загружает страницу карточки с повторными попытками при сетевых ошибках.
-
-        Стратегия:
-        1. goto с wait_until="domcontentloaded" (быстро).
-        2. Мягкое ожидание networkidle (не блокирует при таймауте).
-        3. Ожидание ключевых элементов карточки.
 
         Args:
             page: Вкладка браузера.
@@ -175,7 +236,6 @@ class ListingService:
                     logger.debug("страница_готова", step=f"попытка={attempt}")
                     return True
 
-                # Страница загрузилась частично — пробуем работать
                 logger.debug(
                     "элементы_не_найдены_но_продолжаем",
                     step=f"попытка={attempt}",
@@ -233,159 +293,20 @@ class ListingService:
                 continue
         return False
 
-    async def _intercept_token(self, page: Page) -> str | None:
-        """Извлекает сессионный токен API из контекста страницы.
-
-        Пробует несколько источников:
-        1. localStorage/sessionStorage
-        2. Cookie
-        3. Meta-тег или глобальная переменная
-        4. Перехват из уже выполненных XHR-запросов (через Performance API)
-
-        Args:
-            page: Вкладка браузера.
-
-        Returns:
-            Токен (строка) или None если не найден.
-        """
-        token = await page.evaluate("""
-            () => {
-                // 1. Пробуем localStorage
-                const keys = ['token', 'api_token', 'authToken', 'user_token'];
-                for (const key of keys) {
-                    const val = localStorage.getItem(key);
-                    if (val) return val;
-                }
-
-                // 2. Пробуем sessionStorage
-                for (const key of keys) {
-                    const val = sessionStorage.getItem(key);
-                    if (val) return val;
-                }
-
-                // 3. Пробуем cookie
-                const cookies = document.cookie.split(';');
-                for (const cookie of cookies) {
-                    const [name, value] = cookie.trim().split('=');
-                    if (name === 'token' || name === 'api_token') {
-                        return decodeURIComponent(value);
-                    }
-                }
-
-                // 4. Пробуем window.__NUXT__ или глобальные переменные
-                if (window.__NUXT__ && window.__NUXT__.config) {
-                    const config = window.__NUXT__.config;
-                    if (config.token) return config.token;
-                    if (config.public && config.public.token) return config.public.token;
-                }
-
-                // 5. Пробуем найти в DOM (meta-теги)
-                const meta = document.querySelector('meta[name="api-token"]');
-                if (meta) return meta.getAttribute('content');
-
-                return null;
-            }
-        """)
-
-        if token:
-            logger.debug("токен_найден_в_хранилище", step=f"длина={len(token)}")
-            return token
-
-        logger.debug("токен_не_найден_в_хранилище_пробуем_перехват")
-        return None
-
-    async def _intercept_token_from_requests(self, page: Page) -> str | None:
-        """Перехватывает токен, провоцируя сетевой запрос.
-
-        Выполняет лёгкий запрос к API (getCurrencies) и перехватывает
-        заголовок 'token' из исходящего запроса.
-
-        Args:
-            page: Вкладка браузера.
-
-        Returns:
-            Токен или None.
-        """
-        captured_token: list[str] = []
-
-        async def capture_request(request: "any") -> None:  # type: ignore[name-defined]
-            """Перехватывает токен из заголовков запроса."""
-            if "sutochno.ru/api/json" in request.url:
-                token_header = request.headers.get("token")
-                if token_header and not captured_token:
-                    captured_token.append(token_header)
-
-        page.on("request", capture_request)
-
-        try:
-            # Провоцируем запрос к API
-            await page.evaluate("""
-                () => {
-                    return fetch('/api/json/currencies/getList', {
-                        method: 'POST',
-                        headers: {
-                            'Content-Type': 'application/json',
-                            'Accept': 'application/json',
-                        },
-                        body: JSON.stringify({})
-                    }).then(r => r.status).catch(() => 0);
-                }
-            """)
-
-            # Ждём перехвата
-            for _ in range(20):
-                if captured_token:
-                    break
-                await asyncio.sleep(0.5)
-
-        finally:
-            page.remove_listener("request", capture_request)
-
-        if captured_token:
-            logger.debug("токен_перехвачен_из_запроса", step=f"длина={len(captured_token[0])}")
-            return captured_token[0]
-
-        logger.debug("токен_не_удалось_перехватить")
-        return None
-
-    async def _get_api_token(self, page: Page) -> str | None:
-        """Получает токен API любым доступным способом.
-
-        Комбинирует несколько стратегий извлечения токена.
-
-        Args:
-            page: Вкладка браузера.
-
-        Returns:
-            Токен или None.
-        """
-        # Способ 1: из хранилища/cookies
-        token = await self._intercept_token(page)
-        if token:
-            return token
-
-        # Способ 2: перехват из сетевого запроса
-        token = await self._intercept_token_from_requests(page)
-        if token:
-            return token
-
-        logger.warning("api_токен_не_найден")
-        return None
-
     # ─────────────────────────────────────────────────────────────────────
-    # Основной метод: получение календаря и цен через API
+    # Получение календаря и цен через API
     # ─────────────────────────────────────────────────────────────────────
 
     async def _fetch_prices_via_api(
-        self, page: Page, object_id: str, token: str
-    ) -> tuple[list[int], list[int]]:
+        self, page: Page, object_id: str, token: str, nights: int = 1
+    ) -> tuple[list[int], list[int], list[dict[str, str | int]]]:
         """Получает календарь занятости и цены через внутреннее API sutochno.ru.
 
         Выполняет пакетные fetch-запросы к getPricesAndAvailabilities
         прямо в контексте страницы (сохраняя cookies и сессию).
 
         Для каждого дня из 60 отправляет запрос с date_begin=день 14:00,
-        date_end=следующий_день 11:00 (одна ночь). Из ответа:
+        date_end=день+nights 11:00. Из ответа:
         - busy == "unbusy" → день свободен, цена = detail[0].cost
         - иначе → день занят, цена = 0
 
@@ -395,9 +316,13 @@ class ListingService:
             page: Вкладка браузера.
             object_id: ID объявления на sutochno.ru.
             token: Сессионный токен API.
+            nights: Количество ночей в запросе (по умолчанию 1, увеличивается
+                    при ограничении min_nights).
 
         Returns:
-            Кортеж (calendar_60_days, prices_60_days).
+            Кортеж (calendar_60_days, prices_60_days, errors_details).
+            errors_details — список словарей с подробностями об ошибках API
+            (для диагностики).
         """
         today = date.today()
         guests = self._settings.guests if hasattr(self._settings, "guests") else _DEFAULT_GUESTS
@@ -406,15 +331,15 @@ class ListingService:
         days_data = []
         for i in range(60):
             day = today + timedelta(days=i)
-            next_day = day + timedelta(days=1)
+            end_day = day + timedelta(days=nights)
             days_data.append({
                 "date_begin": f"{day.isoformat()} 14:00:00",
-                "date_end": f"{next_day.isoformat()} 11:00:00",
+                "date_end": f"{end_day.isoformat()} 11:00:00",
             })
 
         logger.debug(
             "запрос_цен_через_api",
-            step=f"id={object_id}, дней=60, пакет={_API_BATCH_SIZE}",
+            step=f"id={object_id}, дней=60, пакет={_API_BATCH_SIZE}, ночей={nights}",
         )
 
         # Выполняем пакетные запросы через page.evaluate
@@ -461,21 +386,56 @@ class ListingService:
                                 body: JSON.stringify(body)
                             });
 
+                            const responseText = await resp.text();
+
                             if (!resp.ok) {
-                                return {busy: true, price: 0, error: resp.status};
+                                return {
+                                    busy: true,
+                                    price: 0,
+                                    error: 'http_' + resp.status,
+                                    error_body: responseText.substring(0, 500)
+                                };
                             }
 
-                            const data = await resp.json();
+                            let data;
+                            try {
+                                data = JSON.parse(responseText);
+                            } catch (parseErr) {
+                                return {
+                                    busy: true,
+                                    price: 0,
+                                    error: 'json_parse_error',
+                                    error_body: responseText.substring(0, 500)
+                                };
+                            }
 
-                            if (!data.success || !data.data || !data.data.objects ||
-                                !data.data.objects[0]) {
-                                return {busy: true, price: 0, error: 'no_data'};
+                            if (!data.success) {
+                                return {
+                                    busy: true,
+                                    price: 0,
+                                    error: 'api_success_false',
+                                    error_body: responseText.substring(0, 500)
+                                };
+                            }
+
+                            if (!data.data || !data.data.objects || !data.data.objects[0]) {
+                                return {
+                                    busy: true,
+                                    price: 0,
+                                    error: 'no_data',
+                                    error_body: responseText.substring(0, 500)
+                                };
                             }
 
                             const obj = data.data.objects[0];
 
                             if (!obj.success) {
-                                return {busy: true, price: 0, error: 'obj_not_success'};
+                                return {
+                                    busy: true,
+                                    price: 0,
+                                    error: 'obj_not_success',
+                                    error_body: JSON.stringify(obj).substring(0, 500)
+                                };
                             }
 
                             const objData = obj.data;
@@ -489,7 +449,12 @@ class ListingService:
                             return {busy: isBusy, price: Math.round(price)};
 
                         } catch (e) {
-                            return {busy: true, price: 0, error: e.message};
+                            return {
+                                busy: true,
+                                price: 0,
+                                error: 'exception_' + e.message,
+                                error_body: e.stack ? e.stack.substring(0, 300) : ''
+                            };
                         }
                     });
 
@@ -519,8 +484,16 @@ class ListingService:
         # Парсим результаты
         calendar: list[int] = []
         prices: list[int] = []
+        errors_details: list[dict[str, str | int]] = []
 
-        for day_result in result:
+        for day_idx, day_result in enumerate(result):
+            if day_result.get("error"):
+                errors_details.append({
+                    "day": day_idx,
+                    "error": day_result.get("error", ""),
+                    "error_body": day_result.get("error_body", ""),
+                })
+
             if day_result.get("busy", True):
                 calendar.append(1)
                 prices.append(0)
@@ -532,12 +505,246 @@ class ListingService:
         # Статистика
         free_days = sum(1 for c in calendar if c == 0)
         busy_days = sum(1 for c in calendar if c == 1)
-        errors = sum(1 for r in result if r.get("error"))
+        errors_count = len(errors_details)
 
         logger.debug(
             "api_результат",
+            step=f"id={object_id}, ночей={nights}",
+            total=f"свободных={free_days}, занятых={busy_days}, ошибок={errors_count}",
+        )
+
+        return calendar, prices, errors_details
+
+    # ─────────────────────────────────────────────────────────────────────
+    # Определение min_nights из ошибок API
+    # ─────────────────────────────────────────────────────────────────────
+
+    def _detect_min_nights(self, errors_details: list[dict[str, str | int]]) -> int | None:
+        """Анализирует ошибки API и пытается определить минимальный срок бронирования.
+
+        Ищет в телах ответов ключевые слова, указывающие на ограничение min_nights.
+        Также пытается извлечь конкретное число из текста ошибки.
+
+        Args:
+            errors_details: Список словарей с подробностями об ошибках.
+
+        Returns:
+            Предполагаемое значение min_nights или None если не удалось определить.
+        """
+        if not errors_details:
+            return None
+
+        # Проверяем первые 3 ошибки (достаточно для определения паттерна)
+        sample_errors = errors_details[:3]
+
+        for error_info in sample_errors:
+            error_body = str(error_info.get("error_body", "")).lower()
+            error_code = str(error_info.get("error", "")).lower()
+
+            # Проверяем ключевые слова
+            is_min_nights_error = any(
+                keyword in error_body or keyword in error_code
+                for keyword in _MIN_NIGHTS_ERROR_KEYWORDS
+            )
+
+            if is_min_nights_error:
+                # Пытаемся извлечь число из текста
+                import re
+
+                numbers = re.findall(r"(\d+)", error_body)
+                for num_str in numbers:
+                    num = int(num_str)
+                    if 2 <= num <= 30:
+                        logger.info(
+                            "min_nights_обнаружен_в_ответе",
+                            step=f"min_nights={num}",
+                        )
+                        return num
+
+                # Ключевое слово найдено, но число не извлечено — пробуем 2
+                logger.info(
+                    "min_nights_предположительно",
+                    step="ключевое_слово_найдено, пробуем=2",
+                )
+                return 2
+
+        # Если все 60 запросов вернули одинаковую ошибку 'obj_not_success' или
+        # 'api_success_false' — вероятно min_nights ограничение
+        unique_errors = set(str(e.get("error", "")) for e in errors_details)
+        if len(errors_details) == 60 and len(unique_errors) <= 2:
+            # Все ошибки одинаковые — предполагаем min_nights
+            first_body = str(errors_details[0].get("error_body", ""))
+            logger.info(
+                "все_60_дней_одинаковая_ошибка_предполагаем_min_nights",
+                step=f"ошибка={list(unique_errors)}, первый_ответ={first_body[:200]}",
+            )
+            return 2
+
+        return None
+
+    # ─────────────────────────────────────────────────────────────────────
+    # Retry-логика с адаптацией min_nights и перезагрузкой
+    # ─────────────────────────────────────────────────────────────────────
+
+    async def _fetch_with_retry(
+        self, page: Page, object_id: str, token: str, url: str
+    ) -> tuple[list[int], list[int]]:
+        """Получает календарь и цены с retry-логикой и адаптацией min_nights.
+
+        Алгоритм:
+        1. Первый запрос с nights=1.
+        2. Если все 60 дней — ошибки:
+           a) Логирует тела ответов API для диагностики.
+           b) Пытается определить min_nights из ошибок.
+           c) Если min_nights найден — повторяет запрос с увеличенным периодом.
+           d) Если не помогло — перезагружает страницу, ждёт 15 секунд,
+              перехватывает новый токен и повторяет.
+        3. Максимум _MAX_API_RETRIES попыток с перезагрузкой.
+
+        Args:
+            page: Вкладка браузера.
+            object_id: ID объявления.
+            token: Сессионный токен API.
+            url: URL карточки (для перезагрузки).
+
+        Returns:
+            Кортеж (calendar_60_days, prices_60_days).
+        """
+        current_token = token
+
+        # ── Попытка 1: стандартный запрос (1 ночь) ──
+        calendar, prices, errors_details = await self._fetch_prices_via_api(
+            page, object_id, current_token, nights=1
+        )
+
+        errors_count = len(errors_details)
+        free_days = sum(1 for c in calendar if c == 0)
+
+        # Если есть хотя бы 1 свободный день — результат валиден
+        if free_days > 0 or errors_count < 60:
+            return calendar, prices
+
+        # ── Все 60 дней = ошибки. Логируем подробности. ──
+        logger.warning(
+            "все_60_дней_ошибка_начинаем_диагностику",
+            step=f"id={object_id}, ошибок={errors_count}",
+        )
+
+        # Логируем первые 3 тела ответов для диагностики
+        for i, err_info in enumerate(errors_details[:3]):
+            logger.debug(
+                "api_ошибка_подробности",
+                step=f"id={object_id}, день={err_info.get('day')}, "
+                     f"ошибка={err_info.get('error')}",
+                path=str(err_info.get("error_body", ""))[:300],
+            )
+
+        # ── Попытка адаптации: определяем min_nights ──
+        detected_min_nights = self._detect_min_nights(errors_details)
+
+        if detected_min_nights is not None:
+            # Пробуем варианты min_nights
+            nights_to_try = [n for n in _MIN_NIGHTS_VARIANTS if n >= detected_min_nights]
+            if detected_min_nights not in nights_to_try:
+                nights_to_try.insert(0, detected_min_nights)
+
+            for nights in nights_to_try:
+                logger.info(
+                    "повтор_с_увеличенным_периодом",
+                    step=f"id={object_id}, ночей={nights}",
+                )
+
+                calendar, prices, errors_details = await self._fetch_prices_via_api(
+                    page, object_id, current_token, nights=nights
+                )
+
+                errors_count = len(errors_details)
+                free_days = sum(1 for c in calendar if c == 0)
+
+                if free_days > 0 or errors_count < 60:
+                    logger.info(
+                        "адаптация_min_nights_успешна",
+                        step=f"id={object_id}, ночей={nights}, свободных={free_days}",
+                    )
+                    return calendar, prices
+
+                logger.debug(
+                    "адаптация_не_помогла",
+                    step=f"id={object_id}, ночей={nights}, ошибок={errors_count}",
+                )
+
+        # ── Retry с перезагрузкой страницы ──
+        for retry_attempt in range(1, _MAX_API_RETRIES + 1):
+            logger.info(
+                "перезагрузка_страницы_для_повтора",
+                step=f"id={object_id}, попытка={retry_attempt}/{_MAX_API_RETRIES}",
+            )
+
+            # Ждём перед перезагрузкой
+            logger.debug(
+                "ожидание_перед_перезагрузкой",
+                step=f"пауза={_RELOAD_WAIT_SECONDS}с",
+            )
+            await asyncio.sleep(_RELOAD_WAIT_SECONDS)
+
+            # Перезагружаем страницу и перехватываем новый токен
+            loaded, new_token = await self._goto_and_capture_token(page, url)
+
+            if not loaded:
+                logger.warning(
+                    "перезагрузка_не_удалась",
+                    step=f"id={object_id}, попытка={retry_attempt}",
+                )
+                continue
+
+            if not new_token:
+                logger.warning(
+                    "токен_не_получен_после_перезагрузки",
+                    step=f"id={object_id}, попытка={retry_attempt}",
+                )
+                continue
+
+            current_token = new_token
+            await self._browser.random_delay()
+
+            # Определяем с каким количеством ночей пробовать
+            nights_for_retry = detected_min_nights if detected_min_nights else 1
+
+            calendar, prices, errors_details = await self._fetch_prices_via_api(
+                page, object_id, current_token, nights=nights_for_retry
+            )
+
+            errors_count = len(errors_details)
+            free_days = sum(1 for c in calendar if c == 0)
+
+            if free_days > 0 or errors_count < 60:
+                logger.info(
+                    "retry_после_перезагрузки_успешен",
+                    step=f"id={object_id}, попытка={retry_attempt}, "
+                         f"свободных={free_days}",
+                )
+                return calendar, prices
+
+            logger.warning(
+                "retry_после_перезагрузки_не_помог",
+                step=f"id={object_id}, попытка={retry_attempt}, ошибок={errors_count}",
+            )
+
+            # Логируем ошибки после retry
+            for i, err_info in enumerate(errors_details[:2]):
+                logger.debug(
+                    "api_ошибка_после_retry",
+                    step=f"id={object_id}, день={err_info.get('day')}, "
+                         f"ошибка={err_info.get('error')}",
+                    path=str(err_info.get("error_body", ""))[:300],
+                )
+
+        # ── Все попытки исчерпаны ──
+        logger.warning(
+            "все_попытки_исчерпаны_данные_не_получены",
             step=f"id={object_id}",
-            total=f"свободных={free_days}, занятых={busy_days}, ошибок={errors}",
+            total=f"retry={_MAX_API_RETRIES}, min_nights_пробовали="
+                  f"{detected_min_nights or 'не_определён'}",
         )
 
         return calendar, prices
@@ -549,11 +756,10 @@ class ListingService:
     async def enrich_listing(self, listing: RawListing, page: Page | None = None) -> RawListing:
         """Обогащает объявление данными календаря занятости и ценами.
 
-        Новый алгоритм:
-        1. Загружает страницу карточки.
-        2. Извлекает сессионный токен API.
-        3. Вызывает API для получения цен и занятости на 60 дней.
-        4. Заполняет calendar_60_days и prices_60_days.
+        Алгоритм:
+        1. Загружает страницу карточки, перехватывая токен из запросов сайта.
+        2. Вызывает API с retry-логикой для получения цен и занятости на 60 дней.
+        3. Заполняет calendar_60_days и prices_60_days.
 
         Args:
             listing: Объявление с базовыми данными из каталога.
@@ -572,8 +778,9 @@ class ListingService:
         )
 
         try:
-            # Шаг 1: Загружаем страницу
-            loaded = await self._goto_with_retry(active_page, listing.url)
+            # Шаг 1: Загружаем страницу и перехватываем токен
+            loaded, token = await self._goto_and_capture_token(active_page, listing.url)
+
             if not loaded:
                 logger.warning(
                     "страница_не_загрузилась",
@@ -581,10 +788,6 @@ class ListingService:
                 )
                 return listing
 
-            await self._browser.random_delay()
-
-            # Шаг 2: Получаем токен API
-            token = await self._get_api_token(active_page)
             if not token:
                 logger.warning(
                     "токен_не_получен_пропуск_карточки",
@@ -592,9 +795,11 @@ class ListingService:
                 )
                 return listing
 
-            # Шаг 3: Вызываем API для получения календаря и цен
-            calendar, prices = await self._fetch_prices_via_api(
-                active_page, listing.external_id, token
+            await self._browser.random_delay()
+
+            # Шаг 2: Вызываем API с retry-логикой
+            calendar, prices = await self._fetch_with_retry(
+                active_page, listing.external_id, token, listing.url
             )
 
             listing.calendar_60_days = calendar
@@ -679,36 +884,38 @@ class ListingService:
                 try:
                     async with navigation_lock:
                         await asyncio.sleep(tab_delay_ms / 1000.0)
-                        loaded = await self._goto_with_retry(page, listing.url)
+
+                        # Загружаем страницу и перехватываем токен
+                        loaded, token = await self._goto_and_capture_token(
+                            page, listing.url
+                        )
 
                     if not loaded:
                         logger.warning(
                             "страница_не_загрузилась_вкладка",
                             step=f"id={listing.external_id}",
                         )
+                    elif not token:
+                        logger.warning(
+                            "токен_не_получен_вкладка",
+                            step=f"id={listing.external_id}",
+                        )
                     else:
                         await self._browser.random_delay()
 
                         try:
-                            # Получаем токен
-                            token = await self._get_api_token(page)
-                            if token:
-                                calendar, prices = await self._fetch_prices_via_api(
-                                    page, listing.external_id, token
-                                )
-                                listing.calendar_60_days = calendar
-                                listing.prices_60_days = prices
+                            # Используем retry-логику вместо прямого вызова API
+                            calendar, prices = await self._fetch_with_retry(
+                                page, listing.external_id, token, listing.url
+                            )
+                            listing.calendar_60_days = calendar
+                            listing.prices_60_days = prices
 
-                                logger.info(
-                                    "карточка_обработана_вкладкой",
-                                    step=f"id={listing.external_id}",
-                                    total=f"свободных={sum(1 for c in calendar if c == 0)}",
-                                )
-                            else:
-                                logger.warning(
-                                    "токен_не_получен_вкладка",
-                                    step=f"id={listing.external_id}",
-                                )
+                            logger.info(
+                                "карточка_обработана_вкладкой",
+                                step=f"id={listing.external_id}",
+                                total=f"свободных={sum(1 for c in calendar if c == 0)}",
+                            )
 
                         except Exception as e:
                             logger.warning(
