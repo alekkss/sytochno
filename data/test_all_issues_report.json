@@ -1,0 +1,2244 @@
+{
+  "meta": {
+    "listing_id": 1629188,
+    "timestamp": "2026-05-11T22:57:35.177432",
+    "days_checked": 15
+  },
+  "tests": {
+    "1_page_load": {
+      "domcontentloaded_sec": 5.12,
+      "networkidle_sec": 2.12,
+      "token_captured": true,
+      "token_capture_time": "22:57:23.472",
+      "api_requests_during_load": 7,
+      "api_requests_details": [
+        {
+          "url": "https://sutochno.ru/api/json/locations/getLocationByIdAndType",
+          "token": "Hy6U3z61fflbgT2yJ/Vd...",
+          "time": "22:57:23.472"
+        },
+        {
+          "url": "https://sutochno.ru/api/json/locations/getLocationsCntObjects",
+          "token": "Hy6U3z61fflbgT2yJ/Vd...",
+          "time": "22:57:23.821"
+        },
+        {
+          "url": "https://sutochno.ru/api/json/locations/getDistanceSights",
+          "token": "Hy6U3z61fflbgT2yJ/Vd...",
+          "time": "22:57:24.059"
+        },
+        {
+          "url": "https://sutochno.ru/api/json/currencies/getRates",
+          "token": "Hy6U3z61fflbgT2yJ/Vd...",
+          "time": "22:57:24.059"
+        },
+        {
+          "url": "https://sutochno.ru/api/json/currencies/getList",
+          "token": "Hy6U3z61fflbgT2yJ/Vd...",
+          "time": "22:57:24.059"
+        },
+        {
+          "url": "https://sutochno.ru/api/json/currencies/getList",
+          "token": "Hy6U3z61fflbgT2yJ/Vd...",
+          "time": "22:57:24.060"
+        },
+        {
+          "url": "https://sutochno.ru/api/json/users/initSessionDomain/",
+          "token": "Hy6U3z61fflbgT2yJ/Vd...",
+          "time": "22:57:24.060"
+        }
+      ]
+    },
+    "2_nights_1": {
+      "elapsed_sec": 2.58,
+      "stats": {
+        "ok": 1,
+        "obj_error": 14,
+        "busy": 0,
+        "unbusy": 1,
+        "other_error": 0
+      },
+      "unique_errors": [
+        "Минимальное количество суток - 2."
+      ],
+      "results": [
+        {
+          "date_begin": "2026-05-12 14:00:00",
+          "status": "obj_error",
+          "elapsed_ms": 303,
+          "errors": [
+            "Минимальное количество суток - 2."
+          ],
+          "obj_data": {
+            "detail": [],
+            "payment": 0,
+            "using_bonuses": 0,
+            "real_balance": 0,
+            "real_balance_remain": 0
+          }
+        },
+        {
+          "date_begin": "2026-05-13 14:00:00",
+          "status": "ok",
+          "elapsed_ms": 502,
+          "busy": "unbusy",
+          "price": 2778,
+          "detail": [
+            {
+              "date_begin": "2026-05-13 00:00:00",
+              "date_end": "2026-05-13 23:59:59",
+              "cost_old": null,
+              "base": 0,
+              "nights": 1,
+              "type": "season_price",
+              "cost": 2778,
+              "guests": null
+            }
+          ],
+          "rooms_available": 5,
+          "is_booking_now": true
+        },
+        {
+          "date_begin": "2026-05-14 14:00:00",
+          "status": "obj_error",
+          "elapsed_ms": 342,
+          "errors": [
+            "Минимальное количество суток - 2."
+          ],
+          "obj_data": {
+            "detail": [],
+            "payment": 0,
+            "using_bonuses": 0,
+            "real_balance": 0,
+            "real_balance_remain": 0
+          }
+        },
+        {
+          "date_begin": "2026-05-15 14:00:00",
+          "status": "obj_error",
+          "elapsed_ms": 342,
+          "errors": [
+            "Минимальное количество суток - 2."
+          ],
+          "obj_data": {
+            "detail": [],
+            "payment": 0,
+            "using_bonuses": 0,
+            "real_balance": 0,
+            "real_balance_remain": 0
+          }
+        },
+        {
+          "date_begin": "2026-05-16 14:00:00",
+          "status": "obj_error",
+          "elapsed_ms": 321,
+          "errors": [
+            "Минимальное количество суток - 2."
+          ],
+          "obj_data": {
+            "detail": [],
+            "payment": 0,
+            "using_bonuses": 0,
+            "real_balance": 0,
+            "real_balance_remain": 0
+          }
+        },
+        {
+          "date_begin": "2026-05-17 14:00:00",
+          "status": "obj_error",
+          "elapsed_ms": 320,
+          "errors": [
+            "Минимальное количество суток - 2."
+          ],
+          "obj_data": {
+            "detail": [],
+            "payment": 0,
+            "using_bonuses": 0,
+            "real_balance": 0,
+            "real_balance_remain": 0
+          }
+        },
+        {
+          "date_begin": "2026-05-18 14:00:00",
+          "status": "obj_error",
+          "elapsed_ms": 322,
+          "errors": [
+            "Минимальное количество суток - 2."
+          ],
+          "obj_data": {
+            "detail": [],
+            "payment": 0,
+            "using_bonuses": 0,
+            "real_balance": 0,
+            "real_balance_remain": 0
+          }
+        },
+        {
+          "date_begin": "2026-05-19 14:00:00",
+          "status": "obj_error",
+          "elapsed_ms": 320,
+          "errors": [
+            "Минимальное количество суток - 2."
+          ],
+          "obj_data": {
+            "detail": [],
+            "payment": 0,
+            "using_bonuses": 0,
+            "real_balance": 0,
+            "real_balance_remain": 0
+          }
+        },
+        {
+          "date_begin": "2026-05-20 14:00:00",
+          "status": "obj_error",
+          "elapsed_ms": 320,
+          "errors": [
+            "Минимальное количество суток - 2."
+          ],
+          "obj_data": {
+            "detail": [],
+            "payment": 0,
+            "using_bonuses": 0,
+            "real_balance": 0,
+            "real_balance_remain": 0
+          }
+        },
+        {
+          "date_begin": "2026-05-21 14:00:00",
+          "status": "obj_error",
+          "elapsed_ms": 319,
+          "errors": [
+            "Минимальное количество суток - 2."
+          ],
+          "obj_data": {
+            "detail": [],
+            "payment": 0,
+            "using_bonuses": 0,
+            "real_balance": 0,
+            "real_balance_remain": 0
+          }
+        },
+        {
+          "date_begin": "2026-05-22 14:00:00",
+          "status": "obj_error",
+          "elapsed_ms": 314,
+          "errors": [
+            "Минимальное количество суток - 2."
+          ],
+          "obj_data": {
+            "detail": [],
+            "payment": 0,
+            "using_bonuses": 0,
+            "real_balance": 0,
+            "real_balance_remain": 0
+          }
+        },
+        {
+          "date_begin": "2026-05-23 14:00:00",
+          "status": "obj_error",
+          "elapsed_ms": 334,
+          "errors": [
+            "Минимальное количество суток - 2."
+          ],
+          "obj_data": {
+            "detail": [],
+            "payment": 0,
+            "using_bonuses": 0,
+            "real_balance": 0,
+            "real_balance_remain": 0
+          }
+        },
+        {
+          "date_begin": "2026-05-24 14:00:00",
+          "status": "obj_error",
+          "elapsed_ms": 313,
+          "errors": [
+            "Минимальное количество суток - 2."
+          ],
+          "obj_data": {
+            "detail": [],
+            "payment": 0,
+            "using_bonuses": 0,
+            "real_balance": 0,
+            "real_balance_remain": 0
+          }
+        },
+        {
+          "date_begin": "2026-05-25 14:00:00",
+          "status": "obj_error",
+          "elapsed_ms": 352,
+          "errors": [
+            "Минимальное количество суток - 2."
+          ],
+          "obj_data": {
+            "detail": [],
+            "payment": 0,
+            "using_bonuses": 0,
+            "real_balance": 0,
+            "real_balance_remain": 0
+          }
+        },
+        {
+          "date_begin": "2026-05-26 14:00:00",
+          "status": "obj_error",
+          "elapsed_ms": 332,
+          "errors": [
+            "Минимальное количество суток - 2."
+          ],
+          "obj_data": {
+            "detail": [],
+            "payment": 0,
+            "using_bonuses": 0,
+            "real_balance": 0,
+            "real_balance_remain": 0
+          }
+        }
+      ]
+    },
+    "3_nights_2": {
+      "elapsed_sec": 3.05,
+      "stats": {
+        "ok": 15,
+        "obj_error": 0,
+        "busy": 0,
+        "unbusy": 15,
+        "other_error": 0
+      },
+      "unique_errors": [],
+      "results": [
+        {
+          "date_begin": "2026-05-12 14:00:00",
+          "status": "ok",
+          "elapsed_ms": 808,
+          "busy": "unbusy",
+          "price": 5556,
+          "detail": [
+            {
+              "date_begin": "2026-05-12 00:00:00",
+              "date_end": "2026-05-12 23:59:59",
+              "cost_old": null,
+              "base": 0,
+              "nights": 1,
+              "type": "season_price",
+              "cost": 2778,
+              "guests": null
+            },
+            {
+              "date_begin": "2026-05-13 00:00:00",
+              "date_end": "2026-05-13 23:59:59",
+              "cost_old": null,
+              "base": 0,
+              "nights": 1,
+              "type": "season_price",
+              "cost": 2778,
+              "guests": null
+            }
+          ],
+          "rooms_available": 1,
+          "is_booking_now": true
+        },
+        {
+          "date_begin": "2026-05-13 14:00:00",
+          "status": "ok",
+          "elapsed_ms": 768,
+          "busy": "unbusy",
+          "price": 5770,
+          "detail": [
+            {
+              "date_begin": "2026-05-13 00:00:00",
+              "date_end": "2026-05-13 23:59:59",
+              "cost_old": null,
+              "base": 0,
+              "nights": 1,
+              "type": "season_price",
+              "cost": 2778,
+              "guests": null
+            },
+            {
+              "date_begin": "2026-05-14 00:00:00",
+              "date_end": "2026-05-14 23:59:59",
+              "cost_old": null,
+              "base": 0,
+              "nights": 1,
+              "type": "season_price",
+              "cost": 2992,
+              "guests": null
+            }
+          ],
+          "rooms_available": 3,
+          "is_booking_now": true
+        },
+        {
+          "date_begin": "2026-05-14 14:00:00",
+          "status": "ok",
+          "elapsed_ms": 880,
+          "busy": "unbusy",
+          "price": 6198,
+          "detail": [
+            {
+              "date_begin": "2026-05-14 00:00:00",
+              "date_end": "2026-05-14 23:59:59",
+              "cost_old": null,
+              "base": 0,
+              "nights": 1,
+              "type": "season_price",
+              "cost": 2992,
+              "guests": null
+            },
+            {
+              "date_begin": "2026-05-15 00:00:00",
+              "date_end": "2026-05-15 23:59:59",
+              "cost_old": null,
+              "base": 0,
+              "nights": 1,
+              "type": "season_price",
+              "cost": 3206,
+              "guests": null
+            }
+          ],
+          "rooms_available": 3,
+          "is_booking_now": true
+        },
+        {
+          "date_begin": "2026-05-15 14:00:00",
+          "status": "ok",
+          "elapsed_ms": 878,
+          "busy": "unbusy",
+          "price": 6519,
+          "detail": [
+            {
+              "date_begin": "2026-05-15 00:00:00",
+              "date_end": "2026-05-15 23:59:59",
+              "cost_old": null,
+              "base": 0,
+              "nights": 1,
+              "type": "season_price",
+              "cost": 3206,
+              "guests": null
+            },
+            {
+              "date_begin": "2026-05-16 00:00:00",
+              "date_end": "2026-05-16 23:59:59",
+              "cost_old": null,
+              "base": 0,
+              "nights": 1,
+              "type": "season_price",
+              "cost": 3313,
+              "guests": null
+            }
+          ],
+          "rooms_available": 4,
+          "is_booking_now": true
+        },
+        {
+          "date_begin": "2026-05-16 14:00:00",
+          "status": "ok",
+          "elapsed_ms": 879,
+          "busy": "unbusy",
+          "price": 6412,
+          "detail": [
+            {
+              "date_begin": "2026-05-16 00:00:00",
+              "date_end": "2026-05-16 23:59:59",
+              "cost_old": null,
+              "base": 0,
+              "nights": 1,
+              "type": "season_price",
+              "cost": 3313,
+              "guests": null
+            },
+            {
+              "date_begin": "2026-05-17 00:00:00",
+              "date_end": "2026-05-17 23:59:59",
+              "cost_old": null,
+              "base": 0,
+              "nights": 1,
+              "type": "season_price",
+              "cost": 3099,
+              "guests": null
+            }
+          ],
+          "rooms_available": 8,
+          "is_booking_now": true
+        },
+        {
+          "date_begin": "2026-05-17 14:00:00",
+          "status": "ok",
+          "elapsed_ms": 555,
+          "busy": "unbusy",
+          "price": 6198,
+          "detail": [
+            {
+              "date_begin": "2026-05-17 00:00:00",
+              "date_end": "2026-05-17 23:59:59",
+              "cost_old": null,
+              "base": 0,
+              "nights": 1,
+              "type": "season_price",
+              "cost": 3099,
+              "guests": null
+            },
+            {
+              "date_begin": "2026-05-18 00:00:00",
+              "date_end": "2026-05-18 23:59:59",
+              "cost_old": null,
+              "base": 0,
+              "nights": 1,
+              "type": "season_price",
+              "cost": 3099,
+              "guests": null
+            }
+          ],
+          "rooms_available": 8,
+          "is_booking_now": true
+        },
+        {
+          "date_begin": "2026-05-18 14:00:00",
+          "status": "ok",
+          "elapsed_ms": 554,
+          "busy": "unbusy",
+          "price": 6560,
+          "detail": [
+            {
+              "date_begin": "2026-05-18 00:00:00",
+              "date_end": "2026-05-18 23:59:59",
+              "cost_old": null,
+              "base": 0,
+              "nights": 1,
+              "type": "season_price",
+              "cost": 3099,
+              "guests": null
+            },
+            {
+              "date_begin": "2026-05-19 00:00:00",
+              "date_end": "2026-05-21 23:59:59",
+              "cost_old": null,
+              "base": 0,
+              "nights": 1,
+              "type": "season_price",
+              "cost": 3461,
+              "guests": null
+            }
+          ],
+          "rooms_available": 8,
+          "is_booking_now": true
+        },
+        {
+          "date_begin": "2026-05-19 14:00:00",
+          "status": "ok",
+          "elapsed_ms": 573,
+          "busy": "unbusy",
+          "price": 6922,
+          "detail": [
+            {
+              "date_begin": "2026-05-19 00:00:00",
+              "date_end": "2026-05-21 23:59:59",
+              "cost_old": null,
+              "base": 0,
+              "nights": 2,
+              "type": "season_price",
+              "cost": 3461,
+              "guests": null
+            }
+          ],
+          "rooms_available": 9,
+          "is_booking_now": true
+        },
+        {
+          "date_begin": "2026-05-20 14:00:00",
+          "status": "ok",
+          "elapsed_ms": 572,
+          "busy": "unbusy",
+          "price": 6922,
+          "detail": [
+            {
+              "date_begin": "2026-05-19 00:00:00",
+              "date_end": "2026-05-21 23:59:59",
+              "cost_old": null,
+              "base": 0,
+              "nights": 2,
+              "type": "season_price",
+              "cost": 3461,
+              "guests": null
+            }
+          ],
+          "rooms_available": 8,
+          "is_booking_now": true
+        },
+        {
+          "date_begin": "2026-05-21 14:00:00",
+          "status": "ok",
+          "elapsed_ms": 552,
+          "busy": "unbusy",
+          "price": 7029,
+          "detail": [
+            {
+              "date_begin": "2026-05-19 00:00:00",
+              "date_end": "2026-05-21 23:59:59",
+              "cost_old": null,
+              "base": 0,
+              "nights": 1,
+              "type": "season_price",
+              "cost": 3461,
+              "guests": null
+            },
+            {
+              "date_begin": "2026-05-22 00:00:00",
+              "date_end": "2026-05-22 23:59:59",
+              "cost_old": null,
+              "base": 0,
+              "nights": 1,
+              "type": "season_price",
+              "cost": 3568,
+              "guests": null
+            }
+          ],
+          "rooms_available": 7,
+          "is_booking_now": true
+        },
+        {
+          "date_begin": "2026-05-22 14:00:00",
+          "status": "ok",
+          "elapsed_ms": 566,
+          "busy": "unbusy",
+          "price": 7243,
+          "detail": [
+            {
+              "date_begin": "2026-05-22 00:00:00",
+              "date_end": "2026-05-22 23:59:59",
+              "cost_old": null,
+              "base": 0,
+              "nights": 1,
+              "type": "season_price",
+              "cost": 3568,
+              "guests": null
+            },
+            {
+              "date_begin": "2026-05-23 00:00:00",
+              "date_end": "2026-05-23 23:59:59",
+              "cost_old": null,
+              "base": 0,
+              "nights": 1,
+              "type": "season_price",
+              "cost": 3675,
+              "guests": null
+            }
+          ],
+          "rooms_available": 7,
+          "is_booking_now": true
+        },
+        {
+          "date_begin": "2026-05-23 14:00:00",
+          "status": "ok",
+          "elapsed_ms": 544,
+          "busy": "unbusy",
+          "price": 7243,
+          "detail": [
+            {
+              "date_begin": "2026-05-23 00:00:00",
+              "date_end": "2026-05-23 23:59:59",
+              "cost_old": null,
+              "base": 0,
+              "nights": 1,
+              "type": "season_price",
+              "cost": 3675,
+              "guests": null
+            },
+            {
+              "date_begin": "2026-05-24 00:00:00",
+              "date_end": "2026-05-28 23:59:59",
+              "cost_old": null,
+              "base": 0,
+              "nights": 1,
+              "type": "season_price",
+              "cost": 3568,
+              "guests": null
+            }
+          ],
+          "rooms_available": 10,
+          "is_booking_now": true
+        },
+        {
+          "date_begin": "2026-05-24 14:00:00",
+          "status": "ok",
+          "elapsed_ms": 564,
+          "busy": "unbusy",
+          "price": 7136,
+          "detail": [
+            {
+              "date_begin": "2026-05-24 00:00:00",
+              "date_end": "2026-05-28 23:59:59",
+              "cost_old": null,
+              "base": 0,
+              "nights": 2,
+              "type": "season_price",
+              "cost": 3568,
+              "guests": null
+            }
+          ],
+          "rooms_available": 11,
+          "is_booking_now": true
+        },
+        {
+          "date_begin": "2026-05-25 14:00:00",
+          "status": "ok",
+          "elapsed_ms": 544,
+          "busy": "unbusy",
+          "price": 7136,
+          "detail": [
+            {
+              "date_begin": "2026-05-24 00:00:00",
+              "date_end": "2026-05-28 23:59:59",
+              "cost_old": null,
+              "base": 0,
+              "nights": 2,
+              "type": "season_price",
+              "cost": 3568,
+              "guests": null
+            }
+          ],
+          "rooms_available": 9,
+          "is_booking_now": true
+        },
+        {
+          "date_begin": "2026-05-26 14:00:00",
+          "status": "ok",
+          "elapsed_ms": 543,
+          "busy": "unbusy",
+          "price": 7136,
+          "detail": [
+            {
+              "date_begin": "2026-05-24 00:00:00",
+              "date_end": "2026-05-28 23:59:59",
+              "cost_old": null,
+              "base": 0,
+              "nights": 2,
+              "type": "season_price",
+              "cost": 3568,
+              "guests": null
+            }
+          ],
+          "rooms_available": 9,
+          "is_booking_now": true
+        }
+      ]
+    },
+    "4_nights_3": {
+      "elapsed_sec": 3.25,
+      "stats": {
+        "ok": 15,
+        "obj_error": 0,
+        "busy": 0,
+        "unbusy": 15,
+        "other_error": 0
+      },
+      "unique_errors": [],
+      "results": [
+        {
+          "date_begin": "2026-05-12 14:00:00",
+          "status": "ok",
+          "elapsed_ms": 770,
+          "busy": "unbusy",
+          "price": 7693.2,
+          "detail": [
+            {
+              "date_begin": "2026-05-12 00:00:00",
+              "date_end": "2026-05-12 23:59:59",
+              "cost_old": null,
+              "base": 0,
+              "nights": 1,
+              "type": "season_price",
+              "cost": 2778,
+              "guests": null
+            },
+            {
+              "date_begin": "2026-05-13 00:00:00",
+              "date_end": "2026-05-13 23:59:59",
+              "cost_old": null,
+              "base": 0,
+              "nights": 1,
+              "type": "season_price",
+              "cost": 2778,
+              "guests": null
+            },
+            {
+              "date_begin": "2026-05-14 00:00:00",
+              "date_end": "2026-05-14 23:59:59",
+              "cost_old": null,
+              "base": 0,
+              "nights": 1,
+              "type": "season_price",
+              "cost": 2992,
+              "guests": null
+            },
+            {
+              "cost_old": null,
+              "base": 2778,
+              "nights": 2,
+              "type": "interval",
+              "cost": 277.8,
+              "guests": null,
+              "days": 3,
+              "date_begin": null,
+              "date_end": null
+            },
+            {
+              "cost_old": null,
+              "base": 2992,
+              "nights": 1,
+              "type": "interval",
+              "cost": 299.2,
+              "guests": null,
+              "days": 3,
+              "date_begin": null,
+              "date_end": null
+            }
+          ],
+          "rooms_available": 1,
+          "is_booking_now": true
+        },
+        {
+          "date_begin": "2026-05-13 14:00:00",
+          "status": "ok",
+          "elapsed_ms": 800,
+          "busy": "unbusy",
+          "price": 8078.4,
+          "detail": [
+            {
+              "date_begin": "2026-05-13 00:00:00",
+              "date_end": "2026-05-13 23:59:59",
+              "cost_old": null,
+              "base": 0,
+              "nights": 1,
+              "type": "season_price",
+              "cost": 2778,
+              "guests": null
+            },
+            {
+              "date_begin": "2026-05-14 00:00:00",
+              "date_end": "2026-05-14 23:59:59",
+              "cost_old": null,
+              "base": 0,
+              "nights": 1,
+              "type": "season_price",
+              "cost": 2992,
+              "guests": null
+            },
+            {
+              "date_begin": "2026-05-15 00:00:00",
+              "date_end": "2026-05-15 23:59:59",
+              "cost_old": null,
+              "base": 0,
+              "nights": 1,
+              "type": "season_price",
+              "cost": 3206,
+              "guests": null
+            },
+            {
+              "cost_old": null,
+              "base": 2778,
+              "nights": 1,
+              "type": "interval",
+              "cost": 277.8,
+              "guests": null,
+              "days": 3,
+              "date_begin": null,
+              "date_end": null
+            },
+            {
+              "cost_old": null,
+              "base": 2992,
+              "nights": 1,
+              "type": "interval",
+              "cost": 299.2,
+              "guests": null,
+              "days": 3,
+              "date_begin": null,
+              "date_end": null
+            },
+            {
+              "cost_old": null,
+              "base": 3206,
+              "nights": 1,
+              "type": "interval",
+              "cost": 320.6,
+              "guests": null,
+              "days": 3,
+              "date_begin": null,
+              "date_end": null
+            }
+          ],
+          "rooms_available": 3,
+          "is_booking_now": true
+        },
+        {
+          "date_begin": "2026-05-14 14:00:00",
+          "status": "ok",
+          "elapsed_ms": 799,
+          "busy": "unbusy",
+          "price": 8559.9,
+          "detail": [
+            {
+              "date_begin": "2026-05-14 00:00:00",
+              "date_end": "2026-05-14 23:59:59",
+              "cost_old": null,
+              "base": 0,
+              "nights": 1,
+              "type": "season_price",
+              "cost": 2992,
+              "guests": null
+            },
+            {
+              "date_begin": "2026-05-15 00:00:00",
+              "date_end": "2026-05-15 23:59:59",
+              "cost_old": null,
+              "base": 0,
+              "nights": 1,
+              "type": "season_price",
+              "cost": 3206,
+              "guests": null
+            },
+            {
+              "date_begin": "2026-05-16 00:00:00",
+              "date_end": "2026-05-16 23:59:59",
+              "cost_old": null,
+              "base": 0,
+              "nights": 1,
+              "type": "season_price",
+              "cost": 3313,
+              "guests": null
+            },
+            {
+              "cost_old": null,
+              "base": 2992,
+              "nights": 1,
+              "type": "interval",
+              "cost": 299.2,
+              "guests": null,
+              "days": 3,
+              "date_begin": null,
+              "date_end": null
+            },
+            {
+              "cost_old": null,
+              "base": 3206,
+              "nights": 1,
+              "type": "interval",
+              "cost": 320.6,
+              "guests": null,
+              "days": 3,
+              "date_begin": null,
+              "date_end": null
+            },
+            {
+              "cost_old": null,
+              "base": 3313,
+              "nights": 1,
+              "type": "interval",
+              "cost": 331.3,
+              "guests": null,
+              "days": 3,
+              "date_begin": null,
+              "date_end": null
+            }
+          ],
+          "rooms_available": 3,
+          "is_booking_now": true
+        },
+        {
+          "date_begin": "2026-05-15 14:00:00",
+          "status": "ok",
+          "elapsed_ms": 769,
+          "busy": "unbusy",
+          "price": 8656.2,
+          "detail": [
+            {
+              "date_begin": "2026-05-15 00:00:00",
+              "date_end": "2026-05-15 23:59:59",
+              "cost_old": null,
+              "base": 0,
+              "nights": 1,
+              "type": "season_price",
+              "cost": 3206,
+              "guests": null
+            },
+            {
+              "date_begin": "2026-05-16 00:00:00",
+              "date_end": "2026-05-16 23:59:59",
+              "cost_old": null,
+              "base": 0,
+              "nights": 1,
+              "type": "season_price",
+              "cost": 3313,
+              "guests": null
+            },
+            {
+              "date_begin": "2026-05-17 00:00:00",
+              "date_end": "2026-05-17 23:59:59",
+              "cost_old": null,
+              "base": 0,
+              "nights": 1,
+              "type": "season_price",
+              "cost": 3099,
+              "guests": null
+            },
+            {
+              "cost_old": null,
+              "base": 3206,
+              "nights": 1,
+              "type": "interval",
+              "cost": 320.6,
+              "guests": null,
+              "days": 3,
+              "date_begin": null,
+              "date_end": null
+            },
+            {
+              "cost_old": null,
+              "base": 3313,
+              "nights": 1,
+              "type": "interval",
+              "cost": 331.3,
+              "guests": null,
+              "days": 3,
+              "date_begin": null,
+              "date_end": null
+            },
+            {
+              "cost_old": null,
+              "base": 3099,
+              "nights": 1,
+              "type": "interval",
+              "cost": 309.9,
+              "guests": null,
+              "days": 3,
+              "date_begin": null,
+              "date_end": null
+            }
+          ],
+          "rooms_available": 4,
+          "is_booking_now": true
+        },
+        {
+          "date_begin": "2026-05-16 14:00:00",
+          "status": "ok",
+          "elapsed_ms": 797,
+          "busy": "unbusy",
+          "price": 8559.9,
+          "detail": [
+            {
+              "date_begin": "2026-05-16 00:00:00",
+              "date_end": "2026-05-16 23:59:59",
+              "cost_old": null,
+              "base": 0,
+              "nights": 1,
+              "type": "season_price",
+              "cost": 3313,
+              "guests": null
+            },
+            {
+              "date_begin": "2026-05-17 00:00:00",
+              "date_end": "2026-05-17 23:59:59",
+              "cost_old": null,
+              "base": 0,
+              "nights": 1,
+              "type": "season_price",
+              "cost": 3099,
+              "guests": null
+            },
+            {
+              "date_begin": "2026-05-18 00:00:00",
+              "date_end": "2026-05-18 23:59:59",
+              "cost_old": null,
+              "base": 0,
+              "nights": 1,
+              "type": "season_price",
+              "cost": 3099,
+              "guests": null
+            },
+            {
+              "cost_old": null,
+              "base": 3313,
+              "nights": 1,
+              "type": "interval",
+              "cost": 331.3,
+              "guests": null,
+              "days": 3,
+              "date_begin": null,
+              "date_end": null
+            },
+            {
+              "cost_old": null,
+              "base": 3099,
+              "nights": 2,
+              "type": "interval",
+              "cost": 309.9,
+              "guests": null,
+              "days": 3,
+              "date_begin": null,
+              "date_end": null
+            }
+          ],
+          "rooms_available": 8,
+          "is_booking_now": true
+        },
+        {
+          "date_begin": "2026-05-17 14:00:00",
+          "status": "ok",
+          "elapsed_ms": 578,
+          "busy": "unbusy",
+          "price": 8693.1,
+          "detail": [
+            {
+              "date_begin": "2026-05-17 00:00:00",
+              "date_end": "2026-05-17 23:59:59",
+              "cost_old": null,
+              "base": 0,
+              "nights": 1,
+              "type": "season_price",
+              "cost": 3099,
+              "guests": null
+            },
+            {
+              "date_begin": "2026-05-18 00:00:00",
+              "date_end": "2026-05-18 23:59:59",
+              "cost_old": null,
+              "base": 0,
+              "nights": 1,
+              "type": "season_price",
+              "cost": 3099,
+              "guests": null
+            },
+            {
+              "date_begin": "2026-05-19 00:00:00",
+              "date_end": "2026-05-21 23:59:59",
+              "cost_old": null,
+              "base": 0,
+              "nights": 1,
+              "type": "season_price",
+              "cost": 3461,
+              "guests": null
+            },
+            {
+              "cost_old": null,
+              "base": 3099,
+              "nights": 2,
+              "type": "interval",
+              "cost": 309.9,
+              "guests": null,
+              "days": 3,
+              "date_begin": null,
+              "date_end": null
+            },
+            {
+              "cost_old": null,
+              "base": 3461,
+              "nights": 1,
+              "type": "interval",
+              "cost": 346.1,
+              "guests": null,
+              "days": 3,
+              "date_begin": null,
+              "date_end": null
+            }
+          ],
+          "rooms_available": 8,
+          "is_booking_now": true
+        },
+        {
+          "date_begin": "2026-05-18 14:00:00",
+          "status": "ok",
+          "elapsed_ms": 557,
+          "busy": "unbusy",
+          "price": 9018.9,
+          "detail": [
+            {
+              "date_begin": "2026-05-18 00:00:00",
+              "date_end": "2026-05-18 23:59:59",
+              "cost_old": null,
+              "base": 0,
+              "nights": 1,
+              "type": "season_price",
+              "cost": 3099,
+              "guests": null
+            },
+            {
+              "date_begin": "2026-05-19 00:00:00",
+              "date_end": "2026-05-21 23:59:59",
+              "cost_old": null,
+              "base": 0,
+              "nights": 2,
+              "type": "season_price",
+              "cost": 3461,
+              "guests": null
+            },
+            {
+              "cost_old": null,
+              "base": 3099,
+              "nights": 1,
+              "type": "interval",
+              "cost": 309.9,
+              "guests": null,
+              "days": 3,
+              "date_begin": null,
+              "date_end": null
+            },
+            {
+              "cost_old": null,
+              "base": 3461,
+              "nights": 2,
+              "type": "interval",
+              "cost": 346.1,
+              "guests": null,
+              "days": 3,
+              "date_begin": null,
+              "date_end": null
+            }
+          ],
+          "rooms_available": 8,
+          "is_booking_now": true
+        },
+        {
+          "date_begin": "2026-05-19 14:00:00",
+          "status": "ok",
+          "elapsed_ms": 537,
+          "busy": "unbusy",
+          "price": 9344.7,
+          "detail": [
+            {
+              "date_begin": "2026-05-19 00:00:00",
+              "date_end": "2026-05-21 23:59:59",
+              "cost_old": null,
+              "base": 0,
+              "nights": 3,
+              "type": "season_price",
+              "cost": 3461,
+              "guests": null
+            },
+            {
+              "cost_old": null,
+              "base": 3461,
+              "nights": 3,
+              "type": "interval",
+              "cost": 346.1,
+              "guests": null,
+              "days": 3,
+              "date_begin": null,
+              "date_end": null
+            }
+          ],
+          "rooms_available": 8,
+          "is_booking_now": true
+        },
+        {
+          "date_begin": "2026-05-20 14:00:00",
+          "status": "ok",
+          "elapsed_ms": 556,
+          "busy": "unbusy",
+          "price": 9441,
+          "detail": [
+            {
+              "date_begin": "2026-05-19 00:00:00",
+              "date_end": "2026-05-21 23:59:59",
+              "cost_old": null,
+              "base": 0,
+              "nights": 2,
+              "type": "season_price",
+              "cost": 3461,
+              "guests": null
+            },
+            {
+              "date_begin": "2026-05-22 00:00:00",
+              "date_end": "2026-05-22 23:59:59",
+              "cost_old": null,
+              "base": 0,
+              "nights": 1,
+              "type": "season_price",
+              "cost": 3568,
+              "guests": null
+            },
+            {
+              "cost_old": null,
+              "base": 3461,
+              "nights": 2,
+              "type": "interval",
+              "cost": 346.1,
+              "guests": null,
+              "days": 3,
+              "date_begin": null,
+              "date_end": null
+            },
+            {
+              "cost_old": null,
+              "base": 3568,
+              "nights": 1,
+              "type": "interval",
+              "cost": 356.8,
+              "guests": null,
+              "days": 3,
+              "date_begin": null,
+              "date_end": null
+            }
+          ],
+          "rooms_available": 7,
+          "is_booking_now": true
+        },
+        {
+          "date_begin": "2026-05-21 14:00:00",
+          "status": "ok",
+          "elapsed_ms": 537,
+          "busy": "unbusy",
+          "price": 9633.6,
+          "detail": [
+            {
+              "date_begin": "2026-05-19 00:00:00",
+              "date_end": "2026-05-21 23:59:59",
+              "cost_old": null,
+              "base": 0,
+              "nights": 1,
+              "type": "season_price",
+              "cost": 3461,
+              "guests": null
+            },
+            {
+              "date_begin": "2026-05-22 00:00:00",
+              "date_end": "2026-05-22 23:59:59",
+              "cost_old": null,
+              "base": 0,
+              "nights": 1,
+              "type": "season_price",
+              "cost": 3568,
+              "guests": null
+            },
+            {
+              "date_begin": "2026-05-23 00:00:00",
+              "date_end": "2026-05-23 23:59:59",
+              "cost_old": null,
+              "base": 0,
+              "nights": 1,
+              "type": "season_price",
+              "cost": 3675,
+              "guests": null
+            },
+            {
+              "cost_old": null,
+              "base": 3461,
+              "nights": 1,
+              "type": "interval",
+              "cost": 346.1,
+              "guests": null,
+              "days": 3,
+              "date_begin": null,
+              "date_end": null
+            },
+            {
+              "cost_old": null,
+              "base": 3568,
+              "nights": 1,
+              "type": "interval",
+              "cost": 356.8,
+              "guests": null,
+              "days": 3,
+              "date_begin": null,
+              "date_end": null
+            },
+            {
+              "cost_old": null,
+              "base": 3675,
+              "nights": 1,
+              "type": "interval",
+              "cost": 367.5,
+              "guests": null,
+              "days": 3,
+              "date_begin": null,
+              "date_end": null
+            }
+          ],
+          "rooms_available": 7,
+          "is_booking_now": true
+        },
+        {
+          "date_begin": "2026-05-22 14:00:00",
+          "status": "ok",
+          "elapsed_ms": 606,
+          "busy": "unbusy",
+          "price": 9729.9,
+          "detail": [
+            {
+              "date_begin": "2026-05-22 00:00:00",
+              "date_end": "2026-05-22 23:59:59",
+              "cost_old": null,
+              "base": 0,
+              "nights": 1,
+              "type": "season_price",
+              "cost": 3568,
+              "guests": null
+            },
+            {
+              "date_begin": "2026-05-23 00:00:00",
+              "date_end": "2026-05-23 23:59:59",
+              "cost_old": null,
+              "base": 0,
+              "nights": 1,
+              "type": "season_price",
+              "cost": 3675,
+              "guests": null
+            },
+            {
+              "date_begin": "2026-05-24 00:00:00",
+              "date_end": "2026-05-28 23:59:59",
+              "cost_old": null,
+              "base": 0,
+              "nights": 1,
+              "type": "season_price",
+              "cost": 3568,
+              "guests": null
+            },
+            {
+              "cost_old": null,
+              "base": 3568,
+              "nights": 2,
+              "type": "interval",
+              "cost": 356.8,
+              "guests": null,
+              "days": 3,
+              "date_begin": null,
+              "date_end": null
+            },
+            {
+              "cost_old": null,
+              "base": 3675,
+              "nights": 1,
+              "type": "interval",
+              "cost": 367.5,
+              "guests": null,
+              "days": 3,
+              "date_begin": null,
+              "date_end": null
+            }
+          ],
+          "rooms_available": 7,
+          "is_booking_now": true
+        },
+        {
+          "date_begin": "2026-05-23 14:00:00",
+          "status": "ok",
+          "elapsed_ms": 605,
+          "busy": "unbusy",
+          "price": 9729.9,
+          "detail": [
+            {
+              "date_begin": "2026-05-23 00:00:00",
+              "date_end": "2026-05-23 23:59:59",
+              "cost_old": null,
+              "base": 0,
+              "nights": 1,
+              "type": "season_price",
+              "cost": 3675,
+              "guests": null
+            },
+            {
+              "date_begin": "2026-05-24 00:00:00",
+              "date_end": "2026-05-28 23:59:59",
+              "cost_old": null,
+              "base": 0,
+              "nights": 2,
+              "type": "season_price",
+              "cost": 3568,
+              "guests": null
+            },
+            {
+              "cost_old": null,
+              "base": 3675,
+              "nights": 1,
+              "type": "interval",
+              "cost": 367.5,
+              "guests": null,
+              "days": 3,
+              "date_begin": null,
+              "date_end": null
+            },
+            {
+              "cost_old": null,
+              "base": 3568,
+              "nights": 2,
+              "type": "interval",
+              "cost": 356.8,
+              "guests": null,
+              "days": 3,
+              "date_begin": null,
+              "date_end": null
+            }
+          ],
+          "rooms_available": 10,
+          "is_booking_now": true
+        },
+        {
+          "date_begin": "2026-05-24 14:00:00",
+          "status": "ok",
+          "elapsed_ms": 585,
+          "busy": "unbusy",
+          "price": 9633.6,
+          "detail": [
+            {
+              "date_begin": "2026-05-24 00:00:00",
+              "date_end": "2026-05-28 23:59:59",
+              "cost_old": null,
+              "base": 0,
+              "nights": 3,
+              "type": "season_price",
+              "cost": 3568,
+              "guests": null
+            },
+            {
+              "cost_old": null,
+              "base": 3568,
+              "nights": 3,
+              "type": "interval",
+              "cost": 356.8,
+              "guests": null,
+              "days": 3,
+              "date_begin": null,
+              "date_end": null
+            }
+          ],
+          "rooms_available": 9,
+          "is_booking_now": true
+        },
+        {
+          "date_begin": "2026-05-25 14:00:00",
+          "status": "ok",
+          "elapsed_ms": 624,
+          "busy": "unbusy",
+          "price": 9633.6,
+          "detail": [
+            {
+              "date_begin": "2026-05-24 00:00:00",
+              "date_end": "2026-05-28 23:59:59",
+              "cost_old": null,
+              "base": 0,
+              "nights": 3,
+              "type": "season_price",
+              "cost": 3568,
+              "guests": null
+            },
+            {
+              "cost_old": null,
+              "base": 3568,
+              "nights": 3,
+              "type": "interval",
+              "cost": 356.8,
+              "guests": null,
+              "days": 3,
+              "date_begin": null,
+              "date_end": null
+            }
+          ],
+          "rooms_available": 9,
+          "is_booking_now": true
+        },
+        {
+          "date_begin": "2026-05-26 14:00:00",
+          "status": "ok",
+          "elapsed_ms": 843,
+          "busy": "unbusy",
+          "price": 9633.6,
+          "detail": [
+            {
+              "date_begin": "2026-05-24 00:00:00",
+              "date_end": "2026-05-28 23:59:59",
+              "cost_old": null,
+              "base": 0,
+              "nights": 3,
+              "type": "season_price",
+              "cost": 3568,
+              "guests": null
+            },
+            {
+              "cost_old": null,
+              "base": 3568,
+              "nights": 3,
+              "type": "interval",
+              "cost": 356.8,
+              "guests": null,
+              "days": 3,
+              "date_begin": null,
+              "date_end": null
+            }
+          ],
+          "rooms_available": 9,
+          "is_booking_now": true
+        }
+      ]
+    },
+    "5_sixty_nights": {
+      "elapsed_sec": 0.59,
+      "http_status": 200,
+      "api_elapsed_ms": 577,
+      "busy": "unbusy",
+      "price_total": 206000.9,
+      "rooms_available": 1,
+      "detail_count": 52,
+      "detail": [
+        {
+          "date_begin": "2026-05-12 00:00:00",
+          "date_end": "2026-05-12 23:59:59",
+          "cost_old": null,
+          "base": 0,
+          "nights": 1,
+          "type": "season_price",
+          "cost": 2778,
+          "guests": null
+        },
+        {
+          "date_begin": "2026-05-13 00:00:00",
+          "date_end": "2026-05-13 23:59:59",
+          "cost_old": null,
+          "base": 0,
+          "nights": 1,
+          "type": "season_price",
+          "cost": 2778,
+          "guests": null
+        },
+        {
+          "date_begin": "2026-05-14 00:00:00",
+          "date_end": "2026-05-14 23:59:59",
+          "cost_old": null,
+          "base": 0,
+          "nights": 1,
+          "type": "season_price",
+          "cost": 2992,
+          "guests": null
+        },
+        {
+          "date_begin": "2026-05-15 00:00:00",
+          "date_end": "2026-05-15 23:59:59",
+          "cost_old": null,
+          "base": 0,
+          "nights": 1,
+          "type": "season_price",
+          "cost": 3206,
+          "guests": null
+        },
+        {
+          "date_begin": "2026-05-16 00:00:00",
+          "date_end": "2026-05-16 23:59:59",
+          "cost_old": null,
+          "base": 0,
+          "nights": 1,
+          "type": "season_price",
+          "cost": 3313,
+          "guests": null
+        },
+        {
+          "date_begin": "2026-05-17 00:00:00",
+          "date_end": "2026-05-17 23:59:59",
+          "cost_old": null,
+          "base": 0,
+          "nights": 1,
+          "type": "season_price",
+          "cost": 3099,
+          "guests": null
+        },
+        {
+          "date_begin": "2026-05-18 00:00:00",
+          "date_end": "2026-05-18 23:59:59",
+          "cost_old": null,
+          "base": 0,
+          "nights": 1,
+          "type": "season_price",
+          "cost": 3099,
+          "guests": null
+        },
+        {
+          "date_begin": "2026-05-19 00:00:00",
+          "date_end": "2026-05-21 23:59:59",
+          "cost_old": null,
+          "base": 0,
+          "nights": 3,
+          "type": "season_price",
+          "cost": 3461,
+          "guests": null
+        },
+        {
+          "date_begin": "2026-05-22 00:00:00",
+          "date_end": "2026-05-22 23:59:59",
+          "cost_old": null,
+          "base": 0,
+          "nights": 1,
+          "type": "season_price",
+          "cost": 3568,
+          "guests": null
+        },
+        {
+          "date_begin": "2026-05-23 00:00:00",
+          "date_end": "2026-05-23 23:59:59",
+          "cost_old": null,
+          "base": 0,
+          "nights": 1,
+          "type": "season_price",
+          "cost": 3675,
+          "guests": null
+        },
+        {
+          "date_begin": "2026-05-24 00:00:00",
+          "date_end": "2026-05-28 23:59:59",
+          "cost_old": null,
+          "base": 0,
+          "nights": 5,
+          "type": "season_price",
+          "cost": 3568,
+          "guests": null
+        },
+        {
+          "date_begin": "2026-05-29 00:00:00",
+          "date_end": "2026-05-29 23:59:59",
+          "cost_old": null,
+          "base": 0,
+          "nights": 1,
+          "type": "season_price",
+          "cost": 3675,
+          "guests": null
+        },
+        {
+          "date_begin": "2026-05-30 00:00:00",
+          "date_end": "2026-05-31 23:59:59",
+          "cost_old": null,
+          "base": 0,
+          "nights": 2,
+          "type": "season_price",
+          "cost": 3782,
+          "guests": null
+        },
+        {
+          "date_begin": "2026-06-01 00:00:00",
+          "date_end": "2026-06-01 23:59:59",
+          "cost_old": null,
+          "base": 0,
+          "nights": 1,
+          "type": "season_price",
+          "cost": 3996,
+          "guests": null
+        },
+        {
+          "date_begin": "2026-06-02 00:00:00",
+          "date_end": "2026-06-07 23:59:59",
+          "cost_old": null,
+          "base": 0,
+          "nights": 6,
+          "type": "season_price",
+          "cost": 5029,
+          "guests": null
+        },
+        {
+          "date_begin": "2026-06-08 00:00:00",
+          "date_end": "2026-06-10 23:59:59",
+          "cost_old": null,
+          "base": 0,
+          "nights": 3,
+          "type": "season_price",
+          "cost": 3996,
+          "guests": null
+        },
+        {
+          "date_begin": "2026-06-11 00:00:00",
+          "date_end": "2026-06-11 23:59:59",
+          "cost_old": null,
+          "base": 0,
+          "nights": 1,
+          "type": "season_price",
+          "cost": 4210,
+          "guests": null
+        },
+        {
+          "date_begin": "2026-06-12 00:00:00",
+          "date_end": "2026-06-13 23:59:59",
+          "cost_old": null,
+          "base": 0,
+          "nights": 2,
+          "type": "season_price",
+          "cost": 4531,
+          "guests": null
+        },
+        {
+          "date_begin": "2026-06-14 00:00:00",
+          "date_end": "2026-06-14 23:59:59",
+          "cost_old": null,
+          "base": 0,
+          "nights": 1,
+          "type": "season_price",
+          "cost": 4424,
+          "guests": null
+        },
+        {
+          "date_begin": "2026-06-15 00:00:00",
+          "date_end": "2026-06-18 23:59:59",
+          "cost_old": null,
+          "base": 0,
+          "nights": 4,
+          "type": "season_price",
+          "cost": 4103,
+          "guests": null
+        },
+        {
+          "date_begin": "2026-06-19 00:00:00",
+          "date_end": "2026-06-19 23:59:59",
+          "cost_old": null,
+          "base": 0,
+          "nights": 1,
+          "type": "season_price",
+          "cost": 4210,
+          "guests": null
+        },
+        {
+          "date_begin": "2026-06-20 00:00:00",
+          "date_end": "2026-06-21 23:59:59",
+          "cost_old": null,
+          "base": 0,
+          "nights": 2,
+          "type": "season_price",
+          "cost": 4317,
+          "guests": null
+        },
+        {
+          "date_begin": "2026-06-22 00:00:00",
+          "date_end": "2026-06-23 23:59:59",
+          "cost_old": null,
+          "base": 0,
+          "nights": 2,
+          "type": "season_price",
+          "cost": 4210,
+          "guests": null
+        },
+        {
+          "date_begin": "2026-06-24 00:00:00",
+          "date_end": "2026-06-24 23:59:59",
+          "cost_old": null,
+          "base": 0,
+          "nights": 1,
+          "type": "season_price",
+          "cost": 4531,
+          "guests": null
+        },
+        {
+          "date_begin": "2026-06-25 00:00:00",
+          "date_end": "2026-06-25 23:59:59",
+          "cost_old": null,
+          "base": 0,
+          "nights": 1,
+          "type": "season_price",
+          "cost": 4638,
+          "guests": null
+        },
+        {
+          "date_begin": "2026-06-26 00:00:00",
+          "date_end": "2026-06-27 23:59:59",
+          "cost_old": null,
+          "base": 0,
+          "nights": 2,
+          "type": "season_price",
+          "cost": 4745,
+          "guests": null
+        },
+        {
+          "date_begin": "2026-06-28 00:00:00",
+          "date_end": "2026-06-28 23:59:59",
+          "cost_old": null,
+          "base": 0,
+          "nights": 1,
+          "type": "season_price",
+          "cost": 4424,
+          "guests": null
+        },
+        {
+          "date_begin": "2026-06-29 00:00:00",
+          "date_end": "2026-06-30 23:59:59",
+          "cost_old": null,
+          "base": 0,
+          "nights": 2,
+          "type": "season_price",
+          "cost": 4210,
+          "guests": null
+        },
+        {
+          "date_begin": "2026-07-01 00:00:00",
+          "date_end": "2026-07-01 23:59:59",
+          "cost_old": null,
+          "base": 0,
+          "nights": 1,
+          "type": "season_price",
+          "cost": 3996,
+          "guests": null
+        },
+        {
+          "date_begin": "2026-07-02 00:00:00",
+          "date_end": "2026-07-02 23:59:59",
+          "cost_old": null,
+          "base": 0,
+          "nights": 1,
+          "type": "season_price",
+          "cost": 4103,
+          "guests": null
+        },
+        {
+          "date_begin": "2026-07-03 00:00:00",
+          "date_end": "2026-07-03 23:59:59",
+          "cost_old": null,
+          "base": 0,
+          "nights": 1,
+          "type": "season_price",
+          "cost": 4210,
+          "guests": null
+        },
+        {
+          "date_begin": "2026-07-04 00:00:00",
+          "date_end": "2026-07-04 23:59:59",
+          "cost_old": null,
+          "base": 0,
+          "nights": 1,
+          "type": "season_price",
+          "cost": 4317,
+          "guests": null
+        },
+        {
+          "date_begin": "2026-07-05 00:00:00",
+          "date_end": "2026-07-05 23:59:59",
+          "cost_old": null,
+          "base": 0,
+          "nights": 1,
+          "type": "season_price",
+          "cost": 4210,
+          "guests": null
+        },
+        {
+          "date_begin": "2026-07-06 00:00:00",
+          "date_end": "2026-07-10 23:59:59",
+          "cost_old": null,
+          "base": 0,
+          "nights": 5,
+          "type": "season_price",
+          "cost": 4103,
+          "guests": null
+        },
+        {
+          "cost_old": null,
+          "base": 2778,
+          "nights": 2,
+          "type": "interval",
+          "cost": 416.7,
+          "guests": null,
+          "days": 5,
+          "date_begin": null,
+          "date_end": null
+        },
+        {
+          "cost_old": null,
+          "base": 2992,
+          "nights": 1,
+          "type": "interval",
+          "cost": 448.8,
+          "guests": null,
+          "days": 5,
+          "date_begin": null,
+          "date_end": null
+        },
+        {
+          "cost_old": null,
+          "base": 3206,
+          "nights": 1,
+          "type": "interval",
+          "cost": 480.9,
+          "guests": null,
+          "days": 5,
+          "date_begin": null,
+          "date_end": null
+        },
+        {
+          "cost_old": null,
+          "base": 3313,
+          "nights": 1,
+          "type": "interval",
+          "cost": 496.95,
+          "guests": null,
+          "days": 5,
+          "date_begin": null,
+          "date_end": null
+        },
+        {
+          "cost_old": null,
+          "base": 3099,
+          "nights": 2,
+          "type": "interval",
+          "cost": 464.85,
+          "guests": null,
+          "days": 5,
+          "date_begin": null,
+          "date_end": null
+        },
+        {
+          "cost_old": null,
+          "base": 3461,
+          "nights": 3,
+          "type": "interval",
+          "cost": 519.15,
+          "guests": null,
+          "days": 5,
+          "date_begin": null,
+          "date_end": null
+        },
+        {
+          "cost_old": null,
+          "base": 3568,
+          "nights": 6,
+          "type": "interval",
+          "cost": 535.2,
+          "guests": null,
+          "days": 5,
+          "date_begin": null,
+          "date_end": null
+        },
+        {
+          "cost_old": null,
+          "base": 3675,
+          "nights": 2,
+          "type": "interval",
+          "cost": 551.25,
+          "guests": null,
+          "days": 5,
+          "date_begin": null,
+          "date_end": null
+        },
+        {
+          "cost_old": null,
+          "base": 3782,
+          "nights": 2,
+          "type": "interval",
+          "cost": 567.3,
+          "guests": null,
+          "days": 5,
+          "date_begin": null,
+          "date_end": null
+        },
+        {
+          "cost_old": null,
+          "base": 3996,
+          "nights": 5,
+          "type": "interval",
+          "cost": 599.4,
+          "guests": null,
+          "days": 5,
+          "date_begin": null,
+          "date_end": null
+        },
+        {
+          "cost_old": null,
+          "base": 5029,
+          "nights": 6,
+          "type": "interval",
+          "cost": 754.35,
+          "guests": null,
+          "days": 5,
+          "date_begin": null,
+          "date_end": null
+        },
+        {
+          "cost_old": null,
+          "base": 4210,
+          "nights": 8,
+          "type": "interval",
+          "cost": 631.5,
+          "guests": null,
+          "days": 5,
+          "date_begin": null,
+          "date_end": null
+        },
+        {
+          "cost_old": null,
+          "base": 4531,
+          "nights": 3,
+          "type": "interval",
+          "cost": 679.65,
+          "guests": null,
+          "days": 5,
+          "date_begin": null,
+          "date_end": null
+        },
+        {
+          "cost_old": null,
+          "base": 4424,
+          "nights": 2,
+          "type": "interval",
+          "cost": 663.6,
+          "guests": null,
+          "days": 5,
+          "date_begin": null,
+          "date_end": null
+        },
+        {
+          "cost_old": null,
+          "base": 4103,
+          "nights": 10,
+          "type": "interval",
+          "cost": 615.45,
+          "guests": null,
+          "days": 5,
+          "date_begin": null,
+          "date_end": null
+        },
+        {
+          "cost_old": null,
+          "base": 4317,
+          "nights": 3,
+          "type": "interval",
+          "cost": 647.55,
+          "guests": null,
+          "days": 5,
+          "date_begin": null,
+          "date_end": null
+        },
+        {
+          "cost_old": null,
+          "base": 4638,
+          "nights": 1,
+          "type": "interval",
+          "cost": 695.7,
+          "guests": null,
+          "days": 5,
+          "date_begin": null,
+          "date_end": null
+        },
+        {
+          "cost_old": null,
+          "base": 4745,
+          "nights": 2,
+          "type": "interval",
+          "cost": 711.75,
+          "guests": null,
+          "days": 5,
+          "date_begin": null,
+          "date_end": null
+        }
+      ],
+      "daily_prices_count": 60,
+      "daily_prices_sample": {
+        "2026-05-12": 2778,
+        "2026-05-13": 2778,
+        "2026-05-14": 2992,
+        "2026-05-15": 3206,
+        "2026-05-16": 3313,
+        "2026-05-17": 3099,
+        "2026-05-18": 3099,
+        "2026-05-19": 3461,
+        "2026-05-20": 3461,
+        "2026-05-21": 3461
+      }
+    },
+    "6_comparison": [
+      {
+        "date": "2026-05-12",
+        "nights_1": "ERR:min_n",
+        "nights_2": "F 2778",
+        "nights_3": "F 2778",
+        "from_60": "2778"
+      },
+      {
+        "date": "2026-05-13",
+        "nights_1": "F 2778",
+        "nights_2": "F 2778",
+        "nights_3": "F 2778",
+        "from_60": "2778"
+      },
+      {
+        "date": "2026-05-14",
+        "nights_1": "ERR:min_n",
+        "nights_2": "F 2992",
+        "nights_3": "F 2992",
+        "from_60": "2992"
+      },
+      {
+        "date": "2026-05-15",
+        "nights_1": "ERR:min_n",
+        "nights_2": "F 3206",
+        "nights_3": "F 3206",
+        "from_60": "3206"
+      },
+      {
+        "date": "2026-05-16",
+        "nights_1": "ERR:min_n",
+        "nights_2": "F 3313",
+        "nights_3": "F 3313",
+        "from_60": "3313"
+      },
+      {
+        "date": "2026-05-17",
+        "nights_1": "ERR:min_n",
+        "nights_2": "F 3099",
+        "nights_3": "F 3099",
+        "from_60": "3099"
+      },
+      {
+        "date": "2026-05-18",
+        "nights_1": "ERR:min_n",
+        "nights_2": "F 3099",
+        "nights_3": "F 3099",
+        "from_60": "3099"
+      },
+      {
+        "date": "2026-05-19",
+        "nights_1": "ERR:min_n",
+        "nights_2": "F 3461",
+        "nights_3": "F 3461",
+        "from_60": "3461"
+      },
+      {
+        "date": "2026-05-20",
+        "nights_1": "ERR:min_n",
+        "nights_2": "F 3461",
+        "nights_3": "F 3461",
+        "from_60": "3461"
+      },
+      {
+        "date": "2026-05-21",
+        "nights_1": "ERR:min_n",
+        "nights_2": "F 3461",
+        "nights_3": "F 3461",
+        "from_60": "3461"
+      },
+      {
+        "date": "2026-05-22",
+        "nights_1": "ERR:min_n",
+        "nights_2": "F 3568",
+        "nights_3": "F 3568",
+        "from_60": "3568"
+      },
+      {
+        "date": "2026-05-23",
+        "nights_1": "ERR:min_n",
+        "nights_2": "F 3675",
+        "nights_3": "F 3675",
+        "from_60": "3675"
+      },
+      {
+        "date": "2026-05-24",
+        "nights_1": "ERR:min_n",
+        "nights_2": "F 3568",
+        "nights_3": "F 3568",
+        "from_60": "3568"
+      },
+      {
+        "date": "2026-05-25",
+        "nights_1": "ERR:min_n",
+        "nights_2": "F 3568",
+        "nights_3": "F 3568",
+        "from_60": "3568"
+      },
+      {
+        "date": "2026-05-26",
+        "nights_1": "ERR:min_n",
+        "nights_2": "F 3568",
+        "nights_3": "F 3568",
+        "from_60": "3568"
+      }
+    ]
+  }
+}

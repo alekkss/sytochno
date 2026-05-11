@@ -49,7 +49,7 @@ _PAGE_READY_TIMEOUT_MS: int = 15000
 # Количество гостей по умолчанию (используется в API-запросе)
 _DEFAULT_GUESTS: int = 2
 
-# Максимальное количество retry при полном провале (все 60 дней — ошибки)
+# Максимальное количество retry при полном провале
 _MAX_API_RETRIES: int = 2
 
 # Пауза перед повторной попыткой после перезагрузки страницы (секунды)
@@ -57,6 +57,9 @@ _RELOAD_WAIT_SECONDS: float = 15.0
 
 # Варианты min_nights для адаптивного запроса (по возрастанию)
 _MIN_NIGHTS_VARIANTS: list[int] = [2, 3, 5, 7]
+
+# Количество дней для анализа
+_DAYS_COUNT: int = 60
 
 # Ключевые слова в ответе API, указывающие на ограничение min_nights
 _MIN_NIGHTS_ERROR_KEYWORDS: list[str] = [
@@ -127,14 +130,17 @@ async def _safe_stop_browser(browser_service: BrowserService, worker_idx: int) -
 class ListingService:
     """Сервис парсинга карточки объявления на sutochno.ru.
 
-    Использует внутреннее API sutochno.ru для получения цен и занятости
-    вместо кликов по датепикеру. Это в 10-20 раз быстрее и надёжнее.
+    Использует гибридную стратегию получения данных через API:
 
-    Алгоритм:
-    1. Загружает страницу карточки, перехватывая токен из исходящих запросов сайта.
-    2. Вызывает API getPricesAndAvailabilities через fetch() в контексте страницы.
-    3. Из ответа формирует calendar_60_days и prices_60_days.
-    4. При ошибках (min_nights, rate-limit) адаптирует запрос и повторяет.
+    Шаг 1 (быстрый): Один запрос на 60 ночей → все цены из detail[].
+        - Фильтрует только type="season_price" (исключает скидки "interval").
+        - Разворачивает сезонные периоды в дневные цены.
+        - Если busy="unbusy" → все дни свободны, готово за 1 запрос (~600мс).
+
+    Шаг 2 (при необходимости): 60 запросов с nights=min_nights → занятость.
+        - Выполняется ТОЛЬКО если Шаг 1 вернул busy="busy".
+        - Определяет занят/свободен каждый конкретный день.
+        - При ошибке min_nights → адаптирует количество ночей.
 
     Поддерживает три режима обработки:
     - Последовательный: одна вкладка, карточки по очереди.
@@ -159,11 +165,6 @@ class ListingService:
     async def _goto_and_capture_token(self, page: Page, url: str) -> tuple[bool, str | None]:
         """Загружает страницу карточки и перехватывает токен API из исходящих запросов.
 
-        Подписывается на событие 'request' ДО загрузки страницы.
-        При загрузке карточки сайт автоматически отправляет запросы к
-        /api/json/ (getPricesAndAvailabilities, checkBookingAbility и т.д.)
-        с заголовком 'token'. Мы перехватываем этот заголовок.
-
         Args:
             page: Вкладка браузера.
             url: URL карточки.
@@ -183,13 +184,11 @@ class ListingService:
                 if token_header:
                     captured_token.append(token_header)
 
-        # Подписываемся ДО загрузки страницы
         page.on("request", on_request)
 
         try:
             loaded = await self._goto_with_retry(page, url)
         finally:
-            # Отписываемся после загрузки
             page.remove_listener("request", on_request)
 
         token = captured_token[0] if captured_token else None
@@ -224,7 +223,6 @@ class ListingService:
 
                 await page.goto(url, wait_until="domcontentloaded", timeout=30000)
 
-                # Мягкое ожидание networkidle
                 try:
                     await page.wait_for_load_state(
                         "networkidle", timeout=_NETWORKIDLE_SOFT_TIMEOUT_MS
@@ -235,7 +233,6 @@ class ListingService:
                         step=f"попытка={attempt}",
                     )
 
-                # Ждём ключевых элементов
                 page_ready = await self._wait_for_page_ready(page)
                 if page_ready:
                     logger.debug("страница_готова", step=f"попытка={attempt}")
@@ -299,47 +296,207 @@ class ListingService:
         return False
 
     # ─────────────────────────────────────────────────────────────────────
-    # Получение календаря и цен через API
+    # Шаг 1: Один запрос на 60 ночей — получение всех цен
     # ─────────────────────────────────────────────────────────────────────
 
-    async def _fetch_prices_via_api(
-        self, page: Page, object_id: str, token: str, nights: int = 1
-    ) -> tuple[list[int], list[int], list[dict[str, str | int]]]:
-        """Получает календарь занятости и цены через внутреннее API sutochno.ru.
+    async def _fetch_bulk_prices(
+        self, page: Page, object_id: str, token: str
+    ) -> tuple[str | None, list[int], bool]:
+        """Получает все цены одним запросом на 60 ночей.
 
-        Выполняет пакетные fetch-запросы к getPricesAndAvailabilities
-        прямо в контексте страницы (сохраняя cookies и сессию).
-
-        Для каждого дня из 60 отправляет запрос с:
-        - date_begin = день 14:00
-        - date_end = день + nights 11:00
-
-        Из ответа определяет:
-        - Занятость: busy == "unbusy" → свободен; busy == "busy" → занят
-        - Цену за ПЕРВЫЙ день: detail[0].cost (даже если запрос на 2+ ночи)
-        - При success=false с ошибкой min_nights → помечает как ошибку
-          (НЕ как занятый день)
-
-        Запросы группируются в пакеты по _API_BATCH_SIZE для контроля нагрузки.
+        Отправляет один запрос с date_begin=завтра, date_end=завтра+60.
+        Из ответа извлекает:
+        - detail[] с type="season_price" → дневные цены
+        - busy → общий статус занятости на весь период
+        - При ошибке min_nights → возвращает None (нужна адаптация)
 
         Args:
             page: Вкладка браузера.
-            object_id: ID объявления на sutochno.ru.
+            object_id: ID объявления.
             token: Сессионный токен API.
-            nights: Количество ночей в запросе (по умолчанию 1, увеличивается
-                    при ограничении min_nights).
 
         Returns:
-            Кортеж (calendar_60_days, prices_60_days, errors_details).
-            errors_details — список словарей с подробностями об ошибках API
-            (для диагностики).
+            Кортеж (busy_status, prices_60_days, success).
+            busy_status: "unbusy"/"busy"/None (None = ошибка).
+            prices_60_days: Список из 60 цен (0 если нет данных для дня).
+            success: True если запрос успешен.
+        """
+        today = date.today()
+        start_date = today
+        end_date = today + timedelta(days=_DAYS_COUNT)
+        guests = self._settings.guests if hasattr(self._settings, "guests") else _DEFAULT_GUESTS
+
+        date_begin = f"{start_date.isoformat()} 14:00:00"
+        date_end = f"{end_date.isoformat()} 11:00:00"
+
+        logger.debug(
+            "запрос_цен_bulk_60",
+            step=f"id={object_id}, период={start_date}→{end_date}",
+        )
+
+        result = await page.evaluate(
+            """
+            async ({apiUrl, objectId, dateBegin, dateEnd, token, guests}) => {
+                try {
+                    const resp = await fetch(apiUrl, {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'Accept': 'application/json',
+                            'token': token,
+                            'platform': 'js',
+                            'api-version': '1.13'
+                        },
+                        body: JSON.stringify({
+                            objects: [parseInt(objectId)],
+                            rooms_cnt: {},
+                            guests: guests,
+                            date_begin: dateBegin,
+                            date_end: dateEnd,
+                            currency_id: 1,
+                            is_pets: 0,
+                            documents: 0,
+                            target: 0,
+                            ages: [],
+                            no_time: 1
+                        })
+                    });
+
+                    if (!resp.ok) {
+                        return {success: false, error: 'http_' + resp.status};
+                    }
+
+                    const data = await resp.json();
+
+                    if (!data.success) {
+                        return {success: false, error: 'api_false'};
+                    }
+
+                    if (!data.data || !data.data.objects || !data.data.objects[0]) {
+                        return {success: false, error: 'no_objects'};
+                    }
+
+                    const obj = data.data.objects[0];
+
+                    if (!obj.success) {
+                        return {
+                            success: false,
+                            error: 'obj_error',
+                            errors: obj.errors || []
+                        };
+                    }
+
+                    const objData = obj.data;
+                    return {
+                        success: true,
+                        busy: objData.busy,
+                        detail: objData.detail || [],
+                        rooms_available: objData.rooms_available
+                    };
+
+                } catch (e) {
+                    return {success: false, error: 'exception_' + e.message};
+                }
+            }
+            """,
+            {
+                "apiUrl": _API_PRICES_URL,
+                "objectId": object_id,
+                "dateBegin": date_begin,
+                "dateEnd": date_end,
+                "token": token,
+                "guests": guests,
+            },
+        )
+
+        if not result.get("success"):
+            error = result.get("error", "unknown")
+            errors_list = result.get("errors", [])
+            logger.debug(
+                "bulk_запрос_ошибка",
+                step=f"id={object_id}, ошибка={error}, errors={errors_list}",
+            )
+            return None, [0] * _DAYS_COUNT, False
+
+        busy_status = result.get("busy")
+        detail = result.get("detail", [])
+
+        # Разворачиваем detail[] в дневные цены
+        # Берём ТОЛЬКО записи с type="season_price" (исключаем "interval" — скидки)
+        daily_prices: dict[str, int] = {}
+
+        for det in detail:
+            det_type = det.get("type", "")
+            if det_type != "season_price":
+                continue
+
+            d_begin = det.get("date_begin")
+            d_end = det.get("date_end")
+            cost = det.get("cost", 0)
+
+            if not d_begin or not d_end or not cost:
+                continue
+
+            # Извлекаем дату (первые 10 символов)
+            d_begin_str = str(d_begin)[:10]
+            d_end_str = str(d_end)[:10]
+
+            try:
+                period_start = date.fromisoformat(d_begin_str)
+                period_end = date.fromisoformat(d_end_str)
+                current = period_start
+                while current <= period_end:
+                    daily_prices[current.isoformat()] = int(cost)
+                    current += timedelta(days=1)
+            except (ValueError, TypeError):
+                continue
+
+        # Формируем массив цен на 60 дней
+        prices_60: list[int] = []
+        for i in range(_DAYS_COUNT):
+            day = today + timedelta(days=i)
+            price = daily_prices.get(day.isoformat(), 0)
+            prices_60.append(price)
+
+        prices_filled = sum(1 for p in prices_60 if p > 0)
+
+        logger.debug(
+            "bulk_цены_получены",
+            step=f"id={object_id}, busy={busy_status}, "
+                 f"цен_заполнено={prices_filled}/60, "
+                 f"detail_записей={len(detail)}, "
+                 f"season_price_записей={len(daily_prices)}",
+        )
+
+        return busy_status, prices_60, True
+
+    # ─────────────────────────────────────────────────────────────────────
+    # Шаг 2: Определение занятости каждого дня (скользящее окно)
+    # ─────────────────────────────────────────────────────────────────────
+
+    async def _fetch_availability(
+        self, page: Page, object_id: str, token: str, nights: int = 2
+    ) -> tuple[list[int], list[dict[str, str | int]]]:
+        """Определяет занятость каждого дня через скользящее окно.
+
+        Для каждого из 60 дней отправляет запрос с окном в nights ночей.
+        Из ответа берёт только busy-статус (цены уже получены в Шаге 1).
+
+        Args:
+            page: Вкладка браузера.
+            object_id: ID объявления.
+            token: Сессионный токен API.
+            nights: Количество ночей в окне (по умолчанию 2).
+
+        Returns:
+            Кортеж (calendar_60_days, errors_details).
+            calendar: 0=свободен, 1=занят, -1=ошибка.
         """
         today = date.today()
         guests = self._settings.guests if hasattr(self._settings, "guests") else _DEFAULT_GUESTS
 
-        # Формируем массив дат для запросов
         days_data = []
-        for i in range(60):
+        for i in range(_DAYS_COUNT):
             day = today + timedelta(days=i)
             end_day = day + timedelta(days=nights)
             days_data.append({
@@ -348,18 +505,16 @@ class ListingService:
             })
 
         logger.debug(
-            "запрос_цен_через_api",
-            step=f"id={object_id}, дней=60, пакет={_API_BATCH_SIZE}, ночей={nights}",
+            "запрос_занятости",
+            step=f"id={object_id}, дней=60, ночей={nights}, пакет={_API_BATCH_SIZE}",
         )
 
-        # Выполняем пакетные запросы через page.evaluate
         result = await page.evaluate(
             """
             async ({objectId, token, guests, daysData, batchSize, batchDelay, apiUrl}) => {
                 const results = [];
-
-                // Разбиваем на пакеты
                 const batches = [];
+
                 for (let i = 0; i < daysData.length; i += batchSize) {
                     batches.push(daysData.slice(i, i + batchSize));
                 }
@@ -367,23 +522,8 @@ class ListingService:
                 for (let batchIdx = 0; batchIdx < batches.length; batchIdx++) {
                     const batch = batches[batchIdx];
 
-                    // Запускаем все запросы в пакете параллельно
                     const promises = batch.map(async (dayInfo) => {
                         try {
-                            const body = {
-                                objects: [parseInt(objectId)],
-                                rooms_cnt: {},
-                                guests: guests,
-                                date_begin: dayInfo.date_begin,
-                                date_end: dayInfo.date_end,
-                                currency_id: 1,
-                                is_pets: 0,
-                                documents: 0,
-                                target: 0,
-                                ages: [],
-                                no_time: 1
-                            };
-
                             const resp = await fetch(apiUrl, {
                                 method: 'POST',
                                 headers: {
@@ -393,108 +533,54 @@ class ListingService:
                                     'platform': 'js',
                                     'api-version': '1.13'
                                 },
-                                body: JSON.stringify(body)
+                                body: JSON.stringify({
+                                    objects: [parseInt(objectId)],
+                                    rooms_cnt: {},
+                                    guests: guests,
+                                    date_begin: dayInfo.date_begin,
+                                    date_end: dayInfo.date_end,
+                                    currency_id: 1,
+                                    is_pets: 0,
+                                    documents: 0,
+                                    target: 0,
+                                    ages: [],
+                                    no_time: 1
+                                })
                             });
 
-                            const responseText = await resp.text();
-
                             if (!resp.ok) {
-                                return {
-                                    status: 'error',
-                                    busy: null,
-                                    price: 0,
-                                    error: 'http_' + resp.status,
-                                    error_body: responseText.substring(0, 500)
-                                };
+                                return {status: 'error', error: 'http_' + resp.status};
                             }
 
-                            let data;
-                            try {
-                                data = JSON.parse(responseText);
-                            } catch (parseErr) {
-                                return {
-                                    status: 'error',
-                                    busy: null,
-                                    price: 0,
-                                    error: 'json_parse_error',
-                                    error_body: responseText.substring(0, 500)
-                                };
-                            }
+                            const data = await resp.json();
 
-                            // Внешний success=false — ошибка на уровне API
-                            if (!data.success) {
-                                // Проверяем: это ответ с объектом внутри (формат 2)
-                                // или ответ верхнего уровня (формат 1)?
-                                if (data.data && data.data.objects && data.data.objects[0]) {
-                                    // Формат: {success: true, data: {objects: [{...}]}}
-                                    // но success=false на верхнем уровне — странный случай
-                                }
-                                return {
-                                    status: 'error',
-                                    busy: null,
-                                    price: 0,
-                                    error: 'api_success_false',
-                                    error_body: responseText.substring(0, 500)
-                                };
-                            }
-
-                            if (!data.data || !data.data.objects || !data.data.objects[0]) {
-                                return {
-                                    status: 'error',
-                                    busy: null,
-                                    price: 0,
-                                    error: 'no_objects_in_response',
-                                    error_body: responseText.substring(0, 500)
-                                };
+                            if (!data.success || !data.data || !data.data.objects || !data.data.objects[0]) {
+                                return {status: 'error', error: 'no_data'};
                             }
 
                             const obj = data.data.objects[0];
 
-                            // Объект вернул success=false — возможно min_nights
                             if (!obj.success) {
-                                const objErrors = obj.errors || [];
                                 return {
                                     status: 'obj_error',
-                                    busy: null,
-                                    price: 0,
-                                    error: 'obj_not_success',
-                                    errors: objErrors,
-                                    error_body: JSON.stringify(obj).substring(0, 500)
+                                    errors: obj.errors || [],
+                                    error_body: JSON.stringify(obj.errors || []).substring(0, 300)
                                 };
-                            }
-
-                            const objData = obj.data;
-                            const busyStatus = objData.busy;
-                            const isBusy = busyStatus === 'busy';
-                            let price = 0;
-
-                            // Извлекаем цену первого дня из detail[0].cost
-                            if (objData.detail && objData.detail.length > 0) {
-                                price = objData.detail[0].cost || 0;
                             }
 
                             return {
                                 status: 'ok',
-                                busy: isBusy,
-                                price: Math.round(price),
-                                rooms_available: objData.rooms_available || 0
+                                busy: obj.data.busy === 'busy'
                             };
 
                         } catch (e) {
-                            return {
-                                status: 'error',
-                                busy: null,
-                                price: 0,
-                                error: 'exception_' + e.message,
-                                error_body: e.stack ? e.stack.substring(0, 300) : ''
-                            };
+                            return {status: 'error', error: 'exception_' + e.message};
                         }
                     });
 
                     const batchResults = await Promise.all(promises);
                     results.push(...batchResults);
 
-                    // Пауза между пакетами (кроме последнего)
                     if (batchIdx < batches.length - 1) {
                         await new Promise(resolve => setTimeout(resolve, batchDelay * 1000));
                     }
@@ -514,82 +600,57 @@ class ListingService:
             },
         )
 
-        # Парсим результаты
         calendar: list[int] = []
-        prices: list[int] = []
         errors_details: list[dict[str, str | int]] = []
 
         for day_idx, day_result in enumerate(result):
             status = day_result.get("status", "error")
 
             if status == "ok":
-                # Успешный ответ — определяем занятость по полю busy
-                if day_result.get("busy", False):
-                    calendar.append(1)
-                    # Для занятых дней тоже сохраняем цену (если есть) —
-                    # она показывает, сколько бы стоило, если бы было свободно
-                    prices.append(0)
-                else:
-                    calendar.append(0)
-                    price = day_result.get("price", 0)
-                    prices.append(int(price) if price else 0)
-
+                calendar.append(1 if day_result.get("busy", False) else 0)
             elif status == "obj_error":
-                # Объект вернул ошибку (вероятно min_nights) —
-                # это НЕ означает что день занят!
                 errors_details.append({
                     "day": day_idx,
-                    "error": day_result.get("error", ""),
+                    "error": "obj_error",
                     "errors": str(day_result.get("errors", [])),
                     "error_body": day_result.get("error_body", ""),
                 })
-                # Помечаем как ошибку — НЕ как занятый
                 calendar.append(-1)
-                prices.append(0)
-
             else:
-                # Прочие ошибки (сеть, парсинг, HTTP)
                 errors_details.append({
                     "day": day_idx,
-                    "error": day_result.get("error", ""),
-                    "error_body": day_result.get("error_body", ""),
+                    "error": day_result.get("error", "unknown"),
                 })
                 calendar.append(-1)
-                prices.append(0)
 
-        # Статистика
         free_days = sum(1 for c in calendar if c == 0)
         busy_days = sum(1 for c in calendar if c == 1)
         error_days = sum(1 for c in calendar if c == -1)
 
         logger.debug(
-            "api_результат",
+            "занятость_результат",
             step=f"id={object_id}, ночей={nights}",
             total=f"свободных={free_days}, занятых={busy_days}, ошибок={error_days}",
         )
 
-        return calendar, prices, errors_details
+        return calendar, errors_details
 
     # ─────────────────────────────────────────────────────────────────────
     # Определение min_nights из ошибок API
     # ─────────────────────────────────────────────────────────────────────
 
     def _detect_min_nights(self, errors_details: list[dict[str, str | int]]) -> int | None:
-        """Анализирует ошибки API и пытается определить минимальный срок бронирования.
-
-        Ищет в телах ответов ключевые слова, указывающие на ограничение min_nights.
-        Также пытается извлечь конкретное число из текста ошибки.
+        """Анализирует ошибки API и определяет минимальный срок бронирования.
 
         Args:
             errors_details: Список словарей с подробностями об ошибках.
 
         Returns:
-            Предполагаемое значение min_nights или None если не удалось определить.
+            Значение min_nights или None если не удалось определить.
         """
         if not errors_details:
             return None
 
-        # Проверяем первые 3 ошибки (достаточно для определения паттерна)
         sample_errors = errors_details[:3]
 
         for error_info in sample_errors:
@@ -597,104 +658,180 @@ class ListingService:
             error_code = str(error_info.get("error", "")).lower()
             errors_list = str(error_info.get("errors", "")).lower()
 
-            # Объединяем все тексты для поиска
             combined_text = f"{error_body} {error_code} {errors_list}"
 
-            # Проверяем ключевые слова
             is_min_nights_error = any(
                 keyword in combined_text
                 for keyword in _MIN_NIGHTS_ERROR_KEYWORDS
             )
 
             if is_min_nights_error:
-                # Пытаемся извлечь число из текста
                 numbers = re.findall(r"(\d+)", combined_text)
                 for num_str in numbers:
                     num = int(num_str)
                     if 2 <= num <= 30:
                         logger.info(
-                            "min_nights_обнаружен_в_ответе",
+                            "min_nights_обнаружен",
                             step=f"min_nights={num}",
                         )
                         return num
 
-                # Ключевое слово найдено, но число не извлечено — пробуем 2
-                logger.info(
-                    "min_nights_предположительно",
-                    step="ключевое_слово_найдено, пробуем=2",
-                )
+                logger.info("min_nights_предположительно", step="пробуем=2")
                 return 2
 
-        # Если все запросы вернули одинаковую ошибку 'obj_not_success' —
-        # вероятно min_nights ограничение
         error_count = len(errors_details)
-        if error_count >= 55:  # Почти все 60 дней ошибки
+        if error_count >= 55:
             unique_errors = set(str(e.get("error", "")) for e in errors_details)
             if len(unique_errors) <= 2:
-                first_body = str(errors_details[0].get("error_body", ""))
                 logger.info(
                     "массовая_ошибка_предполагаем_min_nights",
-                    step=f"ошибок={error_count}/60, "
-                         f"типы={list(unique_errors)}, "
-                         f"пример={first_body[:200]}",
+                    step=f"ошибок={error_count}/60",
                 )
                 return 2
 
         return None
 
     # ─────────────────────────────────────────────────────────────────────
-    # Нормализация календаря: замена -1 (ошибки) на корректные значения
+    # Основная логика: гибридная стратегия
     # ─────────────────────────────────────────────────────────────────────
 
-    def _normalize_calendar(
-        self, calendar: list[int], prices: list[int]
-    ) -> tuple[list[int], list[int]]:
-        """Нормализует календарь: заменяет -1 (ошибки API) на 0 или 1.
-
-        Логика: если день помечен как -1 (ошибка min_nights) и при этом
-        соседние дни свободны (0) — вероятно день тоже свободен.
-        Если нет информации — помечаем как свободный (0), т.к. ошибка
-        min_nights не означает занятость.
-
-        Args:
-            calendar: Список из 0/1/-1 (свободен/занят/ошибка).
-            prices: Список цен (соответствует calendar).
-
-        Returns:
-            Кортеж (нормализованный_календарь, нормализованные_цены)
-            где все значения в календаре — 0 или 1.
-        """
-        normalized_cal: list[int] = []
-        normalized_prices: list[int] = list(prices)
-
-        for i, status in enumerate(calendar):
-            if status == -1:
-                # Ошибка min_nights — НЕ означает занятость.
-                # Помечаем как свободный (0), цена останется 0
-                # (будет уточнена при втором проходе с увеличенным nights)
-                normalized_cal.append(0)
-            else:
-                normalized_cal.append(status)
-
-        return normalized_cal, normalized_prices
-
-    # ─────────────────────────────────────────────────────────────────────
-    # Retry-логика с адаптацией min_nights и перезагрузкой
-    # ─────────────────────────────────────────────────────────────────────
-
-    async def _fetch_with_retry(
+    async def _fetch_with_hybrid_strategy(
         self, page: Page, object_id: str, token: str, url: str
     ) -> tuple[list[int], list[int]]:
-        """Получает календарь и цены с retry-логикой и адаптацией min_nights.
+        """Получает календарь и цены гибридной стратегией.
 
         Алгоритм:
-        1. Первый запрос с nights=1.
-        2. Если много ошибок (дни с -1):
-           a) Анализирует тексты ошибок для определения min_nights.
-           b) Повторяет запрос с увеличенным периодом.
-           c) Из ответа берёт detail[0].cost как цену первого дня в окне.
-        3. Если адаптация не помогла — перезагружает страницу.
-        4. Нормализует итоговый календарь (заменяет -1 на 0/1).
+        1. Один запрос на 60 ночей → все цены из detail[type="season_price"].
+        2. Если busy="unbusy" → все 60 дней свободны, готово за 1 запрос.
+        3. Если busy="busy" → скользящее окно nights=2 для определения занятости.
+        4. При ошибке min_nights → адаптация (nights=3, 5, 7).
+        5. При полном провале → перезагрузка страницы + retry.
+
+        Args:
+            page: Вкладка браузера.
+            object_id: ID объявления.
+            token: Сессионный токен API.
+            url: URL карточки (для перезагрузки при retry).
+
+        Returns:
+            Кортеж (calendar_60_days, prices_60_days).
+        """
+        current_token = token
+
+        # ══════════════════════════════════════════════════════════════
+        # Шаг 1: Один запрос на 60 ночей → цены
+        # ══════════════════════════════════════════════════════════════
+        busy_status, prices_60, bulk_success = await self._fetch_bulk_prices(
+            page, object_id, current_token
+        )
+
+        if not bulk_success:
+            # Bulk-запрос не удался (возможно min_nights для всего периода)
+            # Переходим к классической стратегии со скользящим окном
+            logger.info(
+                "bulk_запрос_не_удался_переход_к_скользящему_окну",
+                step=f"id={object_id}",
+            )
+            return await self._fetch_with_sliding_window(
+                page, object_id, current_token, url
+            )
+
+        prices_filled = sum(1 for p in prices_60 if p > 0)
+
+        # ══════════════════════════════════════════════════════════════
+        # Шаг 2: Определение занятости
+        # ══════════════════════════════════════════════════════════════
+
+        if busy_status == "unbusy":
+            # Весь период свободен — все 60 дней свободны!
+            calendar_60 = [0] * _DAYS_COUNT
+            logger.info(
+                "все_дни_свободны_bulk",
+                step=f"id={object_id}, цен={prices_filled}/60",
+            )
+            return calendar_60, prices_60
+
+        # busy="busy" — нужно определить какие именно дни заняты
+        logger.debug(
+            "busy_период_определяем_занятость_по_дням",
+            step=f"id={object_id}, busy={busy_status}",
+        )
+
+        # Скользящее окно для определения занятости
+        calendar_60, errors_details = await self._fetch_availability(
+            page, object_id, current_token, nights=2
+        )
+
+        error_days = sum(1 for c in calendar_60 if c == -1)
+
+        # Если есть ошибки min_nights — адаптируем
+        if error_days > 0:
+            detected_min_nights = self._detect_min_nights(errors_details)
+
+            if detected_min_nights is not None and detected_min_nights > 2:
+                nights_to_try = [n for n in _MIN_NIGHTS_VARIANTS if n >= detected_min_nights]
+                if detected_min_nights not in nights_to_try:
+                    nights_to_try.insert(0, detected_min_nights)
+
+                for nights in nights_to_try:
+                    logger.info(
+                        "адаптация_занятости",
+                        step=f"id={object_id}, ночей={nights}",
+                    )
+
+                    calendar_retry, errors_retry = await self._fetch_availability(
+                        page, object_id, current_token, nights=nights
+                    )
+
+                    error_days_retry = sum(1 for c in calendar_retry if c == -1)
+
+                    if error_days_retry < error_days:
+                        calendar_60 = calendar_retry
+                        errors_details = errors_retry
+                        error_days = error_days_retry
+
+                        if error_days_retry == 0:
+                            break
+
+            # Нормализуем оставшиеся ошибки: -1 → 0 (ошибка ≠ занятость)
+            if error_days > 0:
+                calendar_60 = [0 if c == -1 else c for c in calendar_60]
+                logger.info(
+                    "ошибки_занятости_нормализованы",
+                    step=f"id={object_id}, заменено={error_days}",
+                )
+
+        # Обнуляем цены для занятых дней
+        final_prices: list[int] = []
+        for i in range(_DAYS_COUNT):
+            if calendar_60[i] == 1:
+                final_prices.append(0)
+            else:
+                final_prices.append(prices_60[i])
+
+        free_days = sum(1 for c in calendar_60 if c == 0)
+        busy_days = sum(1 for c in calendar_60 if c == 1)
+
+        logger.info(
+            "гибридная_стратегия_завершена",
+            step=f"id={object_id}",
+            total=f"свободных={free_days}, занятых={busy_days}, цен={prices_filled}",
+        )
+
+        return calendar_60, final_prices
+
+    # ─────────────────────────────────────────────────────────────────────
+    # Запасная стратегия: скользящее окно (если bulk не работает)
+    # ─────────────────────────────────────────────────────────────────────
+
+    async def _fetch_with_sliding_window(
+        self, page: Page, object_id: str, token: str, url: str
+    ) -> tuple[list[int], list[int]]:
+        """Получает данные через скользящее окно (запасная стратегия).
+
+        Используется когда bulk-запрос на 60 ночей не удался.
+        Отправляет 60 запросов с nights=2 (или больше при min_nights).
+        Из каждого ответа берёт busy-статус И цену первого дня.
 
         Args:
             page: Вкладка браузера.
@@ -703,144 +840,240 @@ class ListingService:
             url: URL карточки (для перезагрузки).
 
         Returns:
-            Кортеж (calendar_60_days, prices_60_days) — значения 0/1 и цены.
+            Кортеж (calendar_60_days, prices_60_days).
         """
         current_token = token
 
-        # ── Попытка 1: стандартный запрос (1 ночь) ──
-        calendar, prices, errors_details = await self._fetch_prices_via_api(
-            page, object_id, current_token, nights=1
-        )
-
-        error_days = sum(1 for c in calendar if c == -1)
-        free_days = sum(1 for c in calendar if c == 0)
-        busy_days = sum(1 for c in calendar if c == 1)
-
-        # Если ошибок мало или нет — результат валиден
-        if error_days == 0:
-            return calendar, prices
-
-        # Если есть и успешные ответы и ошибки — частично валидный результат
-        if free_days > 0 or busy_days > 0:
+        # Начинаем с nights=2 (покрывает min_nights=2)
+        for nights in _MIN_NIGHTS_VARIANTS:
             logger.info(
-                "частичный_результат_есть_ошибки",
-                step=f"id={object_id}, свободных={free_days}, "
-                     f"занятых={busy_days}, ошибок={error_days}",
+                "скользящее_окно",
+                step=f"id={object_id}, ночей={nights}",
             )
 
-        # ── Попытка адаптации: определяем min_nights ──
-        detected_min_nights = self._detect_min_nights(errors_details)
-
-        if detected_min_nights is not None:
-            logger.info(
-                "обнаружен_min_nights_адаптация",
-                step=f"id={object_id}, min_nights={detected_min_nights}",
+            calendar, prices, errors_details = await self._fetch_prices_and_availability(
+                page, object_id, current_token, nights=nights
             )
 
-            # Пробуем варианты min_nights
-            nights_to_try = [n for n in _MIN_NIGHTS_VARIANTS if n >= detected_min_nights]
-            if detected_min_nights not in nights_to_try:
-                nights_to_try.insert(0, detected_min_nights)
+            error_days = sum(1 for c in calendar if c == -1)
 
-            for nights in nights_to_try:
+            if error_days == 0:
+                return calendar, prices
+
+            if error_days < 55:
+                # Частичный успех — нормализуем ошибки
+                calendar = [0 if c == -1 else c for c in calendar]
                 logger.info(
-                    "повтор_с_увеличенным_периодом",
-                    step=f"id={object_id}, ночей={nights}",
+                    "частичный_результат_нормализован",
+                    step=f"id={object_id}, ночей={nights}, ошибок={error_days}",
                 )
+                return calendar, prices
 
-                calendar_retry, prices_retry, errors_retry = await self._fetch_prices_via_api(
-                    page, object_id, current_token, nights=nights
-                )
+            # Проверяем, связана ли ошибка с min_nights
+            detected = self._detect_min_nights(errors_details)
+            if detected is None or detected <= nights:
+                # Ошибка не связана с min_nights — не имеет смысла увеличивать
+                break
 
-                error_days_retry = sum(1 for c in calendar_retry if c == -1)
-                free_days_retry = sum(1 for c in calendar_retry if c == 0)
-
-                if error_days_retry < error_days:
-                    # Улучшение — используем новый результат
-                    calendar = calendar_retry
-                    prices = prices_retry
-                    errors_details = errors_retry
-                    error_days = error_days_retry
-
-                    logger.info(
-                        "адаптация_min_nights_улучшение",
-                        step=f"id={object_id}, ночей={nights}, "
-                             f"ошибок={error_days_retry}, свободных={free_days_retry}",
-                    )
-
-                    if error_days_retry == 0:
-                        # Полностью решено
-                        return calendar, prices
-                else:
-                    logger.debug(
-                        "адаптация_не_улучшила",
-                        step=f"id={object_id}, ночей={nights}, "
-                             f"ошибок={error_days_retry}",
-                    )
-
-        # Если остались ошибки — нормализуем (заменяем -1 → 0)
-        if error_days > 0:
-            calendar, prices = self._normalize_calendar(calendar, prices)
+        # Последняя попытка: перезагрузка
+        for retry_attempt in range(1, _MAX_API_RETRIES + 1):
             logger.info(
-                "календарь_нормализован",
-                step=f"id={object_id}, ошибок_заменено={error_days}",
+                "перезагрузка_для_скользящего_окна",
+                step=f"id={object_id}, попытка={retry_attempt}",
             )
 
-        # Если после адаптации всё ещё нет данных — retry с перезагрузкой
-        free_after_norm = sum(1 for c in calendar if c == 0)
-        busy_after_norm = sum(1 for c in calendar if c == 1)
+            await asyncio.sleep(_RELOAD_WAIT_SECONDS)
+            loaded, new_token = await self._goto_and_capture_token(page, url)
 
-        if free_after_norm == 0 and busy_after_norm == 0:
-            # Полный провал — пробуем перезагрузку
-            for retry_attempt in range(1, _MAX_API_RETRIES + 1):
-                logger.info(
-                    "перезагрузка_страницы_для_повтора",
-                    step=f"id={object_id}, попытка={retry_attempt}/{_MAX_API_RETRIES}",
-                )
+            if not loaded or not new_token:
+                continue
 
-                await asyncio.sleep(_RELOAD_WAIT_SECONDS)
+            current_token = new_token
+            await self._browser.random_delay()
 
-                loaded, new_token = await self._goto_and_capture_token(page, url)
+            calendar, prices, _ = await self._fetch_prices_and_availability(
+                page, object_id, current_token, nights=2
+            )
 
-                if not loaded or not new_token:
-                    logger.warning(
-                        "перезагрузка_не_удалась",
-                        step=f"id={object_id}, попытка={retry_attempt}",
-                    )
-                    continue
+            error_days = sum(1 for c in calendar if c == -1)
+            if error_days < 60:
+                calendar = [0 if c == -1 else c for c in calendar]
+                return calendar, prices
 
-                current_token = new_token
-                await self._browser.random_delay()
-
-                nights_for_retry = detected_min_nights if detected_min_nights else 1
-
-                calendar, prices, errors_details = await self._fetch_prices_via_api(
-                    page, object_id, current_token, nights=nights_for_retry
-                )
-
-                error_days = sum(1 for c in calendar if c == -1)
-
-                if error_days < 60:
-                    if error_days > 0:
-                        calendar, prices = self._normalize_calendar(calendar, prices)
-                    logger.info(
-                        "retry_после_перезагрузки_успешен",
-                        step=f"id={object_id}, попытка={retry_attempt}",
-                    )
-                    return calendar, prices
-
-        # ── Все попытки исчерпаны ──
-        if sum(1 for c in calendar if c == -1) > 0:
-            calendar, prices = self._normalize_calendar(calendar, prices)
-
+        # Полный провал
         logger.warning(
-            "получены_данные_с_возможными_неточностями",
+            "скользящее_окно_провал",
             step=f"id={object_id}",
-            total=f"свободных={sum(1 for c in calendar if c == 0)}, "
-                  f"занятых={sum(1 for c in calendar if c == 1)}",
+        )
+        return [0] * _DAYS_COUNT, [0] * _DAYS_COUNT
+
+    async def _fetch_prices_and_availability(
+        self, page: Page, object_id: str, token: str, nights: int = 2
+    ) -> tuple[list[int], list[int], list[dict[str, str | int]]]:
+        """Получает и занятость, и цены через скользящее окно.
+
+        Для каждого дня берёт busy-статус и detail[0].cost (цена первого дня).
+        Используется как запасная стратегия, когда bulk не работает.
+
+        Args:
+            page: Вкладка браузера.
+            object_id: ID объявления.
+            token: Сессионный токен API.
+            nights: Количество ночей в окне.
+
+        Returns:
+            Кортеж (calendar, prices, errors_details).
+        """
+        today = date.today()
+        guests = self._settings.guests if hasattr(self._settings, "guests") else _DEFAULT_GUESTS
+
+        days_data = []
+        for i in range(_DAYS_COUNT):
+            day = today + timedelta(days=i)
+            end_day = day + timedelta(days=nights)
+            days_data.append({
+                "date_begin": f"{day.isoformat()} 14:00:00",
+                "date_end": f"{end_day.isoformat()} 11:00:00",
+            })
+
+        result = await page.evaluate(
+            """
+            async ({objectId, token, guests, daysData, batchSize, batchDelay, apiUrl}) => {
+                const results = [];
+                const batches = [];
+
+                for (let i = 0; i < daysData.length; i += batchSize) {
+                    batches.push(daysData.slice(i, i + batchSize));
+                }
+
+                for (let batchIdx = 0; batchIdx < batches.length; batchIdx++) {
+                    const batch = batches[batchIdx];
+
+                    const promises = batch.map(async (dayInfo) => {
+                        try {
+                            const resp = await fetch(apiUrl, {
+                                method: 'POST',
+                                headers: {
+                                    'Content-Type': 'application/json',
+                                    'Accept': 'application/json',
+                                    'token': token,
+                                    'platform': 'js',
+                                    'api-version': '1.13'
+                                },
+                                body: JSON.stringify({
+                                    objects: [parseInt(objectId)],
+                                    rooms_cnt: {},
+                                    guests: guests,
+                                    date_begin: dayInfo.date_begin,
+                                    date_end: dayInfo.date_end,
+                                    currency_id: 1,
+                                    is_pets: 0,
+                                    documents: 0,
+                                    target: 0,
+                                    ages: [],
+                                    no_time: 1
+                                })
+                            });
+
+                            if (!resp.ok) {
+                                return {status: 'error', error: 'http_' + resp.status};
+                            }
+
+                            const data = await resp.json();
+
+                            if (!data.success || !data.data || !data.data.objects || !data.data.objects[0]) {
+                                return {status: 'error', error: 'no_data'};
+                            }
+
+                            const obj = data.data.objects[0];
+
+                            if (!obj.success) {
+                                return {
+                                    status: 'obj_error',
+                                    errors: obj.errors || [],
+                                    error_body: JSON.stringify(obj.errors || []).substring(0, 300)
+                                };
+                            }
+
+                            const objData = obj.data;
+                            const isBusy = objData.busy === 'busy';
+                            let price = 0;
+
+                            // Цена первого дня: первая запись detail с type="season_price"
+                            if (objData.detail && objData.detail.length > 0) {
+                                for (const det of objData.detail) {
+                                    if (det.type === 'season_price' && det.cost) {
+                                        price = det.cost;
+                                        break;
+                                    }
+                                }
+                            }
+
+                            return {
+                                status: 'ok',
+                                busy: isBusy,
+                                price: Math.round(price)
+                            };
+
+                        } catch (e) {
+                            return {status: 'error', error: 'exception_' + e.message};
+                        }
+                    });
+
+                    const batchResults = await Promise.all(promises);
+                    results.push(...batchResults);
+
+                    if (batchIdx < batches.length - 1) {
+                        await new Promise(resolve => setTimeout(resolve, batchDelay * 1000));
+                    }
+                }
+
+                return results;
+            }
+            """,
+            {
+                "objectId": object_id,
+                "token": token,
+                "guests": guests,
+                "daysData": days_data,
+                "batchSize": _API_BATCH_SIZE,
+                "batchDelay": _API_BATCH_DELAY,
+                "apiUrl": _API_PRICES_URL,
+            },
         )
 
-        return calendar, prices
+        calendar: list[int] = []
+        prices: list[int] = []
+        errors_details: list[dict[str, str | int]] = []
+
+        for day_idx, day_result in enumerate(result):
+            status = day_result.get("status", "error")
+
+            if status == "ok":
+                if day_result.get("busy", False):
+                    calendar.append(1)
+                    prices.append(0)
+                else:
+                    calendar.append(0)
+                    prices.append(day_result.get("price", 0))
+            elif status == "obj_error":
+                errors_details.append({
+                    "day": day_idx,
+                    "error": "obj_error",
+                    "errors": str(day_result.get("errors", [])),
+                    "error_body": day_result.get("error_body", ""),
+                })
+                calendar.append(-1)
+                prices.append(0)
+            else:
+                errors_details.append({
+                    "day": day_idx,
+                    "error": day_result.get("error", "unknown"),
+                })
+                calendar.append(-1)
+                prices.append(0)
+
+        return calendar, prices, errors_details
 
     # ─────────────────────────────────────────────────────────────────────
     # Публичные методы обогащения
@@ -848,11 +1081,6 @@ class ListingService:
 
     async def enrich_listing(self, listing: RawListing, page: Page | None = None) -> RawListing:
         """Обогащает объявление данными календаря занятости и ценами.
-
-        Алгоритм:
-        1. Загружает страницу карточки, перехватывая токен из запросов сайта.
-        2. Вызывает API с retry-логикой для получения цен и занятости на 60 дней.
-        3. Заполняет calendar_60_days и prices_60_days.
 
         Args:
             listing: Объявление с базовыми данными из каталога.
@@ -871,7 +1099,6 @@ class ListingService:
         )
 
         try:
-            # Шаг 1: Загружаем страницу и перехватываем токен
             loaded, token = await self._goto_and_capture_token(active_page, listing.url)
 
             if not loaded:
@@ -890,8 +1117,7 @@ class ListingService:
 
             await self._browser.random_delay()
 
-            # Шаг 2: Вызываем API с retry-логикой
-            calendar, prices = await self._fetch_with_retry(
+            calendar, prices = await self._fetch_with_hybrid_strategy(
                 active_page, listing.external_id, token, listing.url
             )
 
@@ -899,10 +1125,11 @@ class ListingService:
             listing.prices_60_days = prices
 
             logger.info(
-                "карточка_обогащена_через_api",
+                "карточка_обогащена",
                 step=f"id={listing.external_id}",
-                total=f"календарь={len(calendar)}, цены={len(prices)}, "
-                      f"свободных={sum(1 for c in calendar if c == 0)}",
+                total=f"свободных={sum(1 for c in calendar if c == 0)}, "
+                      f"занятых={sum(1 for c in calendar if c == 1)}, "
+                      f"цен={sum(1 for p in prices if p > 0)}",
             )
 
         except Exception as e:
@@ -978,7 +1205,6 @@ class ListingService:
                     async with navigation_lock:
                         await asyncio.sleep(tab_delay_ms / 1000.0)
 
-                        # Загружаем страницу и перехватываем токен
                         loaded, token = await self._goto_and_capture_token(
                             page, listing.url
                         )
@@ -997,8 +1223,7 @@ class ListingService:
                         await self._browser.random_delay()
 
                         try:
-                            # Используем retry-логику вместо прямого вызова API
-                            calendar, prices = await self._fetch_with_retry(
+                            calendar, prices = await self._fetch_with_hybrid_strategy(
                                 page, listing.external_id, token, listing.url
                             )
                             listing.calendar_60_days = calendar
@@ -1007,7 +1232,8 @@ class ListingService:
                             logger.info(
                                 "карточка_обработана_вкладкой",
                                 step=f"id={listing.external_id}",
-                                total=f"свободных={sum(1 for c in calendar if c == 0)}",
+                                total=f"свободных={sum(1 for c in calendar if c == 0)}, "
+                                      f"цен={sum(1 for p in prices if p > 0)}",
                             )
 
                         except Exception as e:
@@ -1111,14 +1337,12 @@ class ListingService:
                 worker_stats.append((worker_idx, len(enriched_list), duration))
                 browsers_to_stop.append((browser_svc, worker_idx))
 
-        # Остановка браузеров
         if browsers_to_stop:
             logger.info("остановка_прокси_браузеров", total=len(browsers_to_stop))
             for browser_svc, w_idx in browsers_to_stop:
                 await _safe_stop_browser(browser_svc, w_idx)
             logger.info("все_прокси_браузеры_остановлены")
 
-        # Сводка
         if worker_stats:
             logger.info("─" * 50)
             logger.info("сводка_по_воркерам", total=len(worker_stats))
@@ -1185,7 +1409,6 @@ class ListingService:
                 total=len(listings),
             )
 
-            # Прогрев
             await browser_service.navigate("https://sutochno.ru")
             await browser_service.scroll_page()
             await asyncio.sleep(10)
