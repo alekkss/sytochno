@@ -81,6 +81,14 @@ _MIN_NIGHTS_ERROR_KEYWORDS: list[str] = [
     "min_stay",
 ]
 
+# Типы записей detail[], содержащие базовую цену за сутки.
+# API возвращает type="season_price" (сезонные цены с диапазонами дат)
+# или type=1 (числовой тип — единая базовая цена без дат).
+# Типы "interval" (скидки за длительность), "dop_persons" (доплата за гостей),
+# "sale" (акции) НЕ являются базовой ценой и игнорируются.
+_BASE_PRICE_TYPE_INT: int = 1
+_SEASON_PRICE_TYPE: str = "season_price"
+
 
 def _format_duration(seconds: float) -> str:
     """Форматирует длительность в секундах в человекочитаемый вид.
@@ -138,7 +146,10 @@ class ListingService:
     1. Валидация токена: один тестовый запрос (nights=2, один день).
        Если токен невалиден — перезагрузка страницы.
 
-    2. Bulk-запрос на 60 ночей → все цены из detail[type="season_price"].
+    2. Bulk-запрос на 60 ночей → все цены из detail[].
+       Приоритет: type="season_price" (сезонные цены с диапазонами дат).
+       Fallback: type=1 (единая базовая цена, применяется ко всем дням
+       без сезонной цены).
        Если busy="unbusy" → все дни свободны, готово за 1 запрос.
 
     3. Если bulk вернул busy="busy" → скользящее окно для занятости.
@@ -399,8 +410,19 @@ class ListingService:
     ) -> tuple[str | None, list[int], bool]:
         """Получает все цены одним запросом на 60 ночей.
 
-        Фильтрует detail[] — берёт только type="season_price".
-        Записи с type="interval" (скидки за длительность) игнорируются.
+        Обрабатывает два формата ценовых записей в detail[]:
+
+        1. type="season_price" — сезонные цены с диапазонами дат
+           (date_begin, date_end заполнены). Каждая запись покрывает
+           конкретный период. Разворачиваются в дневные цены.
+
+        2. type=1 (числовой) — единая базовая цена за сутки.
+           Поля date_begin/date_end = null. Применяется ко всем дням,
+           не покрытым записями season_price (fallback).
+
+        Записи type="interval" (скидки за длительность), "dop_persons"
+        (доплата за гостей), "sale" (акции) игнорируются — это не базовая
+        цена за сутки.
 
         Args:
             page: Вкладка браузера.
@@ -508,11 +530,18 @@ class ListingService:
         busy_status = result.get("busy")
         detail = result.get("detail", [])
 
-        # Разворачиваем detail в дневные цены (только season_price)
+        # ── Извлекаем базовую цену из type=1 (fallback) ──
+        base_price: int = 0
+        for det in detail:
+            if det.get("type") == _BASE_PRICE_TYPE_INT and det.get("cost"):
+                base_price = int(det["cost"])
+                break
+
+        # ── Разворачиваем season_price в дневные цены ──
         daily_prices: dict[str, int] = {}
 
         for det in detail:
-            if det.get("type") != "season_price":
+            if det.get("type") != _SEASON_PRICE_TYPE:
                 continue
 
             d_begin = det.get("date_begin")
@@ -535,17 +564,21 @@ class ListingService:
             except (ValueError, TypeError):
                 continue
 
-        # Формируем массив цен на 60 дней
+        # ── Формируем массив цен на 60 дней ──
+        # Приоритет: season_price (с датами) → type=1 (базовая цена)
         prices_60: list[int] = []
         for i in range(_DAYS_COUNT):
             day = today + timedelta(days=i)
-            prices_60.append(daily_prices.get(day.isoformat(), 0))
+            day_key = day.isoformat()
+            price = daily_prices.get(day_key, base_price)
+            prices_60.append(price)
 
         prices_filled = sum(1 for p in prices_60 if p > 0)
 
         logger.debug(
             "bulk_цены_получены",
-            step=f"id={object_id}, busy={busy_status}, цен={prices_filled}/60",
+            step=f"id={object_id}, busy={busy_status}, цен={prices_filled}/60, "
+                 f"season_price={len(daily_prices)}, base_price={base_price}",
         )
 
         return busy_status, prices_60, True
@@ -653,10 +686,18 @@ class ListingService:
                                 busy: obj.data.busy === 'busy',
                                 price: (() => {
                                     const detail = obj.data.detail || [];
+                                    /* Приоритет: season_price → type=1 (базовая цена) */
+                                    let seasonPrice = 0;
+                                    let basePrice = 0;
                                     for (const d of detail) {
-                                        if (d.type === 'season_price' && d.cost) return Math.round(d.cost);
+                                        if (d.type === 'season_price' && d.cost && !seasonPrice) {
+                                            seasonPrice = Math.round(d.cost);
+                                        }
+                                        if (d.type === 1 && d.cost && !basePrice) {
+                                            basePrice = Math.round(d.cost);
+                                        }
                                     }
-                                    return 0;
+                                    return seasonPrice || basePrice;
                                 })()
                             };
 
@@ -1120,12 +1161,18 @@ class ListingService:
                             const objData = obj.data;
                             let price = 0;
                             if (objData.detail) {
+                                /* Приоритет: season_price → type=1 (базовая цена) */
+                                let seasonPrice = 0;
+                                let basePrice = 0;
                                 for (const d of objData.detail) {
-                                    if (d.type === 'season_price' && d.cost) {
-                                        price = Math.round(d.cost);
-                                        break;
+                                    if (d.type === 'season_price' && d.cost && !seasonPrice) {
+                                        seasonPrice = Math.round(d.cost);
+                                    }
+                                    if (d.type === 1 && d.cost && !basePrice) {
+                                        basePrice = Math.round(d.cost);
                                     }
                                 }
+                                price = seasonPrice || basePrice;
                             }
 
                             return {
