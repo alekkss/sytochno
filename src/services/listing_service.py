@@ -55,8 +55,9 @@ _MAX_API_RETRIES: int = 2
 # Пауза перед повторной попыткой после перезагрузки страницы (секунды)
 _RELOAD_WAIT_SECONDS: float = 10.0
 
-# Варианты min_nights для адаптивного запроса (по возрастанию)
-_MIN_NIGHTS_VARIANTS: list[int] = [2, 3, 5, 7]
+# Варианты min_nights для адаптивного запроса (по возрастанию).
+# Расширен до 30 — встречаются объекты с min_nights=10, 14, 30.
+_MIN_NIGHTS_VARIANTS: list[int] = [2, 3, 4, 5, 6, 7, 10, 14, 30]
 
 # Количество дней для анализа
 _DAYS_COUNT: int = 60
@@ -918,7 +919,13 @@ class ListingService:
     async def _determine_availability(
         self, page: Page, object_id: str, token: str, url: str
     ) -> list[int]:
-        """Определяет занятость каждого дня с адаптацией и retry.
+        """Определяет занятость каждого дня с адаптацией min_nights и retry.
+
+        Перебирает варианты min_nights по возрастанию. Если ошибок много
+        и detected min_nights указывает на более высокое значение —
+        переходит к следующему варианту. Если detected <= текущего nights,
+        но ошибок всё ещё много — тоже переходит к следующему варианту
+        (API может занижать реальный min_nights в тексте ошибки).
 
         Args:
             page: Вкладка браузера.
@@ -930,14 +937,21 @@ class ListingService:
             Список из 60 значений: 0=свободен, 1=занят.
         """
         current_token = token
+        best_calendar: list[int] = [-1] * _DAYS_COUNT
+        best_error_days: int = _DAYS_COUNT
+        reloaded_for_nights: int | None = None
 
-        # Пробуем скользящее окно, начиная с nights=2
         for nights in _MIN_NIGHTS_VARIANTS:
             calendar, errors_details = await self._fetch_availability(
                 page, object_id, current_token, nights=nights
             )
 
             error_days = sum(1 for c in calendar if c == -1)
+
+            # Сохраняем лучший результат
+            if error_days < best_error_days:
+                best_calendar = calendar
+                best_error_days = error_days
 
             if error_days == 0:
                 # Идеально — все дни определены
@@ -951,46 +965,61 @@ class ListingService:
             detected = self._detect_min_nights(errors_details)
 
             if detected is not None and detected > nights:
-                # min_nights больше текущего — продолжаем цикл
+                # min_nights явно больше текущего — продолжаем цикл
                 logger.info(
                     "адаптация_min_nights",
                     step=f"id={object_id}, текущий={nights}, нужен={detected}",
                 )
                 continue
 
-            # Ошибки не связаны с min_nights — возможно токен протух
-            if error_days >= _ERROR_THRESHOLD:
-                logger.warning(
-                    "массовые_ошибки_занятости_перезагрузка",
+            # detected <= nights ИЛИ detected is None, но ошибок много.
+            # Возможные причины:
+            # - API занижает min_nights (говорит "3", но на самом деле нужно 5+)
+            # - min_nights меняется по дням (одни дни=3, другие=7)
+            # - Токен протух
+            #
+            # Стратегия: пробуем следующий вариант nights.
+            # Перезагрузку делаем только один раз за весь цикл.
+            if error_days >= _ERROR_THRESHOLD and reloaded_for_nights is None:
+                logger.info(
+                    "много_ошибок_пробуем_перезагрузку",
                     step=f"id={object_id}, ночей={nights}, ошибок={error_days}",
                 )
-
                 new_token = await self._reload_and_get_token(page, url, object_id)
                 if new_token:
                     current_token = new_token
-                    # Повторяем с новым токеном (тот же nights)
-                    calendar_retry, errors_retry = await self._fetch_availability(
+                    reloaded_for_nights = nights
+
+                    # Повторяем текущий nights с новым токеном
+                    calendar_retry, _ = await self._fetch_availability(
                         page, object_id, current_token, nights=nights
                     )
                     error_days_retry = sum(1 for c in calendar_retry if c == -1)
 
-                    if error_days_retry < error_days:
-                        calendar = calendar_retry
-                        error_days = error_days_retry
+                    if error_days_retry < best_error_days:
+                        best_calendar = calendar_retry
+                        best_error_days = error_days_retry
 
-                    if error_days <= 5:
-                        return [0 if c == -1 else c for c in calendar]
+                    if best_error_days == 0:
+                        return best_calendar
+                    if best_error_days <= 5:
+                        return [0 if c == -1 else c for c in best_calendar]
 
-            # Не удалось улучшить — выходим из цикла
-            break
+            # Продолжаем на следующий вариант nights
+            logger.debug(
+                "переход_к_следующему_nights",
+                step=f"id={object_id}, текущий={nights}, ошибок={error_days}, "
+                     f"detected={detected}",
+            )
+            continue
 
-        # Нормализуем то что есть (ошибки → свободен)
-        normalized = [0 if c == -1 else c for c in calendar]
+        # Все варианты перебраны — нормализуем лучший результат
+        normalized = [0 if c == -1 else c for c in best_calendar]
 
-        if error_days > 10:
+        if best_error_days > 10:
             logger.warning(
                 "занятость_с_ошибками",
-                step=f"id={object_id}, ошибок_нормализовано={error_days}",
+                step=f"id={object_id}, ошибок_нормализовано={best_error_days}",
             )
 
         return normalized
@@ -1028,20 +1057,16 @@ class ListingService:
 
             if error_days == 0:
                 # Данные получены — извлекаем цены из результатов
-                # (цены уже включены в _fetch_availability как price)
-                # Но нам нужно их получить — сделаем отдельный bulk
                 busy_status, prices_60, bulk_ok = await self._fetch_bulk_prices(
                     page, object_id, current_token
                 )
                 if bulk_ok and sum(1 for p in prices_60 if p > 0) > 0:
-                    # Объединяем
                     final_prices = [
                         0 if calendar[i] == 1 else prices_60[i]
                         for i in range(_DAYS_COUNT)
                     ]
                     return calendar, final_prices
 
-                # Bulk не дал цен — используем цены из скользящего окна
                 return await self._sliding_window_with_prices(
                     page, object_id, current_token, nights
                 )
@@ -1063,15 +1088,32 @@ class ListingService:
                     page, object_id, current_token, nights
                 )
 
-            # Много ошибок — проверяем min_nights
+            # Много ошибок — проверяем min_nights и продолжаем цикл
             detected = self._detect_min_nights(errors_details)
-            if detected is None or detected <= nights:
-                # Ошибки не связаны с min_nights — перезагрузка
-                new_token = await self._reload_and_get_token(page, url, object_id)
-                if new_token:
-                    current_token = new_token
-                    continue
-                break
+
+            if detected is not None and detected > nights:
+                # min_nights явно больше — пробуем следующий вариант
+                logger.info(
+                    "скользящее_окно_адаптация",
+                    step=f"id={object_id}, текущий={nights}, нужен={detected}",
+                )
+                continue
+
+            # detected <= nights или None — API может занижать min_nights.
+            # Пробуем следующий вариант nights перед перезагрузкой.
+            if nights < _MIN_NIGHTS_VARIANTS[-1]:
+                logger.debug(
+                    "скользящее_окно_следующий_вариант",
+                    step=f"id={object_id}, текущий={nights}, ошибок={error_days}",
+                )
+                continue
+
+            # Последний вариант — перезагрузка как крайняя мера
+            new_token = await self._reload_and_get_token(page, url, object_id)
+            if new_token:
+                current_token = new_token
+                continue
+            break
 
         # Полный провал
         logger.warning(
