@@ -177,43 +177,39 @@ class ListingService:
     # ─────────────────────────────────────────────────────────────────────
 
     async def _goto_and_capture_token(self, page: Page, url: str) -> tuple[bool, str | None]:
-        """Загружает страницу карточки и перехватывает токен API.
-
-        Args:
-            page: Вкладка браузера.
-            url: URL карточки.
-
-        Returns:
-            Кортеж (страница_загружена, токен_или_None).
-        """
         captured_token: list[str] = []
 
-        def on_request(request: "any") -> None:  # type: ignore[name-defined]
-            """Синхронный обработчик — перехватывает токен из заголовков."""
-            if captured_token:
-                return
-            req_url = request.url
-            if "sutochno.ru/api/json" in req_url:
-                token_header = request.headers.get("token")
-                if token_header:
-                    captured_token.append(token_header)
+        async def _route_handler(route):
+            req = route.request
+            # Перехватываем только запросы к внутреннему API
+            if "sutochno.ru/api/json" in req.url:
+                token = req.headers.get("token") or req.headers.get("Token")
+                if token and not captured_token:
+                    captured_token.append(token)
+            # Обязательно продолжаем выполнение запроса, чтобы страница работала штатно
+            await route.continue_()
 
-        page.on("request", on_request)
+        # page.route надёжнее page.on('request'): гарантирует перехват
+        # даже для запросов из iframe, service workers или асинхронных init-скриптов
+        await page.route("**/api/json/**", _route_handler)
 
         try:
             loaded = await self._goto_with_retry(page, url)
+            # Небольшая пауза после загрузки: API-запросы часто уходят
+            # асинхронно сразу после DOMContentLoaded / networkidle
+            await asyncio.sleep(1.0)
         finally:
-            page.remove_listener("request", on_request)
+            await page.unroute("**/api/json/**")
 
         token = captured_token[0] if captured_token else None
 
         if token:
             logger.debug(
                 "токен_перехвачен",
-                step=f"длина={len(token)}, источник=request_header",
+                step=f"длина={len(token)}, источник=route_interception",
             )
         else:
-            logger.debug("токен_не_перехвачен_при_загрузке")
+            logger.warning("токен_не_перехвачен_при_загрузке")
 
         return loaded, token
 
