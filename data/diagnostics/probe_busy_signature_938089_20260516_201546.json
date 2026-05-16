@@ -1,0 +1,6049 @@
+{
+  "meta": {
+    "started_at": "2026-05-16T20:14:35.448195+00:00",
+    "finished_at": "2026-05-16T20:15:46.538677+00:00",
+    "listing_id": "938089",
+    "url": "https://sutochno.ru/front/searchapp/detail/938089?guests_adults=2&id=938089&type=apartment&price_per=1",
+    "days_count": 60,
+    "max_nights": 4,
+    "guests": 2,
+    "today": "2026-05-16",
+    "token_prefix": "Hy6U3z61..."
+  },
+  "summary": {
+    "signatures_overall": {
+      "obj_error:минимальное количество суток - <n>.": 60,
+      "ok_busy:busy": 47,
+      "ok_busy:unbusy": 133
+    },
+    "first_success_nights_distribution": {
+      "2": 60
+    },
+    "busy_distribution_when_success": {
+      "busy": 12,
+      "unbusy": 48
+    },
+    "days_never_success": 0,
+    "nights_1_signatures": {
+      "obj_error:минимальное количество суток - <n>.": 60
+    },
+    "classification_by_nights_1_signature": {
+      "obj_error:минимальное количество суток - <n>.": {
+        "busy": 12,
+        "unbusy": 48
+      }
+    }
+  },
+  "per_day": [
+    {
+      "day_index": 0,
+      "date": "2026-05-16",
+      "by_nights": {
+        "1": {
+          "signature": "obj_error:минимальное количество суток - <n>.",
+          "obj_success": false,
+          "busy": null,
+          "price": null,
+          "obj_errors": [
+            "Минимальное количество суток - 2."
+          ]
+        },
+        "2": {
+          "signature": "ok_busy:busy",
+          "obj_success": true,
+          "busy": "busy",
+          "price": 4140,
+          "obj_errors": []
+        },
+        "3": {
+          "signature": "ok_busy:busy",
+          "obj_success": true,
+          "busy": "busy",
+          "price": 5980,
+          "obj_errors": []
+        },
+        "4": {
+          "signature": "ok_busy:busy",
+          "obj_success": true,
+          "busy": "busy",
+          "price": 7820,
+          "obj_errors": []
+        }
+      },
+      "first_success_nights": 2,
+      "first_success_busy": "busy"
+    },
+    {
+      "day_index": 1,
+      "date": "2026-05-17",
+      "by_nights": {
+        "1": {
+          "signature": "obj_error:минимальное количество суток - <n>.",
+          "obj_success": false,
+          "busy": null,
+          "price": null,
+          "obj_errors": [
+            "Минимальное количество суток - 2."
+          ]
+        },
+        "2": {
+          "signature": "ok_busy:unbusy",
+          "obj_success": true,
+          "busy": "unbusy",
+          "price": 3680,
+          "obj_errors": []
+        },
+        "3": {
+          "signature": "ok_busy:unbusy",
+          "obj_success": true,
+          "busy": "unbusy",
+          "price": 5520,
+          "obj_errors": []
+        },
+        "4": {
+          "signature": "ok_busy:unbusy",
+          "obj_success": true,
+          "busy": "unbusy",
+          "price": 7360,
+          "obj_errors": []
+        }
+      },
+      "first_success_nights": 2,
+      "first_success_busy": "unbusy"
+    },
+    {
+      "day_index": 2,
+      "date": "2026-05-18",
+      "by_nights": {
+        "1": {
+          "signature": "obj_error:минимальное количество суток - <n>.",
+          "obj_success": false,
+          "busy": null,
+          "price": null,
+          "obj_errors": [
+            "Минимальное количество суток - 2."
+          ]
+        },
+        "2": {
+          "signature": "ok_busy:unbusy",
+          "obj_success": true,
+          "busy": "unbusy",
+          "price": 3680,
+          "obj_errors": []
+        },
+        "3": {
+          "signature": "ok_busy:unbusy",
+          "obj_success": true,
+          "busy": "unbusy",
+          "price": 5520,
+          "obj_errors": []
+        },
+        "4": {
+          "signature": "ok_busy:busy",
+          "obj_success": true,
+          "busy": "busy",
+          "price": 7475,
+          "obj_errors": []
+        }
+      },
+      "first_success_nights": 2,
+      "first_success_busy": "unbusy"
+    },
+    {
+      "day_index": 3,
+      "date": "2026-05-19",
+      "by_nights": {
+        "1": {
+          "signature": "obj_error:минимальное количество суток - <n>.",
+          "obj_success": false,
+          "busy": null,
+          "price": null,
+          "obj_errors": [
+            "Минимальное количество суток - 2."
+          ]
+        },
+        "2": {
+          "signature": "ok_busy:unbusy",
+          "obj_success": true,
+          "busy": "unbusy",
+          "price": 3680,
+          "obj_errors": []
+        },
+        "3": {
+          "signature": "ok_busy:busy",
+          "obj_success": true,
+          "busy": "busy",
+          "price": 5635,
+          "obj_errors": []
+        },
+        "4": {
+          "signature": "ok_busy:busy",
+          "obj_success": true,
+          "busy": "busy",
+          "price": 8510,
+          "obj_errors": []
+        }
+      },
+      "first_success_nights": 2,
+      "first_success_busy": "unbusy"
+    },
+    {
+      "day_index": 4,
+      "date": "2026-05-20",
+      "by_nights": {
+        "1": {
+          "signature": "obj_error:минимальное количество суток - <n>.",
+          "obj_success": false,
+          "busy": null,
+          "price": null,
+          "obj_errors": [
+            "Минимальное количество суток - 2."
+          ]
+        },
+        "2": {
+          "signature": "ok_busy:busy",
+          "obj_success": true,
+          "busy": "busy",
+          "price": 3795,
+          "obj_errors": []
+        },
+        "3": {
+          "signature": "ok_busy:busy",
+          "obj_success": true,
+          "busy": "busy",
+          "price": 6670,
+          "obj_errors": []
+        },
+        "4": {
+          "signature": "ok_busy:busy",
+          "obj_success": true,
+          "busy": "busy",
+          "price": 9545,
+          "obj_errors": []
+        }
+      },
+      "first_success_nights": 2,
+      "first_success_busy": "busy"
+    },
+    {
+      "day_index": 5,
+      "date": "2026-05-21",
+      "by_nights": {
+        "1": {
+          "signature": "obj_error:минимальное количество суток - <n>.",
+          "obj_success": false,
+          "busy": null,
+          "price": null,
+          "obj_errors": [
+            "Минимальное количество суток - 2."
+          ]
+        },
+        "2": {
+          "signature": "ok_busy:busy",
+          "obj_success": true,
+          "busy": "busy",
+          "price": 4830,
+          "obj_errors": []
+        },
+        "3": {
+          "signature": "ok_busy:busy",
+          "obj_success": true,
+          "busy": "busy",
+          "price": 7705,
+          "obj_errors": []
+        },
+        "4": {
+          "signature": "ok_busy:busy",
+          "obj_success": true,
+          "busy": "busy",
+          "price": 10350,
+          "obj_errors": []
+        }
+      },
+      "first_success_nights": 2,
+      "first_success_busy": "busy"
+    },
+    {
+      "day_index": 6,
+      "date": "2026-05-22",
+      "by_nights": {
+        "1": {
+          "signature": "obj_error:минимальное количество суток - <n>.",
+          "obj_success": false,
+          "busy": null,
+          "price": null,
+          "obj_errors": [
+            "Минимальное количество суток - 2."
+          ]
+        },
+        "2": {
+          "signature": "ok_busy:unbusy",
+          "obj_success": true,
+          "busy": "unbusy",
+          "price": 5750,
+          "obj_errors": []
+        },
+        "3": {
+          "signature": "ok_busy:unbusy",
+          "obj_success": true,
+          "busy": "unbusy",
+          "price": 8395,
+          "obj_errors": []
+        },
+        "4": {
+          "signature": "ok_busy:unbusy",
+          "obj_success": true,
+          "busy": "unbusy",
+          "price": 11040,
+          "obj_errors": []
+        }
+      },
+      "first_success_nights": 2,
+      "first_success_busy": "unbusy"
+    },
+    {
+      "day_index": 7,
+      "date": "2026-05-23",
+      "by_nights": {
+        "1": {
+          "signature": "obj_error:минимальное количество суток - <n>.",
+          "obj_success": false,
+          "busy": null,
+          "price": null,
+          "obj_errors": [
+            "Минимальное количество суток - 2."
+          ]
+        },
+        "2": {
+          "signature": "ok_busy:unbusy",
+          "obj_success": true,
+          "busy": "unbusy",
+          "price": 5520,
+          "obj_errors": []
+        },
+        "3": {
+          "signature": "ok_busy:unbusy",
+          "obj_success": true,
+          "busy": "unbusy",
+          "price": 8165,
+          "obj_errors": []
+        },
+        "4": {
+          "signature": "ok_busy:busy",
+          "obj_success": true,
+          "busy": "busy",
+          "price": 10810,
+          "obj_errors": []
+        }
+      },
+      "first_success_nights": 2,
+      "first_success_busy": "unbusy"
+    },
+    {
+      "day_index": 8,
+      "date": "2026-05-24",
+      "by_nights": {
+        "1": {
+          "signature": "obj_error:минимальное количество суток - <n>.",
+          "obj_success": false,
+          "busy": null,
+          "price": null,
+          "obj_errors": [
+            "Минимальное количество суток - 2."
+          ]
+        },
+        "2": {
+          "signature": "ok_busy:unbusy",
+          "obj_success": true,
+          "busy": "unbusy",
+          "price": 5290,
+          "obj_errors": []
+        },
+        "3": {
+          "signature": "ok_busy:busy",
+          "obj_success": true,
+          "busy": "busy",
+          "price": 7935,
+          "obj_errors": []
+        },
+        "4": {
+          "signature": "ok_busy:busy",
+          "obj_success": true,
+          "busy": "busy",
+          "price": 10580,
+          "obj_errors": []
+        }
+      },
+      "first_success_nights": 2,
+      "first_success_busy": "unbusy"
+    },
+    {
+      "day_index": 9,
+      "date": "2026-05-25",
+      "by_nights": {
+        "1": {
+          "signature": "obj_error:минимальное количество суток - <n>.",
+          "obj_success": false,
+          "busy": null,
+          "price": null,
+          "obj_errors": [
+            "Минимальное количество суток - 2."
+          ]
+        },
+        "2": {
+          "signature": "ok_busy:busy",
+          "obj_success": true,
+          "busy": "busy",
+          "price": 5290,
+          "obj_errors": []
+        },
+        "3": {
+          "signature": "ok_busy:busy",
+          "obj_success": true,
+          "busy": "busy",
+          "price": 7935,
+          "obj_errors": []
+        },
+        "4": {
+          "signature": "ok_busy:busy",
+          "obj_success": true,
+          "busy": "busy",
+          "price": 10580,
+          "obj_errors": []
+        }
+      },
+      "first_success_nights": 2,
+      "first_success_busy": "busy"
+    },
+    {
+      "day_index": 10,
+      "date": "2026-05-26",
+      "by_nights": {
+        "1": {
+          "signature": "obj_error:минимальное количество суток - <n>.",
+          "obj_success": false,
+          "busy": null,
+          "price": null,
+          "obj_errors": [
+            "Минимальное количество суток - 2."
+          ]
+        },
+        "2": {
+          "signature": "ok_busy:busy",
+          "obj_success": true,
+          "busy": "busy",
+          "price": 5290,
+          "obj_errors": []
+        },
+        "3": {
+          "signature": "ok_busy:busy",
+          "obj_success": true,
+          "busy": "busy",
+          "price": 7935,
+          "obj_errors": []
+        },
+        "4": {
+          "signature": "ok_busy:busy",
+          "obj_success": true,
+          "busy": "busy",
+          "price": 10810,
+          "obj_errors": []
+        }
+      },
+      "first_success_nights": 2,
+      "first_success_busy": "busy"
+    },
+    {
+      "day_index": 11,
+      "date": "2026-05-27",
+      "by_nights": {
+        "1": {
+          "signature": "obj_error:минимальное количество суток - <n>.",
+          "obj_success": false,
+          "busy": null,
+          "price": null,
+          "obj_errors": [
+            "Минимальное количество суток - 2."
+          ]
+        },
+        "2": {
+          "signature": "ok_busy:unbusy",
+          "obj_success": true,
+          "busy": "unbusy",
+          "price": 5290,
+          "obj_errors": []
+        },
+        "3": {
+          "signature": "ok_busy:busy",
+          "obj_success": true,
+          "busy": "busy",
+          "price": 8165,
+          "obj_errors": []
+        },
+        "4": {
+          "signature": "ok_busy:busy",
+          "obj_success": true,
+          "busy": "busy",
+          "price": 11040,
+          "obj_errors": []
+        }
+      },
+      "first_success_nights": 2,
+      "first_success_busy": "unbusy"
+    },
+    {
+      "day_index": 12,
+      "date": "2026-05-28",
+      "by_nights": {
+        "1": {
+          "signature": "obj_error:минимальное количество суток - <n>.",
+          "obj_success": false,
+          "busy": null,
+          "price": null,
+          "obj_errors": [
+            "Минимальное количество суток - 2."
+          ]
+        },
+        "2": {
+          "signature": "ok_busy:busy",
+          "obj_success": true,
+          "busy": "busy",
+          "price": 5520,
+          "obj_errors": []
+        },
+        "3": {
+          "signature": "ok_busy:busy",
+          "obj_success": true,
+          "busy": "busy",
+          "price": 8395,
+          "obj_errors": []
+        },
+        "4": {
+          "signature": "ok_busy:busy",
+          "obj_success": true,
+          "busy": "busy",
+          "price": 11040,
+          "obj_errors": []
+        }
+      },
+      "first_success_nights": 2,
+      "first_success_busy": "busy"
+    },
+    {
+      "day_index": 13,
+      "date": "2026-05-29",
+      "by_nights": {
+        "1": {
+          "signature": "obj_error:минимальное количество суток - <n>.",
+          "obj_success": false,
+          "busy": null,
+          "price": null,
+          "obj_errors": [
+            "Минимальное количество суток - 2."
+          ]
+        },
+        "2": {
+          "signature": "ok_busy:busy",
+          "obj_success": true,
+          "busy": "busy",
+          "price": 5750,
+          "obj_errors": []
+        },
+        "3": {
+          "signature": "ok_busy:busy",
+          "obj_success": true,
+          "busy": "busy",
+          "price": 8395,
+          "obj_errors": []
+        },
+        "4": {
+          "signature": "ok_busy:busy",
+          "obj_success": true,
+          "busy": "busy",
+          "price": 12305,
+          "obj_errors": []
+        }
+      },
+      "first_success_nights": 2,
+      "first_success_busy": "busy"
+    },
+    {
+      "day_index": 14,
+      "date": "2026-05-30",
+      "by_nights": {
+        "1": {
+          "signature": "obj_error:минимальное количество суток - <n>.",
+          "obj_success": false,
+          "busy": null,
+          "price": null,
+          "obj_errors": [
+            "Минимальное количество суток - 2."
+          ]
+        },
+        "2": {
+          "signature": "ok_busy:busy",
+          "obj_success": true,
+          "busy": "busy",
+          "price": 5520,
+          "obj_errors": []
+        },
+        "3": {
+          "signature": "ok_busy:busy",
+          "obj_success": true,
+          "busy": "busy",
+          "price": 9430,
+          "obj_errors": []
+        },
+        "4": {
+          "signature": "ok_busy:busy",
+          "obj_success": true,
+          "busy": "busy",
+          "price": 13340,
+          "obj_errors": []
+        }
+      },
+      "first_success_nights": 2,
+      "first_success_busy": "busy"
+    },
+    {
+      "day_index": 15,
+      "date": "2026-05-31",
+      "by_nights": {
+        "1": {
+          "signature": "obj_error:минимальное количество суток - <n>.",
+          "obj_success": false,
+          "busy": null,
+          "price": null,
+          "obj_errors": [
+            "Минимальное количество суток - 2."
+          ]
+        },
+        "2": {
+          "signature": "ok_busy:unbusy",
+          "obj_success": true,
+          "busy": "unbusy",
+          "price": 6555,
+          "obj_errors": []
+        },
+        "3": {
+          "signature": "ok_busy:unbusy",
+          "obj_success": true,
+          "busy": "unbusy",
+          "price": 10465,
+          "obj_errors": []
+        },
+        "4": {
+          "signature": "ok_busy:unbusy",
+          "obj_success": true,
+          "busy": "unbusy",
+          "price": 14375,
+          "obj_errors": []
+        }
+      },
+      "first_success_nights": 2,
+      "first_success_busy": "unbusy"
+    },
+    {
+      "day_index": 16,
+      "date": "2026-06-01",
+      "by_nights": {
+        "1": {
+          "signature": "obj_error:минимальное количество суток - <n>.",
+          "obj_success": false,
+          "busy": null,
+          "price": null,
+          "obj_errors": [
+            "Минимальное количество суток - 2."
+          ]
+        },
+        "2": {
+          "signature": "ok_busy:unbusy",
+          "obj_success": true,
+          "busy": "unbusy",
+          "price": 7820,
+          "obj_errors": []
+        },
+        "3": {
+          "signature": "ok_busy:unbusy",
+          "obj_success": true,
+          "busy": "unbusy",
+          "price": 11730,
+          "obj_errors": []
+        },
+        "4": {
+          "signature": "ok_busy:unbusy",
+          "obj_success": true,
+          "busy": "unbusy",
+          "price": 15640,
+          "obj_errors": []
+        }
+      },
+      "first_success_nights": 2,
+      "first_success_busy": "unbusy"
+    },
+    {
+      "day_index": 17,
+      "date": "2026-06-02",
+      "by_nights": {
+        "1": {
+          "signature": "obj_error:минимальное количество суток - <n>.",
+          "obj_success": false,
+          "busy": null,
+          "price": null,
+          "obj_errors": [
+            "Минимальное количество суток - 2."
+          ]
+        },
+        "2": {
+          "signature": "ok_busy:unbusy",
+          "obj_success": true,
+          "busy": "unbusy",
+          "price": 7820,
+          "obj_errors": []
+        },
+        "3": {
+          "signature": "ok_busy:unbusy",
+          "obj_success": true,
+          "busy": "unbusy",
+          "price": 11730,
+          "obj_errors": []
+        },
+        "4": {
+          "signature": "ok_busy:unbusy",
+          "obj_success": true,
+          "busy": "unbusy",
+          "price": 16100,
+          "obj_errors": []
+        }
+      },
+      "first_success_nights": 2,
+      "first_success_busy": "unbusy"
+    },
+    {
+      "day_index": 18,
+      "date": "2026-06-03",
+      "by_nights": {
+        "1": {
+          "signature": "obj_error:минимальное количество суток - <n>.",
+          "obj_success": false,
+          "busy": null,
+          "price": null,
+          "obj_errors": [
+            "Минимальное количество суток - 2."
+          ]
+        },
+        "2": {
+          "signature": "ok_busy:unbusy",
+          "obj_success": true,
+          "busy": "unbusy",
+          "price": 7820,
+          "obj_errors": []
+        },
+        "3": {
+          "signature": "ok_busy:unbusy",
+          "obj_success": true,
+          "busy": "unbusy",
+          "price": 12190,
+          "obj_errors": []
+        },
+        "4": {
+          "signature": "ok_busy:unbusy",
+          "obj_success": true,
+          "busy": "unbusy",
+          "price": 16560,
+          "obj_errors": []
+        }
+      },
+      "first_success_nights": 2,
+      "first_success_busy": "unbusy"
+    },
+    {
+      "day_index": 19,
+      "date": "2026-06-04",
+      "by_nights": {
+        "1": {
+          "signature": "obj_error:минимальное количество суток - <n>.",
+          "obj_success": false,
+          "busy": null,
+          "price": null,
+          "obj_errors": [
+            "Минимальное количество суток - 2."
+          ]
+        },
+        "2": {
+          "signature": "ok_busy:unbusy",
+          "obj_success": true,
+          "busy": "unbusy",
+          "price": 8280,
+          "obj_errors": []
+        },
+        "3": {
+          "signature": "ok_busy:unbusy",
+          "obj_success": true,
+          "busy": "unbusy",
+          "price": 12650,
+          "obj_errors": []
+        },
+        "4": {
+          "signature": "ok_busy:unbusy",
+          "obj_success": true,
+          "busy": "unbusy",
+          "price": 16560,
+          "obj_errors": []
+        }
+      },
+      "first_success_nights": 2,
+      "first_success_busy": "unbusy"
+    },
+    {
+      "day_index": 20,
+      "date": "2026-06-05",
+      "by_nights": {
+        "1": {
+          "signature": "obj_error:минимальное количество суток - <n>.",
+          "obj_success": false,
+          "busy": null,
+          "price": null,
+          "obj_errors": [
+            "Минимальное количество суток - 2."
+          ]
+        },
+        "2": {
+          "signature": "ok_busy:unbusy",
+          "obj_success": true,
+          "busy": "unbusy",
+          "price": 8740,
+          "obj_errors": []
+        },
+        "3": {
+          "signature": "ok_busy:unbusy",
+          "obj_success": true,
+          "busy": "unbusy",
+          "price": 12650,
+          "obj_errors": []
+        },
+        "4": {
+          "signature": "ok_busy:unbusy",
+          "obj_success": true,
+          "busy": "unbusy",
+          "price": 16560,
+          "obj_errors": []
+        }
+      },
+      "first_success_nights": 2,
+      "first_success_busy": "unbusy"
+    },
+    {
+      "day_index": 21,
+      "date": "2026-06-06",
+      "by_nights": {
+        "1": {
+          "signature": "obj_error:минимальное количество суток - <n>.",
+          "obj_success": false,
+          "busy": null,
+          "price": null,
+          "obj_errors": [
+            "Минимальное количество суток - 2."
+          ]
+        },
+        "2": {
+          "signature": "ok_busy:unbusy",
+          "obj_success": true,
+          "busy": "unbusy",
+          "price": 8280,
+          "obj_errors": []
+        },
+        "3": {
+          "signature": "ok_busy:unbusy",
+          "obj_success": true,
+          "busy": "unbusy",
+          "price": 12190,
+          "obj_errors": []
+        },
+        "4": {
+          "signature": "ok_busy:unbusy",
+          "obj_success": true,
+          "busy": "unbusy",
+          "price": 16100,
+          "obj_errors": []
+        }
+      },
+      "first_success_nights": 2,
+      "first_success_busy": "unbusy"
+    },
+    {
+      "day_index": 22,
+      "date": "2026-06-07",
+      "by_nights": {
+        "1": {
+          "signature": "obj_error:минимальное количество суток - <n>.",
+          "obj_success": false,
+          "busy": null,
+          "price": null,
+          "obj_errors": [
+            "Минимальное количество суток - 2."
+          ]
+        },
+        "2": {
+          "signature": "ok_busy:unbusy",
+          "obj_success": true,
+          "busy": "unbusy",
+          "price": 7820,
+          "obj_errors": []
+        },
+        "3": {
+          "signature": "ok_busy:unbusy",
+          "obj_success": true,
+          "busy": "unbusy",
+          "price": 11730,
+          "obj_errors": []
+        },
+        "4": {
+          "signature": "ok_busy:unbusy",
+          "obj_success": true,
+          "busy": "unbusy",
+          "price": 15640,
+          "obj_errors": []
+        }
+      },
+      "first_success_nights": 2,
+      "first_success_busy": "unbusy"
+    },
+    {
+      "day_index": 23,
+      "date": "2026-06-08",
+      "by_nights": {
+        "1": {
+          "signature": "obj_error:минимальное количество суток - <n>.",
+          "obj_success": false,
+          "busy": null,
+          "price": null,
+          "obj_errors": [
+            "Минимальное количество суток - 2."
+          ]
+        },
+        "2": {
+          "signature": "ok_busy:unbusy",
+          "obj_success": true,
+          "busy": "unbusy",
+          "price": 7820,
+          "obj_errors": []
+        },
+        "3": {
+          "signature": "ok_busy:unbusy",
+          "obj_success": true,
+          "busy": "unbusy",
+          "price": 11730,
+          "obj_errors": []
+        },
+        "4": {
+          "signature": "ok_busy:unbusy",
+          "obj_success": true,
+          "busy": "unbusy",
+          "price": 15640,
+          "obj_errors": []
+        }
+      },
+      "first_success_nights": 2,
+      "first_success_busy": "unbusy"
+    },
+    {
+      "day_index": 24,
+      "date": "2026-06-09",
+      "by_nights": {
+        "1": {
+          "signature": "obj_error:минимальное количество суток - <n>.",
+          "obj_success": false,
+          "busy": null,
+          "price": null,
+          "obj_errors": [
+            "Минимальное количество суток - 2."
+          ]
+        },
+        "2": {
+          "signature": "ok_busy:unbusy",
+          "obj_success": true,
+          "busy": "unbusy",
+          "price": 7820,
+          "obj_errors": []
+        },
+        "3": {
+          "signature": "ok_busy:unbusy",
+          "obj_success": true,
+          "busy": "unbusy",
+          "price": 11730,
+          "obj_errors": []
+        },
+        "4": {
+          "signature": "ok_busy:unbusy",
+          "obj_success": true,
+          "busy": "unbusy",
+          "price": 16100,
+          "obj_errors": []
+        }
+      },
+      "first_success_nights": 2,
+      "first_success_busy": "unbusy"
+    },
+    {
+      "day_index": 25,
+      "date": "2026-06-10",
+      "by_nights": {
+        "1": {
+          "signature": "obj_error:минимальное количество суток - <n>.",
+          "obj_success": false,
+          "busy": null,
+          "price": null,
+          "obj_errors": [
+            "Минимальное количество суток - 2."
+          ]
+        },
+        "2": {
+          "signature": "ok_busy:unbusy",
+          "obj_success": true,
+          "busy": "unbusy",
+          "price": 7820,
+          "obj_errors": []
+        },
+        "3": {
+          "signature": "ok_busy:unbusy",
+          "obj_success": true,
+          "busy": "unbusy",
+          "price": 12190,
+          "obj_errors": []
+        },
+        "4": {
+          "signature": "ok_busy:busy",
+          "obj_success": true,
+          "busy": "busy",
+          "price": 16560,
+          "obj_errors": []
+        }
+      },
+      "first_success_nights": 2,
+      "first_success_busy": "unbusy"
+    },
+    {
+      "day_index": 26,
+      "date": "2026-06-11",
+      "by_nights": {
+        "1": {
+          "signature": "obj_error:минимальное количество суток - <n>.",
+          "obj_success": false,
+          "busy": null,
+          "price": null,
+          "obj_errors": [
+            "Минимальное количество суток - 2."
+          ]
+        },
+        "2": {
+          "signature": "ok_busy:unbusy",
+          "obj_success": true,
+          "busy": "unbusy",
+          "price": 8280,
+          "obj_errors": []
+        },
+        "3": {
+          "signature": "ok_busy:busy",
+          "obj_success": true,
+          "busy": "busy",
+          "price": 12650,
+          "obj_errors": []
+        },
+        "4": {
+          "signature": "ok_busy:busy",
+          "obj_success": true,
+          "busy": "busy",
+          "price": 16560,
+          "obj_errors": []
+        }
+      },
+      "first_success_nights": 2,
+      "first_success_busy": "unbusy"
+    },
+    {
+      "day_index": 27,
+      "date": "2026-06-12",
+      "by_nights": {
+        "1": {
+          "signature": "obj_error:минимальное количество суток - <n>.",
+          "obj_success": false,
+          "busy": null,
+          "price": null,
+          "obj_errors": [
+            "Минимальное количество суток - 2."
+          ]
+        },
+        "2": {
+          "signature": "ok_busy:busy",
+          "obj_success": true,
+          "busy": "busy",
+          "price": 8740,
+          "obj_errors": []
+        },
+        "3": {
+          "signature": "ok_busy:busy",
+          "obj_success": true,
+          "busy": "busy",
+          "price": 12650,
+          "obj_errors": []
+        },
+        "4": {
+          "signature": "ok_busy:busy",
+          "obj_success": true,
+          "busy": "busy",
+          "price": 16560,
+          "obj_errors": []
+        }
+      },
+      "first_success_nights": 2,
+      "first_success_busy": "busy"
+    },
+    {
+      "day_index": 28,
+      "date": "2026-06-13",
+      "by_nights": {
+        "1": {
+          "signature": "obj_error:минимальное количество суток - <n>.",
+          "obj_success": false,
+          "busy": null,
+          "price": null,
+          "obj_errors": [
+            "Минимальное количество суток - 2."
+          ]
+        },
+        "2": {
+          "signature": "ok_busy:busy",
+          "obj_success": true,
+          "busy": "busy",
+          "price": 8280,
+          "obj_errors": []
+        },
+        "3": {
+          "signature": "ok_busy:busy",
+          "obj_success": true,
+          "busy": "busy",
+          "price": 12190,
+          "obj_errors": []
+        },
+        "4": {
+          "signature": "ok_busy:busy",
+          "obj_success": true,
+          "busy": "busy",
+          "price": 16100,
+          "obj_errors": []
+        }
+      },
+      "first_success_nights": 2,
+      "first_success_busy": "busy"
+    },
+    {
+      "day_index": 29,
+      "date": "2026-06-14",
+      "by_nights": {
+        "1": {
+          "signature": "obj_error:минимальное количество суток - <n>.",
+          "obj_success": false,
+          "busy": null,
+          "price": null,
+          "obj_errors": [
+            "Минимальное количество суток - 2."
+          ]
+        },
+        "2": {
+          "signature": "ok_busy:busy",
+          "obj_success": true,
+          "busy": "busy",
+          "price": 7820,
+          "obj_errors": []
+        },
+        "3": {
+          "signature": "ok_busy:busy",
+          "obj_success": true,
+          "busy": "busy",
+          "price": 11730,
+          "obj_errors": []
+        },
+        "4": {
+          "signature": "ok_busy:busy",
+          "obj_success": true,
+          "busy": "busy",
+          "price": 15640,
+          "obj_errors": []
+        }
+      },
+      "first_success_nights": 2,
+      "first_success_busy": "busy"
+    },
+    {
+      "day_index": 30,
+      "date": "2026-06-15",
+      "by_nights": {
+        "1": {
+          "signature": "obj_error:минимальное количество суток - <n>.",
+          "obj_success": false,
+          "busy": null,
+          "price": null,
+          "obj_errors": [
+            "Минимальное количество суток - 2."
+          ]
+        },
+        "2": {
+          "signature": "ok_busy:busy",
+          "obj_success": true,
+          "busy": "busy",
+          "price": 7820,
+          "obj_errors": []
+        },
+        "3": {
+          "signature": "ok_busy:busy",
+          "obj_success": true,
+          "busy": "busy",
+          "price": 11730,
+          "obj_errors": []
+        },
+        "4": {
+          "signature": "ok_busy:busy",
+          "obj_success": true,
+          "busy": "busy",
+          "price": 15640,
+          "obj_errors": []
+        }
+      },
+      "first_success_nights": 2,
+      "first_success_busy": "busy"
+    },
+    {
+      "day_index": 31,
+      "date": "2026-06-16",
+      "by_nights": {
+        "1": {
+          "signature": "obj_error:минимальное количество суток - <n>.",
+          "obj_success": false,
+          "busy": null,
+          "price": null,
+          "obj_errors": [
+            "Минимальное количество суток - 2."
+          ]
+        },
+        "2": {
+          "signature": "ok_busy:unbusy",
+          "obj_success": true,
+          "busy": "unbusy",
+          "price": 7820,
+          "obj_errors": []
+        },
+        "3": {
+          "signature": "ok_busy:unbusy",
+          "obj_success": true,
+          "busy": "unbusy",
+          "price": 11730,
+          "obj_errors": []
+        },
+        "4": {
+          "signature": "ok_busy:unbusy",
+          "obj_success": true,
+          "busy": "unbusy",
+          "price": 16100,
+          "obj_errors": []
+        }
+      },
+      "first_success_nights": 2,
+      "first_success_busy": "unbusy"
+    },
+    {
+      "day_index": 32,
+      "date": "2026-06-17",
+      "by_nights": {
+        "1": {
+          "signature": "obj_error:минимальное количество суток - <n>.",
+          "obj_success": false,
+          "busy": null,
+          "price": null,
+          "obj_errors": [
+            "Минимальное количество суток - 2."
+          ]
+        },
+        "2": {
+          "signature": "ok_busy:unbusy",
+          "obj_success": true,
+          "busy": "unbusy",
+          "price": 7820,
+          "obj_errors": []
+        },
+        "3": {
+          "signature": "ok_busy:unbusy",
+          "obj_success": true,
+          "busy": "unbusy",
+          "price": 12190,
+          "obj_errors": []
+        },
+        "4": {
+          "signature": "ok_busy:unbusy",
+          "obj_success": true,
+          "busy": "unbusy",
+          "price": 16560,
+          "obj_errors": []
+        }
+      },
+      "first_success_nights": 2,
+      "first_success_busy": "unbusy"
+    },
+    {
+      "day_index": 33,
+      "date": "2026-06-18",
+      "by_nights": {
+        "1": {
+          "signature": "obj_error:минимальное количество суток - <n>.",
+          "obj_success": false,
+          "busy": null,
+          "price": null,
+          "obj_errors": [
+            "Минимальное количество суток - 2."
+          ]
+        },
+        "2": {
+          "signature": "ok_busy:unbusy",
+          "obj_success": true,
+          "busy": "unbusy",
+          "price": 8280,
+          "obj_errors": []
+        },
+        "3": {
+          "signature": "ok_busy:unbusy",
+          "obj_success": true,
+          "busy": "unbusy",
+          "price": 12650,
+          "obj_errors": []
+        },
+        "4": {
+          "signature": "ok_busy:unbusy",
+          "obj_success": true,
+          "busy": "unbusy",
+          "price": 16560,
+          "obj_errors": []
+        }
+      },
+      "first_success_nights": 2,
+      "first_success_busy": "unbusy"
+    },
+    {
+      "day_index": 34,
+      "date": "2026-06-19",
+      "by_nights": {
+        "1": {
+          "signature": "obj_error:минимальное количество суток - <n>.",
+          "obj_success": false,
+          "busy": null,
+          "price": null,
+          "obj_errors": [
+            "Минимальное количество суток - 2."
+          ]
+        },
+        "2": {
+          "signature": "ok_busy:unbusy",
+          "obj_success": true,
+          "busy": "unbusy",
+          "price": 8740,
+          "obj_errors": []
+        },
+        "3": {
+          "signature": "ok_busy:unbusy",
+          "obj_success": true,
+          "busy": "unbusy",
+          "price": 12650,
+          "obj_errors": []
+        },
+        "4": {
+          "signature": "ok_busy:unbusy",
+          "obj_success": true,
+          "busy": "unbusy",
+          "price": 16560,
+          "obj_errors": []
+        }
+      },
+      "first_success_nights": 2,
+      "first_success_busy": "unbusy"
+    },
+    {
+      "day_index": 35,
+      "date": "2026-06-20",
+      "by_nights": {
+        "1": {
+          "signature": "obj_error:минимальное количество суток - <n>.",
+          "obj_success": false,
+          "busy": null,
+          "price": null,
+          "obj_errors": [
+            "Минимальное количество суток - 2."
+          ]
+        },
+        "2": {
+          "signature": "ok_busy:unbusy",
+          "obj_success": true,
+          "busy": "unbusy",
+          "price": 8280,
+          "obj_errors": []
+        },
+        "3": {
+          "signature": "ok_busy:unbusy",
+          "obj_success": true,
+          "busy": "unbusy",
+          "price": 12190,
+          "obj_errors": []
+        },
+        "4": {
+          "signature": "ok_busy:unbusy",
+          "obj_success": true,
+          "busy": "unbusy",
+          "price": 16100,
+          "obj_errors": []
+        }
+      },
+      "first_success_nights": 2,
+      "first_success_busy": "unbusy"
+    },
+    {
+      "day_index": 36,
+      "date": "2026-06-21",
+      "by_nights": {
+        "1": {
+          "signature": "obj_error:минимальное количество суток - <n>.",
+          "obj_success": false,
+          "busy": null,
+          "price": null,
+          "obj_errors": [
+            "Минимальное количество суток - 2."
+          ]
+        },
+        "2": {
+          "signature": "ok_busy:unbusy",
+          "obj_success": true,
+          "busy": "unbusy",
+          "price": 7820,
+          "obj_errors": []
+        },
+        "3": {
+          "signature": "ok_busy:unbusy",
+          "obj_success": true,
+          "busy": "unbusy",
+          "price": 11730,
+          "obj_errors": []
+        },
+        "4": {
+          "signature": "ok_busy:unbusy",
+          "obj_success": true,
+          "busy": "unbusy",
+          "price": 15640,
+          "obj_errors": []
+        }
+      },
+      "first_success_nights": 2,
+      "first_success_busy": "unbusy"
+    },
+    {
+      "day_index": 37,
+      "date": "2026-06-22",
+      "by_nights": {
+        "1": {
+          "signature": "obj_error:минимальное количество суток - <n>.",
+          "obj_success": false,
+          "busy": null,
+          "price": null,
+          "obj_errors": [
+            "Минимальное количество суток - 2."
+          ]
+        },
+        "2": {
+          "signature": "ok_busy:unbusy",
+          "obj_success": true,
+          "busy": "unbusy",
+          "price": 7820,
+          "obj_errors": []
+        },
+        "3": {
+          "signature": "ok_busy:unbusy",
+          "obj_success": true,
+          "busy": "unbusy",
+          "price": 11730,
+          "obj_errors": []
+        },
+        "4": {
+          "signature": "ok_busy:unbusy",
+          "obj_success": true,
+          "busy": "unbusy",
+          "price": 15640,
+          "obj_errors": []
+        }
+      },
+      "first_success_nights": 2,
+      "first_success_busy": "unbusy"
+    },
+    {
+      "day_index": 38,
+      "date": "2026-06-23",
+      "by_nights": {
+        "1": {
+          "signature": "obj_error:минимальное количество суток - <n>.",
+          "obj_success": false,
+          "busy": null,
+          "price": null,
+          "obj_errors": [
+            "Минимальное количество суток - 2."
+          ]
+        },
+        "2": {
+          "signature": "ok_busy:unbusy",
+          "obj_success": true,
+          "busy": "unbusy",
+          "price": 7820,
+          "obj_errors": []
+        },
+        "3": {
+          "signature": "ok_busy:unbusy",
+          "obj_success": true,
+          "busy": "unbusy",
+          "price": 11730,
+          "obj_errors": []
+        },
+        "4": {
+          "signature": "ok_busy:unbusy",
+          "obj_success": true,
+          "busy": "unbusy",
+          "price": 16675,
+          "obj_errors": []
+        }
+      },
+      "first_success_nights": 2,
+      "first_success_busy": "unbusy"
+    },
+    {
+      "day_index": 39,
+      "date": "2026-06-24",
+      "by_nights": {
+        "1": {
+          "signature": "obj_error:минимальное количество суток - <n>.",
+          "obj_success": false,
+          "busy": null,
+          "price": null,
+          "obj_errors": [
+            "Минимальное количество суток - 2."
+          ]
+        },
+        "2": {
+          "signature": "ok_busy:unbusy",
+          "obj_success": true,
+          "busy": "unbusy",
+          "price": 7820,
+          "obj_errors": []
+        },
+        "3": {
+          "signature": "ok_busy:unbusy",
+          "obj_success": true,
+          "busy": "unbusy",
+          "price": 12765,
+          "obj_errors": []
+        },
+        "4": {
+          "signature": "ok_busy:unbusy",
+          "obj_success": true,
+          "busy": "unbusy",
+          "price": 17710,
+          "obj_errors": []
+        }
+      },
+      "first_success_nights": 2,
+      "first_success_busy": "unbusy"
+    },
+    {
+      "day_index": 40,
+      "date": "2026-06-25",
+      "by_nights": {
+        "1": {
+          "signature": "obj_error:минимальное количество суток - <n>.",
+          "obj_success": false,
+          "busy": null,
+          "price": null,
+          "obj_errors": [
+            "Минимальное количество суток - 2."
+          ]
+        },
+        "2": {
+          "signature": "ok_busy:unbusy",
+          "obj_success": true,
+          "busy": "unbusy",
+          "price": 8855,
+          "obj_errors": []
+        },
+        "3": {
+          "signature": "ok_busy:unbusy",
+          "obj_success": true,
+          "busy": "unbusy",
+          "price": 13800,
+          "obj_errors": []
+        },
+        "4": {
+          "signature": "ok_busy:unbusy",
+          "obj_success": true,
+          "busy": "unbusy",
+          "price": 18285,
+          "obj_errors": []
+        }
+      },
+      "first_success_nights": 2,
+      "first_success_busy": "unbusy"
+    },
+    {
+      "day_index": 41,
+      "date": "2026-06-26",
+      "by_nights": {
+        "1": {
+          "signature": "obj_error:минимальное количество суток - <n>.",
+          "obj_success": false,
+          "busy": null,
+          "price": null,
+          "obj_errors": [
+            "Минимальное количество суток - 2."
+          ]
+        },
+        "2": {
+          "signature": "ok_busy:unbusy",
+          "obj_success": true,
+          "busy": "unbusy",
+          "price": 9890,
+          "obj_errors": []
+        },
+        "3": {
+          "signature": "ok_busy:unbusy",
+          "obj_success": true,
+          "busy": "unbusy",
+          "price": 14375,
+          "obj_errors": []
+        },
+        "4": {
+          "signature": "ok_busy:unbusy",
+          "obj_success": true,
+          "busy": "unbusy",
+          "price": 18285,
+          "obj_errors": []
+        }
+      },
+      "first_success_nights": 2,
+      "first_success_busy": "unbusy"
+    },
+    {
+      "day_index": 42,
+      "date": "2026-06-27",
+      "by_nights": {
+        "1": {
+          "signature": "obj_error:минимальное количество суток - <n>.",
+          "obj_success": false,
+          "busy": null,
+          "price": null,
+          "obj_errors": [
+            "Минимальное количество суток - 2."
+          ]
+        },
+        "2": {
+          "signature": "ok_busy:unbusy",
+          "obj_success": true,
+          "busy": "unbusy",
+          "price": 9430,
+          "obj_errors": []
+        },
+        "3": {
+          "signature": "ok_busy:unbusy",
+          "obj_success": true,
+          "busy": "unbusy",
+          "price": 13340,
+          "obj_errors": []
+        },
+        "4": {
+          "signature": "ok_busy:unbusy",
+          "obj_success": true,
+          "busy": "unbusy",
+          "price": 17250,
+          "obj_errors": []
+        }
+      },
+      "first_success_nights": 2,
+      "first_success_busy": "unbusy"
+    },
+    {
+      "day_index": 43,
+      "date": "2026-06-28",
+      "by_nights": {
+        "1": {
+          "signature": "obj_error:минимальное количество суток - <n>.",
+          "obj_success": false,
+          "busy": null,
+          "price": null,
+          "obj_errors": [
+            "Минимальное количество суток - 2."
+          ]
+        },
+        "2": {
+          "signature": "ok_busy:unbusy",
+          "obj_success": true,
+          "busy": "unbusy",
+          "price": 8395,
+          "obj_errors": []
+        },
+        "3": {
+          "signature": "ok_busy:unbusy",
+          "obj_success": true,
+          "busy": "unbusy",
+          "price": 12305,
+          "obj_errors": []
+        },
+        "4": {
+          "signature": "ok_busy:unbusy",
+          "obj_success": true,
+          "busy": "unbusy",
+          "price": 16215,
+          "obj_errors": []
+        }
+      },
+      "first_success_nights": 2,
+      "first_success_busy": "unbusy"
+    },
+    {
+      "day_index": 44,
+      "date": "2026-06-29",
+      "by_nights": {
+        "1": {
+          "signature": "obj_error:минимальное количество суток - <n>.",
+          "obj_success": false,
+          "busy": null,
+          "price": null,
+          "obj_errors": [
+            "Минимальное количество суток - 2."
+          ]
+        },
+        "2": {
+          "signature": "ok_busy:unbusy",
+          "obj_success": true,
+          "busy": "unbusy",
+          "price": 7820,
+          "obj_errors": []
+        },
+        "3": {
+          "signature": "ok_busy:unbusy",
+          "obj_success": true,
+          "busy": "unbusy",
+          "price": 11730,
+          "obj_errors": []
+        },
+        "4": {
+          "signature": "ok_busy:unbusy",
+          "obj_success": true,
+          "busy": "unbusy",
+          "price": 15640,
+          "obj_errors": []
+        }
+      },
+      "first_success_nights": 2,
+      "first_success_busy": "unbusy"
+    },
+    {
+      "day_index": 45,
+      "date": "2026-06-30",
+      "by_nights": {
+        "1": {
+          "signature": "obj_error:минимальное количество суток - <n>.",
+          "obj_success": false,
+          "busy": null,
+          "price": null,
+          "obj_errors": [
+            "Минимальное количество суток - 2."
+          ]
+        },
+        "2": {
+          "signature": "ok_busy:unbusy",
+          "obj_success": true,
+          "busy": "unbusy",
+          "price": 7820,
+          "obj_errors": []
+        },
+        "3": {
+          "signature": "ok_busy:unbusy",
+          "obj_success": true,
+          "busy": "unbusy",
+          "price": 11730,
+          "obj_errors": []
+        },
+        "4": {
+          "signature": "ok_busy:unbusy",
+          "obj_success": true,
+          "busy": "unbusy",
+          "price": 16100,
+          "obj_errors": []
+        }
+      },
+      "first_success_nights": 2,
+      "first_success_busy": "unbusy"
+    },
+    {
+      "day_index": 46,
+      "date": "2026-07-01",
+      "by_nights": {
+        "1": {
+          "signature": "obj_error:минимальное количество суток - <n>.",
+          "obj_success": false,
+          "busy": null,
+          "price": null,
+          "obj_errors": [
+            "Минимальное количество суток - 2."
+          ]
+        },
+        "2": {
+          "signature": "ok_busy:unbusy",
+          "obj_success": true,
+          "busy": "unbusy",
+          "price": 7820,
+          "obj_errors": []
+        },
+        "3": {
+          "signature": "ok_busy:unbusy",
+          "obj_success": true,
+          "busy": "unbusy",
+          "price": 12190,
+          "obj_errors": []
+        },
+        "4": {
+          "signature": "ok_busy:unbusy",
+          "obj_success": true,
+          "busy": "unbusy",
+          "price": 16560,
+          "obj_errors": []
+        }
+      },
+      "first_success_nights": 2,
+      "first_success_busy": "unbusy"
+    },
+    {
+      "day_index": 47,
+      "date": "2026-07-02",
+      "by_nights": {
+        "1": {
+          "signature": "obj_error:минимальное количество суток - <n>.",
+          "obj_success": false,
+          "busy": null,
+          "price": null,
+          "obj_errors": [
+            "Минимальное количество суток - 2."
+          ]
+        },
+        "2": {
+          "signature": "ok_busy:unbusy",
+          "obj_success": true,
+          "busy": "unbusy",
+          "price": 8280,
+          "obj_errors": []
+        },
+        "3": {
+          "signature": "ok_busy:unbusy",
+          "obj_success": true,
+          "busy": "unbusy",
+          "price": 12650,
+          "obj_errors": []
+        },
+        "4": {
+          "signature": "ok_busy:unbusy",
+          "obj_success": true,
+          "busy": "unbusy",
+          "price": 16560,
+          "obj_errors": []
+        }
+      },
+      "first_success_nights": 2,
+      "first_success_busy": "unbusy"
+    },
+    {
+      "day_index": 48,
+      "date": "2026-07-03",
+      "by_nights": {
+        "1": {
+          "signature": "obj_error:минимальное количество суток - <n>.",
+          "obj_success": false,
+          "busy": null,
+          "price": null,
+          "obj_errors": [
+            "Минимальное количество суток - 2."
+          ]
+        },
+        "2": {
+          "signature": "ok_busy:unbusy",
+          "obj_success": true,
+          "busy": "unbusy",
+          "price": 8740,
+          "obj_errors": []
+        },
+        "3": {
+          "signature": "ok_busy:unbusy",
+          "obj_success": true,
+          "busy": "unbusy",
+          "price": 12650,
+          "obj_errors": []
+        },
+        "4": {
+          "signature": "ok_busy:unbusy",
+          "obj_success": true,
+          "busy": "unbusy",
+          "price": 16560,
+          "obj_errors": []
+        }
+      },
+      "first_success_nights": 2,
+      "first_success_busy": "unbusy"
+    },
+    {
+      "day_index": 49,
+      "date": "2026-07-04",
+      "by_nights": {
+        "1": {
+          "signature": "obj_error:минимальное количество суток - <n>.",
+          "obj_success": false,
+          "busy": null,
+          "price": null,
+          "obj_errors": [
+            "Минимальное количество суток - 2."
+          ]
+        },
+        "2": {
+          "signature": "ok_busy:unbusy",
+          "obj_success": true,
+          "busy": "unbusy",
+          "price": 8280,
+          "obj_errors": []
+        },
+        "3": {
+          "signature": "ok_busy:unbusy",
+          "obj_success": true,
+          "busy": "unbusy",
+          "price": 12190,
+          "obj_errors": []
+        },
+        "4": {
+          "signature": "ok_busy:unbusy",
+          "obj_success": true,
+          "busy": "unbusy",
+          "price": 16100,
+          "obj_errors": []
+        }
+      },
+      "first_success_nights": 2,
+      "first_success_busy": "unbusy"
+    },
+    {
+      "day_index": 50,
+      "date": "2026-07-05",
+      "by_nights": {
+        "1": {
+          "signature": "obj_error:минимальное количество суток - <n>.",
+          "obj_success": false,
+          "busy": null,
+          "price": null,
+          "obj_errors": [
+            "Минимальное количество суток - 2."
+          ]
+        },
+        "2": {
+          "signature": "ok_busy:unbusy",
+          "obj_success": true,
+          "busy": "unbusy",
+          "price": 7820,
+          "obj_errors": []
+        },
+        "3": {
+          "signature": "ok_busy:unbusy",
+          "obj_success": true,
+          "busy": "unbusy",
+          "price": 11730,
+          "obj_errors": []
+        },
+        "4": {
+          "signature": "ok_busy:unbusy",
+          "obj_success": true,
+          "busy": "unbusy",
+          "price": 15640,
+          "obj_errors": []
+        }
+      },
+      "first_success_nights": 2,
+      "first_success_busy": "unbusy"
+    },
+    {
+      "day_index": 51,
+      "date": "2026-07-06",
+      "by_nights": {
+        "1": {
+          "signature": "obj_error:минимальное количество суток - <n>.",
+          "obj_success": false,
+          "busy": null,
+          "price": null,
+          "obj_errors": [
+            "Минимальное количество суток - 2."
+          ]
+        },
+        "2": {
+          "signature": "ok_busy:unbusy",
+          "obj_success": true,
+          "busy": "unbusy",
+          "price": 7820,
+          "obj_errors": []
+        },
+        "3": {
+          "signature": "ok_busy:unbusy",
+          "obj_success": true,
+          "busy": "unbusy",
+          "price": 11730,
+          "obj_errors": []
+        },
+        "4": {
+          "signature": "ok_busy:unbusy",
+          "obj_success": true,
+          "busy": "unbusy",
+          "price": 15640,
+          "obj_errors": []
+        }
+      },
+      "first_success_nights": 2,
+      "first_success_busy": "unbusy"
+    },
+    {
+      "day_index": 52,
+      "date": "2026-07-07",
+      "by_nights": {
+        "1": {
+          "signature": "obj_error:минимальное количество суток - <n>.",
+          "obj_success": false,
+          "busy": null,
+          "price": null,
+          "obj_errors": [
+            "Минимальное количество суток - 2."
+          ]
+        },
+        "2": {
+          "signature": "ok_busy:unbusy",
+          "obj_success": true,
+          "busy": "unbusy",
+          "price": 7820,
+          "obj_errors": []
+        },
+        "3": {
+          "signature": "ok_busy:unbusy",
+          "obj_success": true,
+          "busy": "unbusy",
+          "price": 11730,
+          "obj_errors": []
+        },
+        "4": {
+          "signature": "ok_busy:unbusy",
+          "obj_success": true,
+          "busy": "unbusy",
+          "price": 16100,
+          "obj_errors": []
+        }
+      },
+      "first_success_nights": 2,
+      "first_success_busy": "unbusy"
+    },
+    {
+      "day_index": 53,
+      "date": "2026-07-08",
+      "by_nights": {
+        "1": {
+          "signature": "obj_error:минимальное количество суток - <n>.",
+          "obj_success": false,
+          "busy": null,
+          "price": null,
+          "obj_errors": [
+            "Минимальное количество суток - 2."
+          ]
+        },
+        "2": {
+          "signature": "ok_busy:unbusy",
+          "obj_success": true,
+          "busy": "unbusy",
+          "price": 7820,
+          "obj_errors": []
+        },
+        "3": {
+          "signature": "ok_busy:unbusy",
+          "obj_success": true,
+          "busy": "unbusy",
+          "price": 12190,
+          "obj_errors": []
+        },
+        "4": {
+          "signature": "ok_busy:unbusy",
+          "obj_success": true,
+          "busy": "unbusy",
+          "price": 16560,
+          "obj_errors": []
+        }
+      },
+      "first_success_nights": 2,
+      "first_success_busy": "unbusy"
+    },
+    {
+      "day_index": 54,
+      "date": "2026-07-09",
+      "by_nights": {
+        "1": {
+          "signature": "obj_error:минимальное количество суток - <n>.",
+          "obj_success": false,
+          "busy": null,
+          "price": null,
+          "obj_errors": [
+            "Минимальное количество суток - 2."
+          ]
+        },
+        "2": {
+          "signature": "ok_busy:unbusy",
+          "obj_success": true,
+          "busy": "unbusy",
+          "price": 8280,
+          "obj_errors": []
+        },
+        "3": {
+          "signature": "ok_busy:unbusy",
+          "obj_success": true,
+          "busy": "unbusy",
+          "price": 12650,
+          "obj_errors": []
+        },
+        "4": {
+          "signature": "ok_busy:unbusy",
+          "obj_success": true,
+          "busy": "unbusy",
+          "price": 16560,
+          "obj_errors": []
+        }
+      },
+      "first_success_nights": 2,
+      "first_success_busy": "unbusy"
+    },
+    {
+      "day_index": 55,
+      "date": "2026-07-10",
+      "by_nights": {
+        "1": {
+          "signature": "obj_error:минимальное количество суток - <n>.",
+          "obj_success": false,
+          "busy": null,
+          "price": null,
+          "obj_errors": [
+            "Минимальное количество суток - 2."
+          ]
+        },
+        "2": {
+          "signature": "ok_busy:unbusy",
+          "obj_success": true,
+          "busy": "unbusy",
+          "price": 8740,
+          "obj_errors": []
+        },
+        "3": {
+          "signature": "ok_busy:unbusy",
+          "obj_success": true,
+          "busy": "unbusy",
+          "price": 12650,
+          "obj_errors": []
+        },
+        "4": {
+          "signature": "ok_busy:unbusy",
+          "obj_success": true,
+          "busy": "unbusy",
+          "price": 16560,
+          "obj_errors": []
+        }
+      },
+      "first_success_nights": 2,
+      "first_success_busy": "unbusy"
+    },
+    {
+      "day_index": 56,
+      "date": "2026-07-11",
+      "by_nights": {
+        "1": {
+          "signature": "obj_error:минимальное количество суток - <n>.",
+          "obj_success": false,
+          "busy": null,
+          "price": null,
+          "obj_errors": [
+            "Минимальное количество суток - 2."
+          ]
+        },
+        "2": {
+          "signature": "ok_busy:unbusy",
+          "obj_success": true,
+          "busy": "unbusy",
+          "price": 8280,
+          "obj_errors": []
+        },
+        "3": {
+          "signature": "ok_busy:unbusy",
+          "obj_success": true,
+          "busy": "unbusy",
+          "price": 12190,
+          "obj_errors": []
+        },
+        "4": {
+          "signature": "ok_busy:unbusy",
+          "obj_success": true,
+          "busy": "unbusy",
+          "price": 16100,
+          "obj_errors": []
+        }
+      },
+      "first_success_nights": 2,
+      "first_success_busy": "unbusy"
+    },
+    {
+      "day_index": 57,
+      "date": "2026-07-12",
+      "by_nights": {
+        "1": {
+          "signature": "obj_error:минимальное количество суток - <n>.",
+          "obj_success": false,
+          "busy": null,
+          "price": null,
+          "obj_errors": [
+            "Минимальное количество суток - 2."
+          ]
+        },
+        "2": {
+          "signature": "ok_busy:unbusy",
+          "obj_success": true,
+          "busy": "unbusy",
+          "price": 7820,
+          "obj_errors": []
+        },
+        "3": {
+          "signature": "ok_busy:unbusy",
+          "obj_success": true,
+          "busy": "unbusy",
+          "price": 11730,
+          "obj_errors": []
+        },
+        "4": {
+          "signature": "ok_busy:unbusy",
+          "obj_success": true,
+          "busy": "unbusy",
+          "price": 15640,
+          "obj_errors": []
+        }
+      },
+      "first_success_nights": 2,
+      "first_success_busy": "unbusy"
+    },
+    {
+      "day_index": 58,
+      "date": "2026-07-13",
+      "by_nights": {
+        "1": {
+          "signature": "obj_error:минимальное количество суток - <n>.",
+          "obj_success": false,
+          "busy": null,
+          "price": null,
+          "obj_errors": [
+            "Минимальное количество суток - 2."
+          ]
+        },
+        "2": {
+          "signature": "ok_busy:unbusy",
+          "obj_success": true,
+          "busy": "unbusy",
+          "price": 7820,
+          "obj_errors": []
+        },
+        "3": {
+          "signature": "ok_busy:unbusy",
+          "obj_success": true,
+          "busy": "unbusy",
+          "price": 11730,
+          "obj_errors": []
+        },
+        "4": {
+          "signature": "ok_busy:unbusy",
+          "obj_success": true,
+          "busy": "unbusy",
+          "price": 15640,
+          "obj_errors": []
+        }
+      },
+      "first_success_nights": 2,
+      "first_success_busy": "unbusy"
+    },
+    {
+      "day_index": 59,
+      "date": "2026-07-14",
+      "by_nights": {
+        "1": {
+          "signature": "obj_error:минимальное количество суток - <n>.",
+          "obj_success": false,
+          "busy": null,
+          "price": null,
+          "obj_errors": [
+            "Минимальное количество суток - 2."
+          ]
+        },
+        "2": {
+          "signature": "ok_busy:unbusy",
+          "obj_success": true,
+          "busy": "unbusy",
+          "price": 7820,
+          "obj_errors": []
+        },
+        "3": {
+          "signature": "ok_busy:unbusy",
+          "obj_success": true,
+          "busy": "unbusy",
+          "price": 11730,
+          "obj_errors": []
+        },
+        "4": {
+          "signature": "ok_busy:unbusy",
+          "obj_success": true,
+          "busy": "unbusy",
+          "price": 16100,
+          "obj_errors": []
+        }
+      },
+      "first_success_nights": 2,
+      "first_success_busy": "unbusy"
+    }
+  ],
+  "raw_matrix": {
+    "1": [
+      {
+        "date": "2026-05-16",
+        "nights": 1,
+        "date_begin": "2026-05-16 14:00:00",
+        "date_end": "2026-05-17 11:00:00",
+        "http_status": 200,
+        "api_success": true,
+        "obj_success": false,
+        "obj_errors": [
+          "Минимальное количество суток - 2."
+        ],
+        "busy": null,
+        "price": null,
+        "price_default": null,
+        "rooms_available": null,
+        "is_booking_now": null
+      },
+      {
+        "date": "2026-05-17",
+        "nights": 1,
+        "date_begin": "2026-05-17 14:00:00",
+        "date_end": "2026-05-18 11:00:00",
+        "http_status": 200,
+        "api_success": true,
+        "obj_success": false,
+        "obj_errors": [
+          "Минимальное количество суток - 2."
+        ],
+        "busy": null,
+        "price": null,
+        "price_default": null,
+        "rooms_available": null,
+        "is_booking_now": null
+      },
+      {
+        "date": "2026-05-18",
+        "nights": 1,
+        "date_begin": "2026-05-18 14:00:00",
+        "date_end": "2026-05-19 11:00:00",
+        "http_status": 200,
+        "api_success": true,
+        "obj_success": false,
+        "obj_errors": [
+          "Минимальное количество суток - 2."
+        ],
+        "busy": null,
+        "price": null,
+        "price_default": null,
+        "rooms_available": null,
+        "is_booking_now": null
+      },
+      {
+        "date": "2026-05-19",
+        "nights": 1,
+        "date_begin": "2026-05-19 14:00:00",
+        "date_end": "2026-05-20 11:00:00",
+        "http_status": 200,
+        "api_success": true,
+        "obj_success": false,
+        "obj_errors": [
+          "Минимальное количество суток - 2."
+        ],
+        "busy": null,
+        "price": null,
+        "price_default": null,
+        "rooms_available": null,
+        "is_booking_now": null
+      },
+      {
+        "date": "2026-05-20",
+        "nights": 1,
+        "date_begin": "2026-05-20 14:00:00",
+        "date_end": "2026-05-21 11:00:00",
+        "http_status": 200,
+        "api_success": true,
+        "obj_success": false,
+        "obj_errors": [
+          "Минимальное количество суток - 2."
+        ],
+        "busy": null,
+        "price": null,
+        "price_default": null,
+        "rooms_available": null,
+        "is_booking_now": null
+      },
+      {
+        "date": "2026-05-21",
+        "nights": 1,
+        "date_begin": "2026-05-21 14:00:00",
+        "date_end": "2026-05-22 11:00:00",
+        "http_status": 200,
+        "api_success": true,
+        "obj_success": false,
+        "obj_errors": [
+          "Минимальное количество суток - 2."
+        ],
+        "busy": null,
+        "price": null,
+        "price_default": null,
+        "rooms_available": null,
+        "is_booking_now": null
+      },
+      {
+        "date": "2026-05-22",
+        "nights": 1,
+        "date_begin": "2026-05-22 14:00:00",
+        "date_end": "2026-05-23 11:00:00",
+        "http_status": 200,
+        "api_success": true,
+        "obj_success": false,
+        "obj_errors": [
+          "Минимальное количество суток - 2."
+        ],
+        "busy": null,
+        "price": null,
+        "price_default": null,
+        "rooms_available": null,
+        "is_booking_now": null
+      },
+      {
+        "date": "2026-05-23",
+        "nights": 1,
+        "date_begin": "2026-05-23 14:00:00",
+        "date_end": "2026-05-24 11:00:00",
+        "http_status": 200,
+        "api_success": true,
+        "obj_success": false,
+        "obj_errors": [
+          "Минимальное количество суток - 2."
+        ],
+        "busy": null,
+        "price": null,
+        "price_default": null,
+        "rooms_available": null,
+        "is_booking_now": null
+      },
+      {
+        "date": "2026-05-24",
+        "nights": 1,
+        "date_begin": "2026-05-24 14:00:00",
+        "date_end": "2026-05-25 11:00:00",
+        "http_status": 200,
+        "api_success": true,
+        "obj_success": false,
+        "obj_errors": [
+          "Минимальное количество суток - 2."
+        ],
+        "busy": null,
+        "price": null,
+        "price_default": null,
+        "rooms_available": null,
+        "is_booking_now": null
+      },
+      {
+        "date": "2026-05-25",
+        "nights": 1,
+        "date_begin": "2026-05-25 14:00:00",
+        "date_end": "2026-05-26 11:00:00",
+        "http_status": 200,
+        "api_success": true,
+        "obj_success": false,
+        "obj_errors": [
+          "Минимальное количество суток - 2."
+        ],
+        "busy": null,
+        "price": null,
+        "price_default": null,
+        "rooms_available": null,
+        "is_booking_now": null
+      },
+      {
+        "date": "2026-05-26",
+        "nights": 1,
+        "date_begin": "2026-05-26 14:00:00",
+        "date_end": "2026-05-27 11:00:00",
+        "http_status": 200,
+        "api_success": true,
+        "obj_success": false,
+        "obj_errors": [
+          "Минимальное количество суток - 2."
+        ],
+        "busy": null,
+        "price": null,
+        "price_default": null,
+        "rooms_available": null,
+        "is_booking_now": null
+      },
+      {
+        "date": "2026-05-27",
+        "nights": 1,
+        "date_begin": "2026-05-27 14:00:00",
+        "date_end": "2026-05-28 11:00:00",
+        "http_status": 200,
+        "api_success": true,
+        "obj_success": false,
+        "obj_errors": [
+          "Минимальное количество суток - 2."
+        ],
+        "busy": null,
+        "price": null,
+        "price_default": null,
+        "rooms_available": null,
+        "is_booking_now": null
+      },
+      {
+        "date": "2026-05-28",
+        "nights": 1,
+        "date_begin": "2026-05-28 14:00:00",
+        "date_end": "2026-05-29 11:00:00",
+        "http_status": 200,
+        "api_success": true,
+        "obj_success": false,
+        "obj_errors": [
+          "Минимальное количество суток - 2."
+        ],
+        "busy": null,
+        "price": null,
+        "price_default": null,
+        "rooms_available": null,
+        "is_booking_now": null
+      },
+      {
+        "date": "2026-05-29",
+        "nights": 1,
+        "date_begin": "2026-05-29 14:00:00",
+        "date_end": "2026-05-30 11:00:00",
+        "http_status": 200,
+        "api_success": true,
+        "obj_success": false,
+        "obj_errors": [
+          "Минимальное количество суток - 2."
+        ],
+        "busy": null,
+        "price": null,
+        "price_default": null,
+        "rooms_available": null,
+        "is_booking_now": null
+      },
+      {
+        "date": "2026-05-30",
+        "nights": 1,
+        "date_begin": "2026-05-30 14:00:00",
+        "date_end": "2026-05-31 11:00:00",
+        "http_status": 200,
+        "api_success": true,
+        "obj_success": false,
+        "obj_errors": [
+          "Минимальное количество суток - 2."
+        ],
+        "busy": null,
+        "price": null,
+        "price_default": null,
+        "rooms_available": null,
+        "is_booking_now": null
+      },
+      {
+        "date": "2026-05-31",
+        "nights": 1,
+        "date_begin": "2026-05-31 14:00:00",
+        "date_end": "2026-06-01 11:00:00",
+        "http_status": 200,
+        "api_success": true,
+        "obj_success": false,
+        "obj_errors": [
+          "Минимальное количество суток - 2."
+        ],
+        "busy": null,
+        "price": null,
+        "price_default": null,
+        "rooms_available": null,
+        "is_booking_now": null
+      },
+      {
+        "date": "2026-06-01",
+        "nights": 1,
+        "date_begin": "2026-06-01 14:00:00",
+        "date_end": "2026-06-02 11:00:00",
+        "http_status": 200,
+        "api_success": true,
+        "obj_success": false,
+        "obj_errors": [
+          "Минимальное количество суток - 2."
+        ],
+        "busy": null,
+        "price": null,
+        "price_default": null,
+        "rooms_available": null,
+        "is_booking_now": null
+      },
+      {
+        "date": "2026-06-02",
+        "nights": 1,
+        "date_begin": "2026-06-02 14:00:00",
+        "date_end": "2026-06-03 11:00:00",
+        "http_status": 200,
+        "api_success": true,
+        "obj_success": false,
+        "obj_errors": [
+          "Минимальное количество суток - 2."
+        ],
+        "busy": null,
+        "price": null,
+        "price_default": null,
+        "rooms_available": null,
+        "is_booking_now": null
+      },
+      {
+        "date": "2026-06-03",
+        "nights": 1,
+        "date_begin": "2026-06-03 14:00:00",
+        "date_end": "2026-06-04 11:00:00",
+        "http_status": 200,
+        "api_success": true,
+        "obj_success": false,
+        "obj_errors": [
+          "Минимальное количество суток - 2."
+        ],
+        "busy": null,
+        "price": null,
+        "price_default": null,
+        "rooms_available": null,
+        "is_booking_now": null
+      },
+      {
+        "date": "2026-06-04",
+        "nights": 1,
+        "date_begin": "2026-06-04 14:00:00",
+        "date_end": "2026-06-05 11:00:00",
+        "http_status": 200,
+        "api_success": true,
+        "obj_success": false,
+        "obj_errors": [
+          "Минимальное количество суток - 2."
+        ],
+        "busy": null,
+        "price": null,
+        "price_default": null,
+        "rooms_available": null,
+        "is_booking_now": null
+      },
+      {
+        "date": "2026-06-05",
+        "nights": 1,
+        "date_begin": "2026-06-05 14:00:00",
+        "date_end": "2026-06-06 11:00:00",
+        "http_status": 200,
+        "api_success": true,
+        "obj_success": false,
+        "obj_errors": [
+          "Минимальное количество суток - 2."
+        ],
+        "busy": null,
+        "price": null,
+        "price_default": null,
+        "rooms_available": null,
+        "is_booking_now": null
+      },
+      {
+        "date": "2026-06-06",
+        "nights": 1,
+        "date_begin": "2026-06-06 14:00:00",
+        "date_end": "2026-06-07 11:00:00",
+        "http_status": 200,
+        "api_success": true,
+        "obj_success": false,
+        "obj_errors": [
+          "Минимальное количество суток - 2."
+        ],
+        "busy": null,
+        "price": null,
+        "price_default": null,
+        "rooms_available": null,
+        "is_booking_now": null
+      },
+      {
+        "date": "2026-06-07",
+        "nights": 1,
+        "date_begin": "2026-06-07 14:00:00",
+        "date_end": "2026-06-08 11:00:00",
+        "http_status": 200,
+        "api_success": true,
+        "obj_success": false,
+        "obj_errors": [
+          "Минимальное количество суток - 2."
+        ],
+        "busy": null,
+        "price": null,
+        "price_default": null,
+        "rooms_available": null,
+        "is_booking_now": null
+      },
+      {
+        "date": "2026-06-08",
+        "nights": 1,
+        "date_begin": "2026-06-08 14:00:00",
+        "date_end": "2026-06-09 11:00:00",
+        "http_status": 200,
+        "api_success": true,
+        "obj_success": false,
+        "obj_errors": [
+          "Минимальное количество суток - 2."
+        ],
+        "busy": null,
+        "price": null,
+        "price_default": null,
+        "rooms_available": null,
+        "is_booking_now": null
+      },
+      {
+        "date": "2026-06-09",
+        "nights": 1,
+        "date_begin": "2026-06-09 14:00:00",
+        "date_end": "2026-06-10 11:00:00",
+        "http_status": 200,
+        "api_success": true,
+        "obj_success": false,
+        "obj_errors": [
+          "Минимальное количество суток - 2."
+        ],
+        "busy": null,
+        "price": null,
+        "price_default": null,
+        "rooms_available": null,
+        "is_booking_now": null
+      },
+      {
+        "date": "2026-06-10",
+        "nights": 1,
+        "date_begin": "2026-06-10 14:00:00",
+        "date_end": "2026-06-11 11:00:00",
+        "http_status": 200,
+        "api_success": true,
+        "obj_success": false,
+        "obj_errors": [
+          "Минимальное количество суток - 2."
+        ],
+        "busy": null,
+        "price": null,
+        "price_default": null,
+        "rooms_available": null,
+        "is_booking_now": null
+      },
+      {
+        "date": "2026-06-11",
+        "nights": 1,
+        "date_begin": "2026-06-11 14:00:00",
+        "date_end": "2026-06-12 11:00:00",
+        "http_status": 200,
+        "api_success": true,
+        "obj_success": false,
+        "obj_errors": [
+          "Минимальное количество суток - 2."
+        ],
+        "busy": null,
+        "price": null,
+        "price_default": null,
+        "rooms_available": null,
+        "is_booking_now": null
+      },
+      {
+        "date": "2026-06-12",
+        "nights": 1,
+        "date_begin": "2026-06-12 14:00:00",
+        "date_end": "2026-06-13 11:00:00",
+        "http_status": 200,
+        "api_success": true,
+        "obj_success": false,
+        "obj_errors": [
+          "Минимальное количество суток - 2."
+        ],
+        "busy": null,
+        "price": null,
+        "price_default": null,
+        "rooms_available": null,
+        "is_booking_now": null
+      },
+      {
+        "date": "2026-06-13",
+        "nights": 1,
+        "date_begin": "2026-06-13 14:00:00",
+        "date_end": "2026-06-14 11:00:00",
+        "http_status": 200,
+        "api_success": true,
+        "obj_success": false,
+        "obj_errors": [
+          "Минимальное количество суток - 2."
+        ],
+        "busy": null,
+        "price": null,
+        "price_default": null,
+        "rooms_available": null,
+        "is_booking_now": null
+      },
+      {
+        "date": "2026-06-14",
+        "nights": 1,
+        "date_begin": "2026-06-14 14:00:00",
+        "date_end": "2026-06-15 11:00:00",
+        "http_status": 200,
+        "api_success": true,
+        "obj_success": false,
+        "obj_errors": [
+          "Минимальное количество суток - 2."
+        ],
+        "busy": null,
+        "price": null,
+        "price_default": null,
+        "rooms_available": null,
+        "is_booking_now": null
+      },
+      {
+        "date": "2026-06-15",
+        "nights": 1,
+        "date_begin": "2026-06-15 14:00:00",
+        "date_end": "2026-06-16 11:00:00",
+        "http_status": 200,
+        "api_success": true,
+        "obj_success": false,
+        "obj_errors": [
+          "Минимальное количество суток - 2."
+        ],
+        "busy": null,
+        "price": null,
+        "price_default": null,
+        "rooms_available": null,
+        "is_booking_now": null
+      },
+      {
+        "date": "2026-06-16",
+        "nights": 1,
+        "date_begin": "2026-06-16 14:00:00",
+        "date_end": "2026-06-17 11:00:00",
+        "http_status": 200,
+        "api_success": true,
+        "obj_success": false,
+        "obj_errors": [
+          "Минимальное количество суток - 2."
+        ],
+        "busy": null,
+        "price": null,
+        "price_default": null,
+        "rooms_available": null,
+        "is_booking_now": null
+      },
+      {
+        "date": "2026-06-17",
+        "nights": 1,
+        "date_begin": "2026-06-17 14:00:00",
+        "date_end": "2026-06-18 11:00:00",
+        "http_status": 200,
+        "api_success": true,
+        "obj_success": false,
+        "obj_errors": [
+          "Минимальное количество суток - 2."
+        ],
+        "busy": null,
+        "price": null,
+        "price_default": null,
+        "rooms_available": null,
+        "is_booking_now": null
+      },
+      {
+        "date": "2026-06-18",
+        "nights": 1,
+        "date_begin": "2026-06-18 14:00:00",
+        "date_end": "2026-06-19 11:00:00",
+        "http_status": 200,
+        "api_success": true,
+        "obj_success": false,
+        "obj_errors": [
+          "Минимальное количество суток - 2."
+        ],
+        "busy": null,
+        "price": null,
+        "price_default": null,
+        "rooms_available": null,
+        "is_booking_now": null
+      },
+      {
+        "date": "2026-06-19",
+        "nights": 1,
+        "date_begin": "2026-06-19 14:00:00",
+        "date_end": "2026-06-20 11:00:00",
+        "http_status": 200,
+        "api_success": true,
+        "obj_success": false,
+        "obj_errors": [
+          "Минимальное количество суток - 2."
+        ],
+        "busy": null,
+        "price": null,
+        "price_default": null,
+        "rooms_available": null,
+        "is_booking_now": null
+      },
+      {
+        "date": "2026-06-20",
+        "nights": 1,
+        "date_begin": "2026-06-20 14:00:00",
+        "date_end": "2026-06-21 11:00:00",
+        "http_status": 200,
+        "api_success": true,
+        "obj_success": false,
+        "obj_errors": [
+          "Минимальное количество суток - 2."
+        ],
+        "busy": null,
+        "price": null,
+        "price_default": null,
+        "rooms_available": null,
+        "is_booking_now": null
+      },
+      {
+        "date": "2026-06-21",
+        "nights": 1,
+        "date_begin": "2026-06-21 14:00:00",
+        "date_end": "2026-06-22 11:00:00",
+        "http_status": 200,
+        "api_success": true,
+        "obj_success": false,
+        "obj_errors": [
+          "Минимальное количество суток - 2."
+        ],
+        "busy": null,
+        "price": null,
+        "price_default": null,
+        "rooms_available": null,
+        "is_booking_now": null
+      },
+      {
+        "date": "2026-06-22",
+        "nights": 1,
+        "date_begin": "2026-06-22 14:00:00",
+        "date_end": "2026-06-23 11:00:00",
+        "http_status": 200,
+        "api_success": true,
+        "obj_success": false,
+        "obj_errors": [
+          "Минимальное количество суток - 2."
+        ],
+        "busy": null,
+        "price": null,
+        "price_default": null,
+        "rooms_available": null,
+        "is_booking_now": null
+      },
+      {
+        "date": "2026-06-23",
+        "nights": 1,
+        "date_begin": "2026-06-23 14:00:00",
+        "date_end": "2026-06-24 11:00:00",
+        "http_status": 200,
+        "api_success": true,
+        "obj_success": false,
+        "obj_errors": [
+          "Минимальное количество суток - 2."
+        ],
+        "busy": null,
+        "price": null,
+        "price_default": null,
+        "rooms_available": null,
+        "is_booking_now": null
+      },
+      {
+        "date": "2026-06-24",
+        "nights": 1,
+        "date_begin": "2026-06-24 14:00:00",
+        "date_end": "2026-06-25 11:00:00",
+        "http_status": 200,
+        "api_success": true,
+        "obj_success": false,
+        "obj_errors": [
+          "Минимальное количество суток - 2."
+        ],
+        "busy": null,
+        "price": null,
+        "price_default": null,
+        "rooms_available": null,
+        "is_booking_now": null
+      },
+      {
+        "date": "2026-06-25",
+        "nights": 1,
+        "date_begin": "2026-06-25 14:00:00",
+        "date_end": "2026-06-26 11:00:00",
+        "http_status": 200,
+        "api_success": true,
+        "obj_success": false,
+        "obj_errors": [
+          "Минимальное количество суток - 2."
+        ],
+        "busy": null,
+        "price": null,
+        "price_default": null,
+        "rooms_available": null,
+        "is_booking_now": null
+      },
+      {
+        "date": "2026-06-26",
+        "nights": 1,
+        "date_begin": "2026-06-26 14:00:00",
+        "date_end": "2026-06-27 11:00:00",
+        "http_status": 200,
+        "api_success": true,
+        "obj_success": false,
+        "obj_errors": [
+          "Минимальное количество суток - 2."
+        ],
+        "busy": null,
+        "price": null,
+        "price_default": null,
+        "rooms_available": null,
+        "is_booking_now": null
+      },
+      {
+        "date": "2026-06-27",
+        "nights": 1,
+        "date_begin": "2026-06-27 14:00:00",
+        "date_end": "2026-06-28 11:00:00",
+        "http_status": 200,
+        "api_success": true,
+        "obj_success": false,
+        "obj_errors": [
+          "Минимальное количество суток - 2."
+        ],
+        "busy": null,
+        "price": null,
+        "price_default": null,
+        "rooms_available": null,
+        "is_booking_now": null
+      },
+      {
+        "date": "2026-06-28",
+        "nights": 1,
+        "date_begin": "2026-06-28 14:00:00",
+        "date_end": "2026-06-29 11:00:00",
+        "http_status": 200,
+        "api_success": true,
+        "obj_success": false,
+        "obj_errors": [
+          "Минимальное количество суток - 2."
+        ],
+        "busy": null,
+        "price": null,
+        "price_default": null,
+        "rooms_available": null,
+        "is_booking_now": null
+      },
+      {
+        "date": "2026-06-29",
+        "nights": 1,
+        "date_begin": "2026-06-29 14:00:00",
+        "date_end": "2026-06-30 11:00:00",
+        "http_status": 200,
+        "api_success": true,
+        "obj_success": false,
+        "obj_errors": [
+          "Минимальное количество суток - 2."
+        ],
+        "busy": null,
+        "price": null,
+        "price_default": null,
+        "rooms_available": null,
+        "is_booking_now": null
+      },
+      {
+        "date": "2026-06-30",
+        "nights": 1,
+        "date_begin": "2026-06-30 14:00:00",
+        "date_end": "2026-07-01 11:00:00",
+        "http_status": 200,
+        "api_success": true,
+        "obj_success": false,
+        "obj_errors": [
+          "Минимальное количество суток - 2."
+        ],
+        "busy": null,
+        "price": null,
+        "price_default": null,
+        "rooms_available": null,
+        "is_booking_now": null
+      },
+      {
+        "date": "2026-07-01",
+        "nights": 1,
+        "date_begin": "2026-07-01 14:00:00",
+        "date_end": "2026-07-02 11:00:00",
+        "http_status": 200,
+        "api_success": true,
+        "obj_success": false,
+        "obj_errors": [
+          "Минимальное количество суток - 2."
+        ],
+        "busy": null,
+        "price": null,
+        "price_default": null,
+        "rooms_available": null,
+        "is_booking_now": null
+      },
+      {
+        "date": "2026-07-02",
+        "nights": 1,
+        "date_begin": "2026-07-02 14:00:00",
+        "date_end": "2026-07-03 11:00:00",
+        "http_status": 200,
+        "api_success": true,
+        "obj_success": false,
+        "obj_errors": [
+          "Минимальное количество суток - 2."
+        ],
+        "busy": null,
+        "price": null,
+        "price_default": null,
+        "rooms_available": null,
+        "is_booking_now": null
+      },
+      {
+        "date": "2026-07-03",
+        "nights": 1,
+        "date_begin": "2026-07-03 14:00:00",
+        "date_end": "2026-07-04 11:00:00",
+        "http_status": 200,
+        "api_success": true,
+        "obj_success": false,
+        "obj_errors": [
+          "Минимальное количество суток - 2."
+        ],
+        "busy": null,
+        "price": null,
+        "price_default": null,
+        "rooms_available": null,
+        "is_booking_now": null
+      },
+      {
+        "date": "2026-07-04",
+        "nights": 1,
+        "date_begin": "2026-07-04 14:00:00",
+        "date_end": "2026-07-05 11:00:00",
+        "http_status": 200,
+        "api_success": true,
+        "obj_success": false,
+        "obj_errors": [
+          "Минимальное количество суток - 2."
+        ],
+        "busy": null,
+        "price": null,
+        "price_default": null,
+        "rooms_available": null,
+        "is_booking_now": null
+      },
+      {
+        "date": "2026-07-05",
+        "nights": 1,
+        "date_begin": "2026-07-05 14:00:00",
+        "date_end": "2026-07-06 11:00:00",
+        "http_status": 200,
+        "api_success": true,
+        "obj_success": false,
+        "obj_errors": [
+          "Минимальное количество суток - 2."
+        ],
+        "busy": null,
+        "price": null,
+        "price_default": null,
+        "rooms_available": null,
+        "is_booking_now": null
+      },
+      {
+        "date": "2026-07-06",
+        "nights": 1,
+        "date_begin": "2026-07-06 14:00:00",
+        "date_end": "2026-07-07 11:00:00",
+        "http_status": 200,
+        "api_success": true,
+        "obj_success": false,
+        "obj_errors": [
+          "Минимальное количество суток - 2."
+        ],
+        "busy": null,
+        "price": null,
+        "price_default": null,
+        "rooms_available": null,
+        "is_booking_now": null
+      },
+      {
+        "date": "2026-07-07",
+        "nights": 1,
+        "date_begin": "2026-07-07 14:00:00",
+        "date_end": "2026-07-08 11:00:00",
+        "http_status": 200,
+        "api_success": true,
+        "obj_success": false,
+        "obj_errors": [
+          "Минимальное количество суток - 2."
+        ],
+        "busy": null,
+        "price": null,
+        "price_default": null,
+        "rooms_available": null,
+        "is_booking_now": null
+      },
+      {
+        "date": "2026-07-08",
+        "nights": 1,
+        "date_begin": "2026-07-08 14:00:00",
+        "date_end": "2026-07-09 11:00:00",
+        "http_status": 200,
+        "api_success": true,
+        "obj_success": false,
+        "obj_errors": [
+          "Минимальное количество суток - 2."
+        ],
+        "busy": null,
+        "price": null,
+        "price_default": null,
+        "rooms_available": null,
+        "is_booking_now": null
+      },
+      {
+        "date": "2026-07-09",
+        "nights": 1,
+        "date_begin": "2026-07-09 14:00:00",
+        "date_end": "2026-07-10 11:00:00",
+        "http_status": 200,
+        "api_success": true,
+        "obj_success": false,
+        "obj_errors": [
+          "Минимальное количество суток - 2."
+        ],
+        "busy": null,
+        "price": null,
+        "price_default": null,
+        "rooms_available": null,
+        "is_booking_now": null
+      },
+      {
+        "date": "2026-07-10",
+        "nights": 1,
+        "date_begin": "2026-07-10 14:00:00",
+        "date_end": "2026-07-11 11:00:00",
+        "http_status": 200,
+        "api_success": true,
+        "obj_success": false,
+        "obj_errors": [
+          "Минимальное количество суток - 2."
+        ],
+        "busy": null,
+        "price": null,
+        "price_default": null,
+        "rooms_available": null,
+        "is_booking_now": null
+      },
+      {
+        "date": "2026-07-11",
+        "nights": 1,
+        "date_begin": "2026-07-11 14:00:00",
+        "date_end": "2026-07-12 11:00:00",
+        "http_status": 200,
+        "api_success": true,
+        "obj_success": false,
+        "obj_errors": [
+          "Минимальное количество суток - 2."
+        ],
+        "busy": null,
+        "price": null,
+        "price_default": null,
+        "rooms_available": null,
+        "is_booking_now": null
+      },
+      {
+        "date": "2026-07-12",
+        "nights": 1,
+        "date_begin": "2026-07-12 14:00:00",
+        "date_end": "2026-07-13 11:00:00",
+        "http_status": 200,
+        "api_success": true,
+        "obj_success": false,
+        "obj_errors": [
+          "Минимальное количество суток - 2."
+        ],
+        "busy": null,
+        "price": null,
+        "price_default": null,
+        "rooms_available": null,
+        "is_booking_now": null
+      },
+      {
+        "date": "2026-07-13",
+        "nights": 1,
+        "date_begin": "2026-07-13 14:00:00",
+        "date_end": "2026-07-14 11:00:00",
+        "http_status": 200,
+        "api_success": true,
+        "obj_success": false,
+        "obj_errors": [
+          "Минимальное количество суток - 2."
+        ],
+        "busy": null,
+        "price": null,
+        "price_default": null,
+        "rooms_available": null,
+        "is_booking_now": null
+      },
+      {
+        "date": "2026-07-14",
+        "nights": 1,
+        "date_begin": "2026-07-14 14:00:00",
+        "date_end": "2026-07-15 11:00:00",
+        "http_status": 200,
+        "api_success": true,
+        "obj_success": false,
+        "obj_errors": [
+          "Минимальное количество суток - 2."
+        ],
+        "busy": null,
+        "price": null,
+        "price_default": null,
+        "rooms_available": null,
+        "is_booking_now": null
+      }
+    ],
+    "2": [
+      {
+        "date": "2026-05-16",
+        "nights": 2,
+        "date_begin": "2026-05-16 14:00:00",
+        "date_end": "2026-05-18 11:00:00",
+        "http_status": 200,
+        "api_success": true,
+        "obj_success": true,
+        "obj_errors": [],
+        "busy": "busy",
+        "price": 4140,
+        "price_default": 4100,
+        "rooms_available": 0,
+        "is_booking_now": false
+      },
+      {
+        "date": "2026-05-17",
+        "nights": 2,
+        "date_begin": "2026-05-17 14:00:00",
+        "date_end": "2026-05-19 11:00:00",
+        "http_status": 200,
+        "api_success": true,
+        "obj_success": true,
+        "obj_errors": [],
+        "busy": "unbusy",
+        "price": 3680,
+        "price_default": 3700,
+        "rooms_available": 2,
+        "is_booking_now": true
+      },
+      {
+        "date": "2026-05-18",
+        "nights": 2,
+        "date_begin": "2026-05-18 14:00:00",
+        "date_end": "2026-05-20 11:00:00",
+        "http_status": 200,
+        "api_success": true,
+        "obj_success": true,
+        "obj_errors": [],
+        "busy": "unbusy",
+        "price": 3680,
+        "price_default": 3700,
+        "rooms_available": 4,
+        "is_booking_now": true
+      },
+      {
+        "date": "2026-05-19",
+        "nights": 2,
+        "date_begin": "2026-05-19 14:00:00",
+        "date_end": "2026-05-21 11:00:00",
+        "http_status": 200,
+        "api_success": true,
+        "obj_success": true,
+        "obj_errors": [],
+        "busy": "unbusy",
+        "price": 3680,
+        "price_default": 3700,
+        "rooms_available": 2,
+        "is_booking_now": true
+      },
+      {
+        "date": "2026-05-20",
+        "nights": 2,
+        "date_begin": "2026-05-20 14:00:00",
+        "date_end": "2026-05-22 11:00:00",
+        "http_status": 200,
+        "api_success": true,
+        "obj_success": true,
+        "obj_errors": [],
+        "busy": "busy",
+        "price": 3795,
+        "price_default": 3800,
+        "rooms_available": 0,
+        "is_booking_now": false
+      },
+      {
+        "date": "2026-05-21",
+        "nights": 2,
+        "date_begin": "2026-05-21 14:00:00",
+        "date_end": "2026-05-23 11:00:00",
+        "http_status": 200,
+        "api_success": true,
+        "obj_success": true,
+        "obj_errors": [],
+        "busy": "busy",
+        "price": 4830,
+        "price_default": 4800,
+        "rooms_available": 0,
+        "is_booking_now": false
+      },
+      {
+        "date": "2026-05-22",
+        "nights": 2,
+        "date_begin": "2026-05-22 14:00:00",
+        "date_end": "2026-05-24 11:00:00",
+        "http_status": 200,
+        "api_success": true,
+        "obj_success": true,
+        "obj_errors": [],
+        "busy": "unbusy",
+        "price": 5750,
+        "price_default": 5800,
+        "rooms_available": 1,
+        "is_booking_now": true
+      },
+      {
+        "date": "2026-05-23",
+        "nights": 2,
+        "date_begin": "2026-05-23 14:00:00",
+        "date_end": "2026-05-25 11:00:00",
+        "http_status": 200,
+        "api_success": true,
+        "obj_success": true,
+        "obj_errors": [],
+        "busy": "unbusy",
+        "price": 5520,
+        "price_default": 5500,
+        "rooms_available": 2,
+        "is_booking_now": true
+      },
+      {
+        "date": "2026-05-24",
+        "nights": 2,
+        "date_begin": "2026-05-24 14:00:00",
+        "date_end": "2026-05-26 11:00:00",
+        "http_status": 200,
+        "api_success": true,
+        "obj_success": true,
+        "obj_errors": [],
+        "busy": "unbusy",
+        "price": 5290,
+        "price_default": 5300,
+        "rooms_available": 2,
+        "is_booking_now": true
+      },
+      {
+        "date": "2026-05-25",
+        "nights": 2,
+        "date_begin": "2026-05-25 14:00:00",
+        "date_end": "2026-05-27 11:00:00",
+        "http_status": 200,
+        "api_success": true,
+        "obj_success": true,
+        "obj_errors": [],
+        "busy": "busy",
+        "price": 5290,
+        "price_default": 5300,
+        "rooms_available": 0,
+        "is_booking_now": false
+      },
+      {
+        "date": "2026-05-26",
+        "nights": 2,
+        "date_begin": "2026-05-26 14:00:00",
+        "date_end": "2026-05-28 11:00:00",
+        "http_status": 200,
+        "api_success": true,
+        "obj_success": true,
+        "obj_errors": [],
+        "busy": "busy",
+        "price": 5290,
+        "price_default": 5300,
+        "rooms_available": 0,
+        "is_booking_now": false
+      },
+      {
+        "date": "2026-05-27",
+        "nights": 2,
+        "date_begin": "2026-05-27 14:00:00",
+        "date_end": "2026-05-29 11:00:00",
+        "http_status": 200,
+        "api_success": true,
+        "obj_success": true,
+        "obj_errors": [],
+        "busy": "unbusy",
+        "price": 5290,
+        "price_default": 5300,
+        "rooms_available": 1,
+        "is_booking_now": true
+      },
+      {
+        "date": "2026-05-28",
+        "nights": 2,
+        "date_begin": "2026-05-28 14:00:00",
+        "date_end": "2026-05-30 11:00:00",
+        "http_status": 200,
+        "api_success": true,
+        "obj_success": true,
+        "obj_errors": [],
+        "busy": "busy",
+        "price": 5520,
+        "price_default": 5500,
+        "rooms_available": 0,
+        "is_booking_now": false
+      },
+      {
+        "date": "2026-05-29",
+        "nights": 2,
+        "date_begin": "2026-05-29 14:00:00",
+        "date_end": "2026-05-31 11:00:00",
+        "http_status": 200,
+        "api_success": true,
+        "obj_success": true,
+        "obj_errors": [],
+        "busy": "busy",
+        "price": 5750,
+        "price_default": 5800,
+        "rooms_available": 0,
+        "is_booking_now": false
+      },
+      {
+        "date": "2026-05-30",
+        "nights": 2,
+        "date_begin": "2026-05-30 14:00:00",
+        "date_end": "2026-06-01 11:00:00",
+        "http_status": 200,
+        "api_success": true,
+        "obj_success": true,
+        "obj_errors": [],
+        "busy": "busy",
+        "price": 5520,
+        "price_default": 5500,
+        "rooms_available": 0,
+        "is_booking_now": false
+      },
+      {
+        "date": "2026-05-31",
+        "nights": 2,
+        "date_begin": "2026-05-31 14:00:00",
+        "date_end": "2026-06-02 11:00:00",
+        "http_status": 200,
+        "api_success": true,
+        "obj_success": true,
+        "obj_errors": [],
+        "busy": "unbusy",
+        "price": 6555,
+        "price_default": 6600,
+        "rooms_available": 2,
+        "is_booking_now": true
+      },
+      {
+        "date": "2026-06-01",
+        "nights": 2,
+        "date_begin": "2026-06-01 14:00:00",
+        "date_end": "2026-06-03 11:00:00",
+        "http_status": 200,
+        "api_success": true,
+        "obj_success": true,
+        "obj_errors": [],
+        "busy": "unbusy",
+        "price": 7820,
+        "price_default": 7800,
+        "rooms_available": 2,
+        "is_booking_now": true
+      },
+      {
+        "date": "2026-06-02",
+        "nights": 2,
+        "date_begin": "2026-06-02 14:00:00",
+        "date_end": "2026-06-04 11:00:00",
+        "http_status": 200,
+        "api_success": true,
+        "obj_success": true,
+        "obj_errors": [],
+        "busy": "unbusy",
+        "price": 7820,
+        "price_default": 7800,
+        "rooms_available": 2,
+        "is_booking_now": true
+      },
+      {
+        "date": "2026-06-03",
+        "nights": 2,
+        "date_begin": "2026-06-03 14:00:00",
+        "date_end": "2026-06-05 11:00:00",
+        "http_status": 200,
+        "api_success": true,
+        "obj_success": true,
+        "obj_errors": [],
+        "busy": "unbusy",
+        "price": 7820,
+        "price_default": 7800,
+        "rooms_available": 3,
+        "is_booking_now": true
+      },
+      {
+        "date": "2026-06-04",
+        "nights": 2,
+        "date_begin": "2026-06-04 14:00:00",
+        "date_end": "2026-06-06 11:00:00",
+        "http_status": 200,
+        "api_success": true,
+        "obj_success": true,
+        "obj_errors": [],
+        "busy": "unbusy",
+        "price": 8280,
+        "price_default": 8300,
+        "rooms_available": 3,
+        "is_booking_now": true
+      },
+      {
+        "date": "2026-06-05",
+        "nights": 2,
+        "date_begin": "2026-06-05 14:00:00",
+        "date_end": "2026-06-07 11:00:00",
+        "http_status": 200,
+        "api_success": true,
+        "obj_success": true,
+        "obj_errors": [],
+        "busy": "unbusy",
+        "price": 8740,
+        "price_default": 8700,
+        "rooms_available": 5,
+        "is_booking_now": true
+      },
+      {
+        "date": "2026-06-06",
+        "nights": 2,
+        "date_begin": "2026-06-06 14:00:00",
+        "date_end": "2026-06-08 11:00:00",
+        "http_status": 200,
+        "api_success": true,
+        "obj_success": true,
+        "obj_errors": [],
+        "busy": "unbusy",
+        "price": 8280,
+        "price_default": 8300,
+        "rooms_available": 5,
+        "is_booking_now": true
+      },
+      {
+        "date": "2026-06-07",
+        "nights": 2,
+        "date_begin": "2026-06-07 14:00:00",
+        "date_end": "2026-06-09 11:00:00",
+        "http_status": 200,
+        "api_success": true,
+        "obj_success": true,
+        "obj_errors": [],
+        "busy": "unbusy",
+        "price": 7820,
+        "price_default": 7800,
+        "rooms_available": 3,
+        "is_booking_now": true
+      },
+      {
+        "date": "2026-06-08",
+        "nights": 2,
+        "date_begin": "2026-06-08 14:00:00",
+        "date_end": "2026-06-10 11:00:00",
+        "http_status": 200,
+        "api_success": true,
+        "obj_success": true,
+        "obj_errors": [],
+        "busy": "unbusy",
+        "price": 7820,
+        "price_default": 7800,
+        "rooms_available": 2,
+        "is_booking_now": true
+      },
+      {
+        "date": "2026-06-09",
+        "nights": 2,
+        "date_begin": "2026-06-09 14:00:00",
+        "date_end": "2026-06-11 11:00:00",
+        "http_status": 200,
+        "api_success": true,
+        "obj_success": true,
+        "obj_errors": [],
+        "busy": "unbusy",
+        "price": 7820,
+        "price_default": 7800,
+        "rooms_available": 2,
+        "is_booking_now": true
+      },
+      {
+        "date": "2026-06-10",
+        "nights": 2,
+        "date_begin": "2026-06-10 14:00:00",
+        "date_end": "2026-06-12 11:00:00",
+        "http_status": 200,
+        "api_success": true,
+        "obj_success": true,
+        "obj_errors": [],
+        "busy": "unbusy",
+        "price": 7820,
+        "price_default": 7800,
+        "rooms_available": 3,
+        "is_booking_now": true
+      },
+      {
+        "date": "2026-06-11",
+        "nights": 2,
+        "date_begin": "2026-06-11 14:00:00",
+        "date_end": "2026-06-13 11:00:00",
+        "http_status": 200,
+        "api_success": true,
+        "obj_success": true,
+        "obj_errors": [],
+        "busy": "unbusy",
+        "price": 8280,
+        "price_default": 8300,
+        "rooms_available": 1,
+        "is_booking_now": true
+      },
+      {
+        "date": "2026-06-12",
+        "nights": 2,
+        "date_begin": "2026-06-12 14:00:00",
+        "date_end": "2026-06-14 11:00:00",
+        "http_status": 200,
+        "api_success": true,
+        "obj_success": true,
+        "obj_errors": [],
+        "busy": "busy",
+        "price": 8740,
+        "price_default": 8700,
+        "rooms_available": 0,
+        "is_booking_now": false
+      },
+      {
+        "date": "2026-06-13",
+        "nights": 2,
+        "date_begin": "2026-06-13 14:00:00",
+        "date_end": "2026-06-15 11:00:00",
+        "http_status": 200,
+        "api_success": true,
+        "obj_success": true,
+        "obj_errors": [],
+        "busy": "busy",
+        "price": 8280,
+        "price_default": 8300,
+        "rooms_available": 0,
+        "is_booking_now": false
+      },
+      {
+        "date": "2026-06-14",
+        "nights": 2,
+        "date_begin": "2026-06-14 14:00:00",
+        "date_end": "2026-06-16 11:00:00",
+        "http_status": 200,
+        "api_success": true,
+        "obj_success": true,
+        "obj_errors": [],
+        "busy": "busy",
+        "price": 7820,
+        "price_default": 7800,
+        "rooms_available": 0,
+        "is_booking_now": false
+      },
+      {
+        "date": "2026-06-15",
+        "nights": 2,
+        "date_begin": "2026-06-15 14:00:00",
+        "date_end": "2026-06-17 11:00:00",
+        "http_status": 200,
+        "api_success": true,
+        "obj_success": true,
+        "obj_errors": [],
+        "busy": "busy",
+        "price": 7820,
+        "price_default": 7800,
+        "rooms_available": 0,
+        "is_booking_now": false
+      },
+      {
+        "date": "2026-06-16",
+        "nights": 2,
+        "date_begin": "2026-06-16 14:00:00",
+        "date_end": "2026-06-18 11:00:00",
+        "http_status": 200,
+        "api_success": true,
+        "obj_success": true,
+        "obj_errors": [],
+        "busy": "unbusy",
+        "price": 7820,
+        "price_default": 7800,
+        "rooms_available": 2,
+        "is_booking_now": true
+      },
+      {
+        "date": "2026-06-17",
+        "nights": 2,
+        "date_begin": "2026-06-17 14:00:00",
+        "date_end": "2026-06-19 11:00:00",
+        "http_status": 200,
+        "api_success": true,
+        "obj_success": true,
+        "obj_errors": [],
+        "busy": "unbusy",
+        "price": 7820,
+        "price_default": 7800,
+        "rooms_available": 2,
+        "is_booking_now": true
+      },
+      {
+        "date": "2026-06-18",
+        "nights": 2,
+        "date_begin": "2026-06-18 14:00:00",
+        "date_end": "2026-06-20 11:00:00",
+        "http_status": 200,
+        "api_success": true,
+        "obj_success": true,
+        "obj_errors": [],
+        "busy": "unbusy",
+        "price": 8280,
+        "price_default": 8300,
+        "rooms_available": 1,
+        "is_booking_now": true
+      },
+      {
+        "date": "2026-06-19",
+        "nights": 2,
+        "date_begin": "2026-06-19 14:00:00",
+        "date_end": "2026-06-21 11:00:00",
+        "http_status": 200,
+        "api_success": true,
+        "obj_success": true,
+        "obj_errors": [],
+        "busy": "unbusy",
+        "price": 8740,
+        "price_default": 8700,
+        "rooms_available": 1,
+        "is_booking_now": true
+      },
+      {
+        "date": "2026-06-20",
+        "nights": 2,
+        "date_begin": "2026-06-20 14:00:00",
+        "date_end": "2026-06-22 11:00:00",
+        "http_status": 200,
+        "api_success": true,
+        "obj_success": true,
+        "obj_errors": [],
+        "busy": "unbusy",
+        "price": 8280,
+        "price_default": 8300,
+        "rooms_available": 3,
+        "is_booking_now": true
+      },
+      {
+        "date": "2026-06-21",
+        "nights": 2,
+        "date_begin": "2026-06-21 14:00:00",
+        "date_end": "2026-06-23 11:00:00",
+        "http_status": 200,
+        "api_success": true,
+        "obj_success": true,
+        "obj_errors": [],
+        "busy": "unbusy",
+        "price": 7820,
+        "price_default": 7800,
+        "rooms_available": 4,
+        "is_booking_now": true
+      },
+      {
+        "date": "2026-06-22",
+        "nights": 2,
+        "date_begin": "2026-06-22 14:00:00",
+        "date_end": "2026-06-24 11:00:00",
+        "http_status": 200,
+        "api_success": true,
+        "obj_success": true,
+        "obj_errors": [],
+        "busy": "unbusy",
+        "price": 7820,
+        "price_default": 7800,
+        "rooms_available": 4,
+        "is_booking_now": true
+      },
+      {
+        "date": "2026-06-23",
+        "nights": 2,
+        "date_begin": "2026-06-23 14:00:00",
+        "date_end": "2026-06-25 11:00:00",
+        "http_status": 200,
+        "api_success": true,
+        "obj_success": true,
+        "obj_errors": [],
+        "busy": "unbusy",
+        "price": 7820,
+        "price_default": 7800,
+        "rooms_available": 4,
+        "is_booking_now": true
+      },
+      {
+        "date": "2026-06-24",
+        "nights": 2,
+        "date_begin": "2026-06-24 14:00:00",
+        "date_end": "2026-06-26 11:00:00",
+        "http_status": 200,
+        "api_success": true,
+        "obj_success": true,
+        "obj_errors": [],
+        "busy": "unbusy",
+        "price": 7820,
+        "price_default": 7800,
+        "rooms_available": 5,
+        "is_booking_now": true
+      },
+      {
+        "date": "2026-06-25",
+        "nights": 2,
+        "date_begin": "2026-06-25 14:00:00",
+        "date_end": "2026-06-27 11:00:00",
+        "http_status": 200,
+        "api_success": true,
+        "obj_success": true,
+        "obj_errors": [],
+        "busy": "unbusy",
+        "price": 8855,
+        "price_default": 8900,
+        "rooms_available": 5,
+        "is_booking_now": true
+      },
+      {
+        "date": "2026-06-26",
+        "nights": 2,
+        "date_begin": "2026-06-26 14:00:00",
+        "date_end": "2026-06-28 11:00:00",
+        "http_status": 200,
+        "api_success": true,
+        "obj_success": true,
+        "obj_errors": [],
+        "busy": "unbusy",
+        "price": 9890,
+        "price_default": 9900,
+        "rooms_available": 4,
+        "is_booking_now": true
+      },
+      {
+        "date": "2026-06-27",
+        "nights": 2,
+        "date_begin": "2026-06-27 14:00:00",
+        "date_end": "2026-06-29 11:00:00",
+        "http_status": 200,
+        "api_success": true,
+        "obj_success": true,
+        "obj_errors": [],
+        "busy": "unbusy",
+        "price": 9430,
+        "price_default": 9400,
+        "rooms_available": 4,
+        "is_booking_now": true
+      },
+      {
+        "date": "2026-06-28",
+        "nights": 2,
+        "date_begin": "2026-06-28 14:00:00",
+        "date_end": "2026-06-30 11:00:00",
+        "http_status": 200,
+        "api_success": true,
+        "obj_success": true,
+        "obj_errors": [],
+        "busy": "unbusy",
+        "price": 8395,
+        "price_default": 8400,
+        "rooms_available": 4,
+        "is_booking_now": true
+      },
+      {
+        "date": "2026-06-29",
+        "nights": 2,
+        "date_begin": "2026-06-29 14:00:00",
+        "date_end": "2026-07-01 11:00:00",
+        "http_status": 200,
+        "api_success": true,
+        "obj_success": true,
+        "obj_errors": [],
+        "busy": "unbusy",
+        "price": 7820,
+        "price_default": 7800,
+        "rooms_available": 5,
+        "is_booking_now": true
+      },
+      {
+        "date": "2026-06-30",
+        "nights": 2,
+        "date_begin": "2026-06-30 14:00:00",
+        "date_end": "2026-07-02 11:00:00",
+        "http_status": 200,
+        "api_success": true,
+        "obj_success": true,
+        "obj_errors": [],
+        "busy": "unbusy",
+        "price": 7820,
+        "price_default": 7800,
+        "rooms_available": 5,
+        "is_booking_now": true
+      },
+      {
+        "date": "2026-07-01",
+        "nights": 2,
+        "date_begin": "2026-07-01 14:00:00",
+        "date_end": "2026-07-03 11:00:00",
+        "http_status": 200,
+        "api_success": true,
+        "obj_success": true,
+        "obj_errors": [],
+        "busy": "unbusy",
+        "price": 7820,
+        "price_default": 7800,
+        "rooms_available": 5,
+        "is_booking_now": true
+      },
+      {
+        "date": "2026-07-02",
+        "nights": 2,
+        "date_begin": "2026-07-02 14:00:00",
+        "date_end": "2026-07-04 11:00:00",
+        "http_status": 200,
+        "api_success": true,
+        "obj_success": true,
+        "obj_errors": [],
+        "busy": "unbusy",
+        "price": 8280,
+        "price_default": 8300,
+        "rooms_available": 5,
+        "is_booking_now": true
+      },
+      {
+        "date": "2026-07-03",
+        "nights": 2,
+        "date_begin": "2026-07-03 14:00:00",
+        "date_end": "2026-07-05 11:00:00",
+        "http_status": 200,
+        "api_success": true,
+        "obj_success": true,
+        "obj_errors": [],
+        "busy": "unbusy",
+        "price": 8740,
+        "price_default": 8700,
+        "rooms_available": 5,
+        "is_booking_now": true
+      },
+      {
+        "date": "2026-07-04",
+        "nights": 2,
+        "date_begin": "2026-07-04 14:00:00",
+        "date_end": "2026-07-06 11:00:00",
+        "http_status": 200,
+        "api_success": true,
+        "obj_success": true,
+        "obj_errors": [],
+        "busy": "unbusy",
+        "price": 8280,
+        "price_default": 8300,
+        "rooms_available": 5,
+        "is_booking_now": true
+      },
+      {
+        "date": "2026-07-05",
+        "nights": 2,
+        "date_begin": "2026-07-05 14:00:00",
+        "date_end": "2026-07-07 11:00:00",
+        "http_status": 200,
+        "api_success": true,
+        "obj_success": true,
+        "obj_errors": [],
+        "busy": "unbusy",
+        "price": 7820,
+        "price_default": 7800,
+        "rooms_available": 6,
+        "is_booking_now": true
+      },
+      {
+        "date": "2026-07-06",
+        "nights": 2,
+        "date_begin": "2026-07-06 14:00:00",
+        "date_end": "2026-07-08 11:00:00",
+        "http_status": 200,
+        "api_success": true,
+        "obj_success": true,
+        "obj_errors": [],
+        "busy": "unbusy",
+        "price": 7820,
+        "price_default": 7800,
+        "rooms_available": 6,
+        "is_booking_now": true
+      },
+      {
+        "date": "2026-07-07",
+        "nights": 2,
+        "date_begin": "2026-07-07 14:00:00",
+        "date_end": "2026-07-09 11:00:00",
+        "http_status": 200,
+        "api_success": true,
+        "obj_success": true,
+        "obj_errors": [],
+        "busy": "unbusy",
+        "price": 7820,
+        "price_default": 7800,
+        "rooms_available": 7,
+        "is_booking_now": true
+      },
+      {
+        "date": "2026-07-08",
+        "nights": 2,
+        "date_begin": "2026-07-08 14:00:00",
+        "date_end": "2026-07-10 11:00:00",
+        "http_status": 200,
+        "api_success": true,
+        "obj_success": true,
+        "obj_errors": [],
+        "busy": "unbusy",
+        "price": 7820,
+        "price_default": 7800,
+        "rooms_available": 7,
+        "is_booking_now": true
+      },
+      {
+        "date": "2026-07-09",
+        "nights": 2,
+        "date_begin": "2026-07-09 14:00:00",
+        "date_end": "2026-07-11 11:00:00",
+        "http_status": 200,
+        "api_success": true,
+        "obj_success": true,
+        "obj_errors": [],
+        "busy": "unbusy",
+        "price": 8280,
+        "price_default": 8300,
+        "rooms_available": 7,
+        "is_booking_now": true
+      },
+      {
+        "date": "2026-07-10",
+        "nights": 2,
+        "date_begin": "2026-07-10 14:00:00",
+        "date_end": "2026-07-12 11:00:00",
+        "http_status": 200,
+        "api_success": true,
+        "obj_success": true,
+        "obj_errors": [],
+        "busy": "unbusy",
+        "price": 8740,
+        "price_default": 8700,
+        "rooms_available": 7,
+        "is_booking_now": true
+      },
+      {
+        "date": "2026-07-11",
+        "nights": 2,
+        "date_begin": "2026-07-11 14:00:00",
+        "date_end": "2026-07-13 11:00:00",
+        "http_status": 200,
+        "api_success": true,
+        "obj_success": true,
+        "obj_errors": [],
+        "busy": "unbusy",
+        "price": 8280,
+        "price_default": 8300,
+        "rooms_available": 6,
+        "is_booking_now": true
+      },
+      {
+        "date": "2026-07-12",
+        "nights": 2,
+        "date_begin": "2026-07-12 14:00:00",
+        "date_end": "2026-07-14 11:00:00",
+        "http_status": 200,
+        "api_success": true,
+        "obj_success": true,
+        "obj_errors": [],
+        "busy": "unbusy",
+        "price": 7820,
+        "price_default": 7800,
+        "rooms_available": 6,
+        "is_booking_now": true
+      },
+      {
+        "date": "2026-07-13",
+        "nights": 2,
+        "date_begin": "2026-07-13 14:00:00",
+        "date_end": "2026-07-15 11:00:00",
+        "http_status": 200,
+        "api_success": true,
+        "obj_success": true,
+        "obj_errors": [],
+        "busy": "unbusy",
+        "price": 7820,
+        "price_default": 7800,
+        "rooms_available": 6,
+        "is_booking_now": true
+      },
+      {
+        "date": "2026-07-14",
+        "nights": 2,
+        "date_begin": "2026-07-14 14:00:00",
+        "date_end": "2026-07-16 11:00:00",
+        "http_status": 200,
+        "api_success": true,
+        "obj_success": true,
+        "obj_errors": [],
+        "busy": "unbusy",
+        "price": 7820,
+        "price_default": 7800,
+        "rooms_available": 6,
+        "is_booking_now": true
+      }
+    ],
+    "3": [
+      {
+        "date": "2026-05-16",
+        "nights": 3,
+        "date_begin": "2026-05-16 14:00:00",
+        "date_end": "2026-05-19 11:00:00",
+        "http_status": 200,
+        "api_success": true,
+        "obj_success": true,
+        "obj_errors": [],
+        "busy": "busy",
+        "price": 5980,
+        "price_default": 6000,
+        "rooms_available": 0,
+        "is_booking_now": false
+      },
+      {
+        "date": "2026-05-17",
+        "nights": 3,
+        "date_begin": "2026-05-17 14:00:00",
+        "date_end": "2026-05-20 11:00:00",
+        "http_status": 200,
+        "api_success": true,
+        "obj_success": true,
+        "obj_errors": [],
+        "busy": "unbusy",
+        "price": 5520,
+        "price_default": 5500,
+        "rooms_available": 2,
+        "is_booking_now": true
+      },
+      {
+        "date": "2026-05-18",
+        "nights": 3,
+        "date_begin": "2026-05-18 14:00:00",
+        "date_end": "2026-05-21 11:00:00",
+        "http_status": 200,
+        "api_success": true,
+        "obj_success": true,
+        "obj_errors": [],
+        "busy": "unbusy",
+        "price": 5520,
+        "price_default": 5500,
+        "rooms_available": 2,
+        "is_booking_now": true
+      },
+      {
+        "date": "2026-05-19",
+        "nights": 3,
+        "date_begin": "2026-05-19 14:00:00",
+        "date_end": "2026-05-22 11:00:00",
+        "http_status": 200,
+        "api_success": true,
+        "obj_success": true,
+        "obj_errors": [],
+        "busy": "busy",
+        "price": 5635,
+        "price_default": 5600,
+        "rooms_available": 0,
+        "is_booking_now": false
+      },
+      {
+        "date": "2026-05-20",
+        "nights": 3,
+        "date_begin": "2026-05-20 14:00:00",
+        "date_end": "2026-05-23 11:00:00",
+        "http_status": 200,
+        "api_success": true,
+        "obj_success": true,
+        "obj_errors": [],
+        "busy": "busy",
+        "price": 6670,
+        "price_default": 6700,
+        "rooms_available": 0,
+        "is_booking_now": false
+      },
+      {
+        "date": "2026-05-21",
+        "nights": 3,
+        "date_begin": "2026-05-21 14:00:00",
+        "date_end": "2026-05-24 11:00:00",
+        "http_status": 200,
+        "api_success": true,
+        "obj_success": true,
+        "obj_errors": [],
+        "busy": "busy",
+        "price": 7705,
+        "price_default": 7700,
+        "rooms_available": 0,
+        "is_booking_now": false
+      },
+      {
+        "date": "2026-05-22",
+        "nights": 3,
+        "date_begin": "2026-05-22 14:00:00",
+        "date_end": "2026-05-25 11:00:00",
+        "http_status": 200,
+        "api_success": true,
+        "obj_success": true,
+        "obj_errors": [],
+        "busy": "unbusy",
+        "price": 8395,
+        "price_default": 8400,
+        "rooms_available": 1,
+        "is_booking_now": true
+      },
+      {
+        "date": "2026-05-23",
+        "nights": 3,
+        "date_begin": "2026-05-23 14:00:00",
+        "date_end": "2026-05-26 11:00:00",
+        "http_status": 200,
+        "api_success": true,
+        "obj_success": true,
+        "obj_errors": [],
+        "busy": "unbusy",
+        "price": 8165,
+        "price_default": 8200,
+        "rooms_available": 2,
+        "is_booking_now": true
+      },
+      {
+        "date": "2026-05-24",
+        "nights": 3,
+        "date_begin": "2026-05-24 14:00:00",
+        "date_end": "2026-05-27 11:00:00",
+        "http_status": 200,
+        "api_success": true,
+        "obj_success": true,
+        "obj_errors": [],
+        "busy": "busy",
+        "price": 7935,
+        "price_default": 7900,
+        "rooms_available": 0,
+        "is_booking_now": false
+      },
+      {
+        "date": "2026-05-25",
+        "nights": 3,
+        "date_begin": "2026-05-25 14:00:00",
+        "date_end": "2026-05-28 11:00:00",
+        "http_status": 200,
+        "api_success": true,
+        "obj_success": true,
+        "obj_errors": [],
+        "busy": "busy",
+        "price": 7935,
+        "price_default": 7900,
+        "rooms_available": 0,
+        "is_booking_now": false
+      },
+      {
+        "date": "2026-05-26",
+        "nights": 3,
+        "date_begin": "2026-05-26 14:00:00",
+        "date_end": "2026-05-29 11:00:00",
+        "http_status": 200,
+        "api_success": true,
+        "obj_success": true,
+        "obj_errors": [],
+        "busy": "busy",
+        "price": 7935,
+        "price_default": 7900,
+        "rooms_available": 0,
+        "is_booking_now": false
+      },
+      {
+        "date": "2026-05-27",
+        "nights": 3,
+        "date_begin": "2026-05-27 14:00:00",
+        "date_end": "2026-05-30 11:00:00",
+        "http_status": 200,
+        "api_success": true,
+        "obj_success": true,
+        "obj_errors": [],
+        "busy": "busy",
+        "price": 8165,
+        "price_default": 8200,
+        "rooms_available": 0,
+        "is_booking_now": false
+      },
+      {
+        "date": "2026-05-28",
+        "nights": 3,
+        "date_begin": "2026-05-28 14:00:00",
+        "date_end": "2026-05-31 11:00:00",
+        "http_status": 200,
+        "api_success": true,
+        "obj_success": true,
+        "obj_errors": [],
+        "busy": "busy",
+        "price": 8395,
+        "price_default": 8400,
+        "rooms_available": 0,
+        "is_booking_now": false
+      },
+      {
+        "date": "2026-05-29",
+        "nights": 3,
+        "date_begin": "2026-05-29 14:00:00",
+        "date_end": "2026-06-01 11:00:00",
+        "http_status": 200,
+        "api_success": true,
+        "obj_success": true,
+        "obj_errors": [],
+        "busy": "busy",
+        "price": 8395,
+        "price_default": 8400,
+        "rooms_available": 0,
+        "is_booking_now": false
+      },
+      {
+        "date": "2026-05-30",
+        "nights": 3,
+        "date_begin": "2026-05-30 14:00:00",
+        "date_end": "2026-06-02 11:00:00",
+        "http_status": 200,
+        "api_success": true,
+        "obj_success": true,
+        "obj_errors": [],
+        "busy": "busy",
+        "price": 9430,
+        "price_default": 9400,
+        "rooms_available": 0,
+        "is_booking_now": false
+      },
+      {
+        "date": "2026-05-31",
+        "nights": 3,
+        "date_begin": "2026-05-31 14:00:00",
+        "date_end": "2026-06-03 11:00:00",
+        "http_status": 200,
+        "api_success": true,
+        "obj_success": true,
+        "obj_errors": [],
+        "busy": "unbusy",
+        "price": 10465,
+        "price_default": 10500,
+        "rooms_available": 2,
+        "is_booking_now": true
+      },
+      {
+        "date": "2026-06-01",
+        "nights": 3,
+        "date_begin": "2026-06-01 14:00:00",
+        "date_end": "2026-06-04 11:00:00",
+        "http_status": 200,
+        "api_success": true,
+        "obj_success": true,
+        "obj_errors": [],
+        "busy": "unbusy",
+        "price": 11730,
+        "price_default": 11700,
+        "rooms_available": 2,
+        "is_booking_now": true
+      },
+      {
+        "date": "2026-06-02",
+        "nights": 3,
+        "date_begin": "2026-06-02 14:00:00",
+        "date_end": "2026-06-05 11:00:00",
+        "http_status": 200,
+        "api_success": true,
+        "obj_success": true,
+        "obj_errors": [],
+        "busy": "unbusy",
+        "price": 11730,
+        "price_default": 11700,
+        "rooms_available": 2,
+        "is_booking_now": true
+      },
+      {
+        "date": "2026-06-03",
+        "nights": 3,
+        "date_begin": "2026-06-03 14:00:00",
+        "date_end": "2026-06-06 11:00:00",
+        "http_status": 200,
+        "api_success": true,
+        "obj_success": true,
+        "obj_errors": [],
+        "busy": "unbusy",
+        "price": 12190,
+        "price_default": 12200,
+        "rooms_available": 3,
+        "is_booking_now": true
+      },
+      {
+        "date": "2026-06-04",
+        "nights": 3,
+        "date_begin": "2026-06-04 14:00:00",
+        "date_end": "2026-06-07 11:00:00",
+        "http_status": 200,
+        "api_success": true,
+        "obj_success": true,
+        "obj_errors": [],
+        "busy": "unbusy",
+        "price": 12650,
+        "price_default": 12700,
+        "rooms_available": 3,
+        "is_booking_now": true
+      },
+      {
+        "date": "2026-06-05",
+        "nights": 3,
+        "date_begin": "2026-06-05 14:00:00",
+        "date_end": "2026-06-08 11:00:00",
+        "http_status": 200,
+        "api_success": true,
+        "obj_success": true,
+        "obj_errors": [],
+        "busy": "unbusy",
+        "price": 12650,
+        "price_default": 12700,
+        "rooms_available": 5,
+        "is_booking_now": true
+      },
+      {
+        "date": "2026-06-06",
+        "nights": 3,
+        "date_begin": "2026-06-06 14:00:00",
+        "date_end": "2026-06-09 11:00:00",
+        "http_status": 200,
+        "api_success": true,
+        "obj_success": true,
+        "obj_errors": [],
+        "busy": "unbusy",
+        "price": 12190,
+        "price_default": 12200,
+        "rooms_available": 3,
+        "is_booking_now": true
+      },
+      {
+        "date": "2026-06-07",
+        "nights": 3,
+        "date_begin": "2026-06-07 14:00:00",
+        "date_end": "2026-06-10 11:00:00",
+        "http_status": 200,
+        "api_success": true,
+        "obj_success": true,
+        "obj_errors": [],
+        "busy": "unbusy",
+        "price": 11730,
+        "price_default": 11700,
+        "rooms_available": 2,
+        "is_booking_now": true
+      },
+      {
+        "date": "2026-06-08",
+        "nights": 3,
+        "date_begin": "2026-06-08 14:00:00",
+        "date_end": "2026-06-11 11:00:00",
+        "http_status": 200,
+        "api_success": true,
+        "obj_success": true,
+        "obj_errors": [],
+        "busy": "unbusy",
+        "price": 11730,
+        "price_default": 11700,
+        "rooms_available": 2,
+        "is_booking_now": true
+      },
+      {
+        "date": "2026-06-09",
+        "nights": 3,
+        "date_begin": "2026-06-09 14:00:00",
+        "date_end": "2026-06-12 11:00:00",
+        "http_status": 200,
+        "api_success": true,
+        "obj_success": true,
+        "obj_errors": [],
+        "busy": "unbusy",
+        "price": 11730,
+        "price_default": 11700,
+        "rooms_available": 2,
+        "is_booking_now": true
+      },
+      {
+        "date": "2026-06-10",
+        "nights": 3,
+        "date_begin": "2026-06-10 14:00:00",
+        "date_end": "2026-06-13 11:00:00",
+        "http_status": 200,
+        "api_success": true,
+        "obj_success": true,
+        "obj_errors": [],
+        "busy": "unbusy",
+        "price": 12190,
+        "price_default": 12200,
+        "rooms_available": 1,
+        "is_booking_now": true
+      },
+      {
+        "date": "2026-06-11",
+        "nights": 3,
+        "date_begin": "2026-06-11 14:00:00",
+        "date_end": "2026-06-14 11:00:00",
+        "http_status": 200,
+        "api_success": true,
+        "obj_success": true,
+        "obj_errors": [],
+        "busy": "busy",
+        "price": 12650,
+        "price_default": 12700,
+        "rooms_available": 0,
+        "is_booking_now": false
+      },
+      {
+        "date": "2026-06-12",
+        "nights": 3,
+        "date_begin": "2026-06-12 14:00:00",
+        "date_end": "2026-06-15 11:00:00",
+        "http_status": 200,
+        "api_success": true,
+        "obj_success": true,
+        "obj_errors": [],
+        "busy": "busy",
+        "price": 12650,
+        "price_default": 12700,
+        "rooms_available": 0,
+        "is_booking_now": false
+      },
+      {
+        "date": "2026-06-13",
+        "nights": 3,
+        "date_begin": "2026-06-13 14:00:00",
+        "date_end": "2026-06-16 11:00:00",
+        "http_status": 200,
+        "api_success": true,
+        "obj_success": true,
+        "obj_errors": [],
+        "busy": "busy",
+        "price": 12190,
+        "price_default": 12200,
+        "rooms_available": 0,
+        "is_booking_now": false
+      },
+      {
+        "date": "2026-06-14",
+        "nights": 3,
+        "date_begin": "2026-06-14 14:00:00",
+        "date_end": "2026-06-17 11:00:00",
+        "http_status": 200,
+        "api_success": true,
+        "obj_success": true,
+        "obj_errors": [],
+        "busy": "busy",
+        "price": 11730,
+        "price_default": 11700,
+        "rooms_available": 0,
+        "is_booking_now": false
+      },
+      {
+        "date": "2026-06-15",
+        "nights": 3,
+        "date_begin": "2026-06-15 14:00:00",
+        "date_end": "2026-06-18 11:00:00",
+        "http_status": 200,
+        "api_success": true,
+        "obj_success": true,
+        "obj_errors": [],
+        "busy": "busy",
+        "price": 11730,
+        "price_default": 11700,
+        "rooms_available": 0,
+        "is_booking_now": false
+      },
+      {
+        "date": "2026-06-16",
+        "nights": 3,
+        "date_begin": "2026-06-16 14:00:00",
+        "date_end": "2026-06-19 11:00:00",
+        "http_status": 200,
+        "api_success": true,
+        "obj_success": true,
+        "obj_errors": [],
+        "busy": "unbusy",
+        "price": 11730,
+        "price_default": 11700,
+        "rooms_available": 2,
+        "is_booking_now": true
+      },
+      {
+        "date": "2026-06-17",
+        "nights": 3,
+        "date_begin": "2026-06-17 14:00:00",
+        "date_end": "2026-06-20 11:00:00",
+        "http_status": 200,
+        "api_success": true,
+        "obj_success": true,
+        "obj_errors": [],
+        "busy": "unbusy",
+        "price": 12190,
+        "price_default": 12200,
+        "rooms_available": 1,
+        "is_booking_now": true
+      },
+      {
+        "date": "2026-06-18",
+        "nights": 3,
+        "date_begin": "2026-06-18 14:00:00",
+        "date_end": "2026-06-21 11:00:00",
+        "http_status": 200,
+        "api_success": true,
+        "obj_success": true,
+        "obj_errors": [],
+        "busy": "unbusy",
+        "price": 12650,
+        "price_default": 12700,
+        "rooms_available": 1,
+        "is_booking_now": true
+      },
+      {
+        "date": "2026-06-19",
+        "nights": 3,
+        "date_begin": "2026-06-19 14:00:00",
+        "date_end": "2026-06-22 11:00:00",
+        "http_status": 200,
+        "api_success": true,
+        "obj_success": true,
+        "obj_errors": [],
+        "busy": "unbusy",
+        "price": 12650,
+        "price_default": 12700,
+        "rooms_available": 1,
+        "is_booking_now": true
+      },
+      {
+        "date": "2026-06-20",
+        "nights": 3,
+        "date_begin": "2026-06-20 14:00:00",
+        "date_end": "2026-06-23 11:00:00",
+        "http_status": 200,
+        "api_success": true,
+        "obj_success": true,
+        "obj_errors": [],
+        "busy": "unbusy",
+        "price": 12190,
+        "price_default": 12200,
+        "rooms_available": 3,
+        "is_booking_now": true
+      },
+      {
+        "date": "2026-06-21",
+        "nights": 3,
+        "date_begin": "2026-06-21 14:00:00",
+        "date_end": "2026-06-24 11:00:00",
+        "http_status": 200,
+        "api_success": true,
+        "obj_success": true,
+        "obj_errors": [],
+        "busy": "unbusy",
+        "price": 11730,
+        "price_default": 11700,
+        "rooms_available": 4,
+        "is_booking_now": true
+      },
+      {
+        "date": "2026-06-22",
+        "nights": 3,
+        "date_begin": "2026-06-22 14:00:00",
+        "date_end": "2026-06-25 11:00:00",
+        "http_status": 200,
+        "api_success": true,
+        "obj_success": true,
+        "obj_errors": [],
+        "busy": "unbusy",
+        "price": 11730,
+        "price_default": 11700,
+        "rooms_available": 4,
+        "is_booking_now": true
+      },
+      {
+        "date": "2026-06-23",
+        "nights": 3,
+        "date_begin": "2026-06-23 14:00:00",
+        "date_end": "2026-06-26 11:00:00",
+        "http_status": 200,
+        "api_success": true,
+        "obj_success": true,
+        "obj_errors": [],
+        "busy": "unbusy",
+        "price": 11730,
+        "price_default": 11700,
+        "rooms_available": 4,
+        "is_booking_now": true
+      },
+      {
+        "date": "2026-06-24",
+        "nights": 3,
+        "date_begin": "2026-06-24 14:00:00",
+        "date_end": "2026-06-27 11:00:00",
+        "http_status": 200,
+        "api_success": true,
+        "obj_success": true,
+        "obj_errors": [],
+        "busy": "unbusy",
+        "price": 12765,
+        "price_default": 12800,
+        "rooms_available": 5,
+        "is_booking_now": true
+      },
+      {
+        "date": "2026-06-25",
+        "nights": 3,
+        "date_begin": "2026-06-25 14:00:00",
+        "date_end": "2026-06-28 11:00:00",
+        "http_status": 200,
+        "api_success": true,
+        "obj_success": true,
+        "obj_errors": [],
+        "busy": "unbusy",
+        "price": 13800,
+        "price_default": 13800,
+        "rooms_available": 4,
+        "is_booking_now": true
+      },
+      {
+        "date": "2026-06-26",
+        "nights": 3,
+        "date_begin": "2026-06-26 14:00:00",
+        "date_end": "2026-06-29 11:00:00",
+        "http_status": 200,
+        "api_success": true,
+        "obj_success": true,
+        "obj_errors": [],
+        "busy": "unbusy",
+        "price": 14375,
+        "price_default": 14400,
+        "rooms_available": 4,
+        "is_booking_now": true
+      },
+      {
+        "date": "2026-06-27",
+        "nights": 3,
+        "date_begin": "2026-06-27 14:00:00",
+        "date_end": "2026-06-30 11:00:00",
+        "http_status": 200,
+        "api_success": true,
+        "obj_success": true,
+        "obj_errors": [],
+        "busy": "unbusy",
+        "price": 13340,
+        "price_default": 13300,
+        "rooms_available": 4,
+        "is_booking_now": true
+      },
+      {
+        "date": "2026-06-28",
+        "nights": 3,
+        "date_begin": "2026-06-28 14:00:00",
+        "date_end": "2026-07-01 11:00:00",
+        "http_status": 200,
+        "api_success": true,
+        "obj_success": true,
+        "obj_errors": [],
+        "busy": "unbusy",
+        "price": 12305,
+        "price_default": 12300,
+        "rooms_available": 4,
+        "is_booking_now": true
+      },
+      {
+        "date": "2026-06-29",
+        "nights": 3,
+        "date_begin": "2026-06-29 14:00:00",
+        "date_end": "2026-07-02 11:00:00",
+        "http_status": 200,
+        "api_success": true,
+        "obj_success": true,
+        "obj_errors": [],
+        "busy": "unbusy",
+        "price": 11730,
+        "price_default": 11700,
+        "rooms_available": 5,
+        "is_booking_now": true
+      },
+      {
+        "date": "2026-06-30",
+        "nights": 3,
+        "date_begin": "2026-06-30 14:00:00",
+        "date_end": "2026-07-03 11:00:00",
+        "http_status": 200,
+        "api_success": true,
+        "obj_success": true,
+        "obj_errors": [],
+        "busy": "unbusy",
+        "price": 11730,
+        "price_default": 11700,
+        "rooms_available": 5,
+        "is_booking_now": true
+      },
+      {
+        "date": "2026-07-01",
+        "nights": 3,
+        "date_begin": "2026-07-01 14:00:00",
+        "date_end": "2026-07-04 11:00:00",
+        "http_status": 200,
+        "api_success": true,
+        "obj_success": true,
+        "obj_errors": [],
+        "busy": "unbusy",
+        "price": 12190,
+        "price_default": 12200,
+        "rooms_available": 5,
+        "is_booking_now": true
+      },
+      {
+        "date": "2026-07-02",
+        "nights": 3,
+        "date_begin": "2026-07-02 14:00:00",
+        "date_end": "2026-07-05 11:00:00",
+        "http_status": 200,
+        "api_success": true,
+        "obj_success": true,
+        "obj_errors": [],
+        "busy": "unbusy",
+        "price": 12650,
+        "price_default": 12700,
+        "rooms_available": 5,
+        "is_booking_now": true
+      },
+      {
+        "date": "2026-07-03",
+        "nights": 3,
+        "date_begin": "2026-07-03 14:00:00",
+        "date_end": "2026-07-06 11:00:00",
+        "http_status": 200,
+        "api_success": true,
+        "obj_success": true,
+        "obj_errors": [],
+        "busy": "unbusy",
+        "price": 12650,
+        "price_default": 12700,
+        "rooms_available": 5,
+        "is_booking_now": true
+      },
+      {
+        "date": "2026-07-04",
+        "nights": 3,
+        "date_begin": "2026-07-04 14:00:00",
+        "date_end": "2026-07-07 11:00:00",
+        "http_status": 200,
+        "api_success": true,
+        "obj_success": true,
+        "obj_errors": [],
+        "busy": "unbusy",
+        "price": 12190,
+        "price_default": 12200,
+        "rooms_available": 5,
+        "is_booking_now": true
+      },
+      {
+        "date": "2026-07-05",
+        "nights": 3,
+        "date_begin": "2026-07-05 14:00:00",
+        "date_end": "2026-07-08 11:00:00",
+        "http_status": 200,
+        "api_success": true,
+        "obj_success": true,
+        "obj_errors": [],
+        "busy": "unbusy",
+        "price": 11730,
+        "price_default": 11700,
+        "rooms_available": 6,
+        "is_booking_now": true
+      },
+      {
+        "date": "2026-07-06",
+        "nights": 3,
+        "date_begin": "2026-07-06 14:00:00",
+        "date_end": "2026-07-09 11:00:00",
+        "http_status": 200,
+        "api_success": true,
+        "obj_success": true,
+        "obj_errors": [],
+        "busy": "unbusy",
+        "price": 11730,
+        "price_default": 11700,
+        "rooms_available": 6,
+        "is_booking_now": true
+      },
+      {
+        "date": "2026-07-07",
+        "nights": 3,
+        "date_begin": "2026-07-07 14:00:00",
+        "date_end": "2026-07-10 11:00:00",
+        "http_status": 200,
+        "api_success": true,
+        "obj_success": true,
+        "obj_errors": [],
+        "busy": "unbusy",
+        "price": 11730,
+        "price_default": 11700,
+        "rooms_available": 7,
+        "is_booking_now": true
+      },
+      {
+        "date": "2026-07-08",
+        "nights": 3,
+        "date_begin": "2026-07-08 14:00:00",
+        "date_end": "2026-07-11 11:00:00",
+        "http_status": 200,
+        "api_success": true,
+        "obj_success": true,
+        "obj_errors": [],
+        "busy": "unbusy",
+        "price": 12190,
+        "price_default": 12200,
+        "rooms_available": 7,
+        "is_booking_now": true
+      },
+      {
+        "date": "2026-07-09",
+        "nights": 3,
+        "date_begin": "2026-07-09 14:00:00",
+        "date_end": "2026-07-12 11:00:00",
+        "http_status": 200,
+        "api_success": true,
+        "obj_success": true,
+        "obj_errors": [],
+        "busy": "unbusy",
+        "price": 12650,
+        "price_default": 12700,
+        "rooms_available": 7,
+        "is_booking_now": true
+      },
+      {
+        "date": "2026-07-10",
+        "nights": 3,
+        "date_begin": "2026-07-10 14:00:00",
+        "date_end": "2026-07-13 11:00:00",
+        "http_status": 200,
+        "api_success": true,
+        "obj_success": true,
+        "obj_errors": [],
+        "busy": "unbusy",
+        "price": 12650,
+        "price_default": 12700,
+        "rooms_available": 6,
+        "is_booking_now": true
+      },
+      {
+        "date": "2026-07-11",
+        "nights": 3,
+        "date_begin": "2026-07-11 14:00:00",
+        "date_end": "2026-07-14 11:00:00",
+        "http_status": 200,
+        "api_success": true,
+        "obj_success": true,
+        "obj_errors": [],
+        "busy": "unbusy",
+        "price": 12190,
+        "price_default": 12200,
+        "rooms_available": 6,
+        "is_booking_now": true
+      },
+      {
+        "date": "2026-07-12",
+        "nights": 3,
+        "date_begin": "2026-07-12 14:00:00",
+        "date_end": "2026-07-15 11:00:00",
+        "http_status": 200,
+        "api_success": true,
+        "obj_success": true,
+        "obj_errors": [],
+        "busy": "unbusy",
+        "price": 11730,
+        "price_default": 11700,
+        "rooms_available": 6,
+        "is_booking_now": true
+      },
+      {
+        "date": "2026-07-13",
+        "nights": 3,
+        "date_begin": "2026-07-13 14:00:00",
+        "date_end": "2026-07-16 11:00:00",
+        "http_status": 200,
+        "api_success": true,
+        "obj_success": true,
+        "obj_errors": [],
+        "busy": "unbusy",
+        "price": 11730,
+        "price_default": 11700,
+        "rooms_available": 6,
+        "is_booking_now": true
+      },
+      {
+        "date": "2026-07-14",
+        "nights": 3,
+        "date_begin": "2026-07-14 14:00:00",
+        "date_end": "2026-07-17 11:00:00",
+        "http_status": 200,
+        "api_success": true,
+        "obj_success": true,
+        "obj_errors": [],
+        "busy": "unbusy",
+        "price": 11730,
+        "price_default": 11700,
+        "rooms_available": 6,
+        "is_booking_now": true
+      }
+    ],
+    "4": [
+      {
+        "date": "2026-05-16",
+        "nights": 4,
+        "date_begin": "2026-05-16 14:00:00",
+        "date_end": "2026-05-20 11:00:00",
+        "http_status": 200,
+        "api_success": true,
+        "obj_success": true,
+        "obj_errors": [],
+        "busy": "busy",
+        "price": 7820,
+        "price_default": 7800,
+        "rooms_available": 0,
+        "is_booking_now": false
+      },
+      {
+        "date": "2026-05-17",
+        "nights": 4,
+        "date_begin": "2026-05-17 14:00:00",
+        "date_end": "2026-05-21 11:00:00",
+        "http_status": 200,
+        "api_success": true,
+        "obj_success": true,
+        "obj_errors": [],
+        "busy": "unbusy",
+        "price": 7360,
+        "price_default": 7400,
+        "rooms_available": 2,
+        "is_booking_now": true
+      },
+      {
+        "date": "2026-05-18",
+        "nights": 4,
+        "date_begin": "2026-05-18 14:00:00",
+        "date_end": "2026-05-22 11:00:00",
+        "http_status": 200,
+        "api_success": true,
+        "obj_success": true,
+        "obj_errors": [],
+        "busy": "busy",
+        "price": 7475,
+        "price_default": 7500,
+        "rooms_available": 0,
+        "is_booking_now": false
+      },
+      {
+        "date": "2026-05-19",
+        "nights": 4,
+        "date_begin": "2026-05-19 14:00:00",
+        "date_end": "2026-05-23 11:00:00",
+        "http_status": 200,
+        "api_success": true,
+        "obj_success": true,
+        "obj_errors": [],
+        "busy": "busy",
+        "price": 8510,
+        "price_default": 8500,
+        "rooms_available": 0,
+        "is_booking_now": false
+      },
+      {
+        "date": "2026-05-20",
+        "nights": 4,
+        "date_begin": "2026-05-20 14:00:00",
+        "date_end": "2026-05-24 11:00:00",
+        "http_status": 200,
+        "api_success": true,
+        "obj_success": true,
+        "obj_errors": [],
+        "busy": "busy",
+        "price": 9545,
+        "price_default": 9500,
+        "rooms_available": 0,
+        "is_booking_now": false
+      },
+      {
+        "date": "2026-05-21",
+        "nights": 4,
+        "date_begin": "2026-05-21 14:00:00",
+        "date_end": "2026-05-25 11:00:00",
+        "http_status": 200,
+        "api_success": true,
+        "obj_success": true,
+        "obj_errors": [],
+        "busy": "busy",
+        "price": 10350,
+        "price_default": 10400,
+        "rooms_available": 0,
+        "is_booking_now": false
+      },
+      {
+        "date": "2026-05-22",
+        "nights": 4,
+        "date_begin": "2026-05-22 14:00:00",
+        "date_end": "2026-05-26 11:00:00",
+        "http_status": 200,
+        "api_success": true,
+        "obj_success": true,
+        "obj_errors": [],
+        "busy": "unbusy",
+        "price": 11040,
+        "price_default": 11000,
+        "rooms_available": 1,
+        "is_booking_now": true
+      },
+      {
+        "date": "2026-05-23",
+        "nights": 4,
+        "date_begin": "2026-05-23 14:00:00",
+        "date_end": "2026-05-27 11:00:00",
+        "http_status": 200,
+        "api_success": true,
+        "obj_success": true,
+        "obj_errors": [],
+        "busy": "busy",
+        "price": 10810,
+        "price_default": 10800,
+        "rooms_available": 0,
+        "is_booking_now": false
+      },
+      {
+        "date": "2026-05-24",
+        "nights": 4,
+        "date_begin": "2026-05-24 14:00:00",
+        "date_end": "2026-05-28 11:00:00",
+        "http_status": 200,
+        "api_success": true,
+        "obj_success": true,
+        "obj_errors": [],
+        "busy": "busy",
+        "price": 10580,
+        "price_default": 10600,
+        "rooms_available": 0,
+        "is_booking_now": false
+      },
+      {
+        "date": "2026-05-25",
+        "nights": 4,
+        "date_begin": "2026-05-25 14:00:00",
+        "date_end": "2026-05-29 11:00:00",
+        "http_status": 200,
+        "api_success": true,
+        "obj_success": true,
+        "obj_errors": [],
+        "busy": "busy",
+        "price": 10580,
+        "price_default": 10600,
+        "rooms_available": 0,
+        "is_booking_now": false
+      },
+      {
+        "date": "2026-05-26",
+        "nights": 4,
+        "date_begin": "2026-05-26 14:00:00",
+        "date_end": "2026-05-30 11:00:00",
+        "http_status": 200,
+        "api_success": true,
+        "obj_success": true,
+        "obj_errors": [],
+        "busy": "busy",
+        "price": 10810,
+        "price_default": 10800,
+        "rooms_available": 0,
+        "is_booking_now": false
+      },
+      {
+        "date": "2026-05-27",
+        "nights": 4,
+        "date_begin": "2026-05-27 14:00:00",
+        "date_end": "2026-05-31 11:00:00",
+        "http_status": 200,
+        "api_success": true,
+        "obj_success": true,
+        "obj_errors": [],
+        "busy": "busy",
+        "price": 11040,
+        "price_default": 11000,
+        "rooms_available": 0,
+        "is_booking_now": false
+      },
+      {
+        "date": "2026-05-28",
+        "nights": 4,
+        "date_begin": "2026-05-28 14:00:00",
+        "date_end": "2026-06-01 11:00:00",
+        "http_status": 200,
+        "api_success": true,
+        "obj_success": true,
+        "obj_errors": [],
+        "busy": "busy",
+        "price": 11040,
+        "price_default": 11000,
+        "rooms_available": 0,
+        "is_booking_now": false
+      },
+      {
+        "date": "2026-05-29",
+        "nights": 4,
+        "date_begin": "2026-05-29 14:00:00",
+        "date_end": "2026-06-02 11:00:00",
+        "http_status": 200,
+        "api_success": true,
+        "obj_success": true,
+        "obj_errors": [],
+        "busy": "busy",
+        "price": 12305,
+        "price_default": 12300,
+        "rooms_available": 0,
+        "is_booking_now": false
+      },
+      {
+        "date": "2026-05-30",
+        "nights": 4,
+        "date_begin": "2026-05-30 14:00:00",
+        "date_end": "2026-06-03 11:00:00",
+        "http_status": 200,
+        "api_success": true,
+        "obj_success": true,
+        "obj_errors": [],
+        "busy": "busy",
+        "price": 13340,
+        "price_default": 13300,
+        "rooms_available": 0,
+        "is_booking_now": false
+      },
+      {
+        "date": "2026-05-31",
+        "nights": 4,
+        "date_begin": "2026-05-31 14:00:00",
+        "date_end": "2026-06-04 11:00:00",
+        "http_status": 200,
+        "api_success": true,
+        "obj_success": true,
+        "obj_errors": [],
+        "busy": "unbusy",
+        "price": 14375,
+        "price_default": 14400,
+        "rooms_available": 2,
+        "is_booking_now": true
+      },
+      {
+        "date": "2026-06-01",
+        "nights": 4,
+        "date_begin": "2026-06-01 14:00:00",
+        "date_end": "2026-06-05 11:00:00",
+        "http_status": 200,
+        "api_success": true,
+        "obj_success": true,
+        "obj_errors": [],
+        "busy": "unbusy",
+        "price": 15640,
+        "price_default": 15600,
+        "rooms_available": 2,
+        "is_booking_now": true
+      },
+      {
+        "date": "2026-06-02",
+        "nights": 4,
+        "date_begin": "2026-06-02 14:00:00",
+        "date_end": "2026-06-06 11:00:00",
+        "http_status": 200,
+        "api_success": true,
+        "obj_success": true,
+        "obj_errors": [],
+        "busy": "unbusy",
+        "price": 16100,
+        "price_default": 16100,
+        "rooms_available": 2,
+        "is_booking_now": true
+      },
+      {
+        "date": "2026-06-03",
+        "nights": 4,
+        "date_begin": "2026-06-03 14:00:00",
+        "date_end": "2026-06-07 11:00:00",
+        "http_status": 200,
+        "api_success": true,
+        "obj_success": true,
+        "obj_errors": [],
+        "busy": "unbusy",
+        "price": 16560,
+        "price_default": 16600,
+        "rooms_available": 3,
+        "is_booking_now": true
+      },
+      {
+        "date": "2026-06-04",
+        "nights": 4,
+        "date_begin": "2026-06-04 14:00:00",
+        "date_end": "2026-06-08 11:00:00",
+        "http_status": 200,
+        "api_success": true,
+        "obj_success": true,
+        "obj_errors": [],
+        "busy": "unbusy",
+        "price": 16560,
+        "price_default": 16600,
+        "rooms_available": 3,
+        "is_booking_now": true
+      },
+      {
+        "date": "2026-06-05",
+        "nights": 4,
+        "date_begin": "2026-06-05 14:00:00",
+        "date_end": "2026-06-09 11:00:00",
+        "http_status": 200,
+        "api_success": true,
+        "obj_success": true,
+        "obj_errors": [],
+        "busy": "unbusy",
+        "price": 16560,
+        "price_default": 16600,
+        "rooms_available": 3,
+        "is_booking_now": true
+      },
+      {
+        "date": "2026-06-06",
+        "nights": 4,
+        "date_begin": "2026-06-06 14:00:00",
+        "date_end": "2026-06-10 11:00:00",
+        "http_status": 200,
+        "api_success": true,
+        "obj_success": true,
+        "obj_errors": [],
+        "busy": "unbusy",
+        "price": 16100,
+        "price_default": 16100,
+        "rooms_available": 2,
+        "is_booking_now": true
+      },
+      {
+        "date": "2026-06-07",
+        "nights": 4,
+        "date_begin": "2026-06-07 14:00:00",
+        "date_end": "2026-06-11 11:00:00",
+        "http_status": 200,
+        "api_success": true,
+        "obj_success": true,
+        "obj_errors": [],
+        "busy": "unbusy",
+        "price": 15640,
+        "price_default": 15600,
+        "rooms_available": 2,
+        "is_booking_now": true
+      },
+      {
+        "date": "2026-06-08",
+        "nights": 4,
+        "date_begin": "2026-06-08 14:00:00",
+        "date_end": "2026-06-12 11:00:00",
+        "http_status": 200,
+        "api_success": true,
+        "obj_success": true,
+        "obj_errors": [],
+        "busy": "unbusy",
+        "price": 15640,
+        "price_default": 15600,
+        "rooms_available": 2,
+        "is_booking_now": true
+      },
+      {
+        "date": "2026-06-09",
+        "nights": 4,
+        "date_begin": "2026-06-09 14:00:00",
+        "date_end": "2026-06-13 11:00:00",
+        "http_status": 200,
+        "api_success": true,
+        "obj_success": true,
+        "obj_errors": [],
+        "busy": "unbusy",
+        "price": 16100,
+        "price_default": 16100,
+        "rooms_available": 1,
+        "is_booking_now": true
+      },
+      {
+        "date": "2026-06-10",
+        "nights": 4,
+        "date_begin": "2026-06-10 14:00:00",
+        "date_end": "2026-06-14 11:00:00",
+        "http_status": 200,
+        "api_success": true,
+        "obj_success": true,
+        "obj_errors": [],
+        "busy": "busy",
+        "price": 16560,
+        "price_default": 16600,
+        "rooms_available": 0,
+        "is_booking_now": false
+      },
+      {
+        "date": "2026-06-11",
+        "nights": 4,
+        "date_begin": "2026-06-11 14:00:00",
+        "date_end": "2026-06-15 11:00:00",
+        "http_status": 200,
+        "api_success": true,
+        "obj_success": true,
+        "obj_errors": [],
+        "busy": "busy",
+        "price": 16560,
+        "price_default": 16600,
+        "rooms_available": 0,
+        "is_booking_now": false
+      },
+      {
+        "date": "2026-06-12",
+        "nights": 4,
+        "date_begin": "2026-06-12 14:00:00",
+        "date_end": "2026-06-16 11:00:00",
+        "http_status": 200,
+        "api_success": true,
+        "obj_success": true,
+        "obj_errors": [],
+        "busy": "busy",
+        "price": 16560,
+        "price_default": 16600,
+        "rooms_available": 0,
+        "is_booking_now": false
+      },
+      {
+        "date": "2026-06-13",
+        "nights": 4,
+        "date_begin": "2026-06-13 14:00:00",
+        "date_end": "2026-06-17 11:00:00",
+        "http_status": 200,
+        "api_success": true,
+        "obj_success": true,
+        "obj_errors": [],
+        "busy": "busy",
+        "price": 16100,
+        "price_default": 16100,
+        "rooms_available": 0,
+        "is_booking_now": false
+      },
+      {
+        "date": "2026-06-14",
+        "nights": 4,
+        "date_begin": "2026-06-14 14:00:00",
+        "date_end": "2026-06-18 11:00:00",
+        "http_status": 200,
+        "api_success": true,
+        "obj_success": true,
+        "obj_errors": [],
+        "busy": "busy",
+        "price": 15640,
+        "price_default": 15600,
+        "rooms_available": 0,
+        "is_booking_now": false
+      },
+      {
+        "date": "2026-06-15",
+        "nights": 4,
+        "date_begin": "2026-06-15 14:00:00",
+        "date_end": "2026-06-19 11:00:00",
+        "http_status": 200,
+        "api_success": true,
+        "obj_success": true,
+        "obj_errors": [],
+        "busy": "busy",
+        "price": 15640,
+        "price_default": 15600,
+        "rooms_available": 0,
+        "is_booking_now": false
+      },
+      {
+        "date": "2026-06-16",
+        "nights": 4,
+        "date_begin": "2026-06-16 14:00:00",
+        "date_end": "2026-06-20 11:00:00",
+        "http_status": 200,
+        "api_success": true,
+        "obj_success": true,
+        "obj_errors": [],
+        "busy": "unbusy",
+        "price": 16100,
+        "price_default": 16100,
+        "rooms_available": 1,
+        "is_booking_now": true
+      },
+      {
+        "date": "2026-06-17",
+        "nights": 4,
+        "date_begin": "2026-06-17 14:00:00",
+        "date_end": "2026-06-21 11:00:00",
+        "http_status": 200,
+        "api_success": true,
+        "obj_success": true,
+        "obj_errors": [],
+        "busy": "unbusy",
+        "price": 16560,
+        "price_default": 16600,
+        "rooms_available": 1,
+        "is_booking_now": true
+      },
+      {
+        "date": "2026-06-18",
+        "nights": 4,
+        "date_begin": "2026-06-18 14:00:00",
+        "date_end": "2026-06-22 11:00:00",
+        "http_status": 200,
+        "api_success": true,
+        "obj_success": true,
+        "obj_errors": [],
+        "busy": "unbusy",
+        "price": 16560,
+        "price_default": 16600,
+        "rooms_available": 1,
+        "is_booking_now": true
+      },
+      {
+        "date": "2026-06-19",
+        "nights": 4,
+        "date_begin": "2026-06-19 14:00:00",
+        "date_end": "2026-06-23 11:00:00",
+        "http_status": 200,
+        "api_success": true,
+        "obj_success": true,
+        "obj_errors": [],
+        "busy": "unbusy",
+        "price": 16560,
+        "price_default": 16600,
+        "rooms_available": 1,
+        "is_booking_now": true
+      },
+      {
+        "date": "2026-06-20",
+        "nights": 4,
+        "date_begin": "2026-06-20 14:00:00",
+        "date_end": "2026-06-24 11:00:00",
+        "http_status": 200,
+        "api_success": true,
+        "obj_success": true,
+        "obj_errors": [],
+        "busy": "unbusy",
+        "price": 16100,
+        "price_default": 16100,
+        "rooms_available": 3,
+        "is_booking_now": true
+      },
+      {
+        "date": "2026-06-21",
+        "nights": 4,
+        "date_begin": "2026-06-21 14:00:00",
+        "date_end": "2026-06-25 11:00:00",
+        "http_status": 200,
+        "api_success": true,
+        "obj_success": true,
+        "obj_errors": [],
+        "busy": "unbusy",
+        "price": 15640,
+        "price_default": 15600,
+        "rooms_available": 4,
+        "is_booking_now": true
+      },
+      {
+        "date": "2026-06-22",
+        "nights": 4,
+        "date_begin": "2026-06-22 14:00:00",
+        "date_end": "2026-06-26 11:00:00",
+        "http_status": 200,
+        "api_success": true,
+        "obj_success": true,
+        "obj_errors": [],
+        "busy": "unbusy",
+        "price": 15640,
+        "price_default": 15600,
+        "rooms_available": 4,
+        "is_booking_now": true
+      },
+      {
+        "date": "2026-06-23",
+        "nights": 4,
+        "date_begin": "2026-06-23 14:00:00",
+        "date_end": "2026-06-27 11:00:00",
+        "http_status": 200,
+        "api_success": true,
+        "obj_success": true,
+        "obj_errors": [],
+        "busy": "unbusy",
+        "price": 16675,
+        "price_default": 16700,
+        "rooms_available": 4,
+        "is_booking_now": true
+      },
+      {
+        "date": "2026-06-24",
+        "nights": 4,
+        "date_begin": "2026-06-24 14:00:00",
+        "date_end": "2026-06-28 11:00:00",
+        "http_status": 200,
+        "api_success": true,
+        "obj_success": true,
+        "obj_errors": [],
+        "busy": "unbusy",
+        "price": 17710,
+        "price_default": 17700,
+        "rooms_available": 4,
+        "is_booking_now": true
+      },
+      {
+        "date": "2026-06-25",
+        "nights": 4,
+        "date_begin": "2026-06-25 14:00:00",
+        "date_end": "2026-06-29 11:00:00",
+        "http_status": 200,
+        "api_success": true,
+        "obj_success": true,
+        "obj_errors": [],
+        "busy": "unbusy",
+        "price": 18285,
+        "price_default": 18300,
+        "rooms_available": 4,
+        "is_booking_now": true
+      },
+      {
+        "date": "2026-06-26",
+        "nights": 4,
+        "date_begin": "2026-06-26 14:00:00",
+        "date_end": "2026-06-30 11:00:00",
+        "http_status": 200,
+        "api_success": true,
+        "obj_success": true,
+        "obj_errors": [],
+        "busy": "unbusy",
+        "price": 18285,
+        "price_default": 18300,
+        "rooms_available": 4,
+        "is_booking_now": true
+      },
+      {
+        "date": "2026-06-27",
+        "nights": 4,
+        "date_begin": "2026-06-27 14:00:00",
+        "date_end": "2026-07-01 11:00:00",
+        "http_status": 200,
+        "api_success": true,
+        "obj_success": true,
+        "obj_errors": [],
+        "busy": "unbusy",
+        "price": 17250,
+        "price_default": 17300,
+        "rooms_available": 4,
+        "is_booking_now": true
+      },
+      {
+        "date": "2026-06-28",
+        "nights": 4,
+        "date_begin": "2026-06-28 14:00:00",
+        "date_end": "2026-07-02 11:00:00",
+        "http_status": 200,
+        "api_success": true,
+        "obj_success": true,
+        "obj_errors": [],
+        "busy": "unbusy",
+        "price": 16215,
+        "price_default": 16200,
+        "rooms_available": 4,
+        "is_booking_now": true
+      },
+      {
+        "date": "2026-06-29",
+        "nights": 4,
+        "date_begin": "2026-06-29 14:00:00",
+        "date_end": "2026-07-03 11:00:00",
+        "http_status": 200,
+        "api_success": true,
+        "obj_success": true,
+        "obj_errors": [],
+        "busy": "unbusy",
+        "price": 15640,
+        "price_default": 15600,
+        "rooms_available": 5,
+        "is_booking_now": true
+      },
+      {
+        "date": "2026-06-30",
+        "nights": 4,
+        "date_begin": "2026-06-30 14:00:00",
+        "date_end": "2026-07-04 11:00:00",
+        "http_status": 200,
+        "api_success": true,
+        "obj_success": true,
+        "obj_errors": [],
+        "busy": "unbusy",
+        "price": 16100,
+        "price_default": 16100,
+        "rooms_available": 5,
+        "is_booking_now": true
+      },
+      {
+        "date": "2026-07-01",
+        "nights": 4,
+        "date_begin": "2026-07-01 14:00:00",
+        "date_end": "2026-07-05 11:00:00",
+        "http_status": 200,
+        "api_success": true,
+        "obj_success": true,
+        "obj_errors": [],
+        "busy": "unbusy",
+        "price": 16560,
+        "price_default": 16600,
+        "rooms_available": 5,
+        "is_booking_now": true
+      },
+      {
+        "date": "2026-07-02",
+        "nights": 4,
+        "date_begin": "2026-07-02 14:00:00",
+        "date_end": "2026-07-06 11:00:00",
+        "http_status": 200,
+        "api_success": true,
+        "obj_success": true,
+        "obj_errors": [],
+        "busy": "unbusy",
+        "price": 16560,
+        "price_default": 16600,
+        "rooms_available": 5,
+        "is_booking_now": true
+      },
+      {
+        "date": "2026-07-03",
+        "nights": 4,
+        "date_begin": "2026-07-03 14:00:00",
+        "date_end": "2026-07-07 11:00:00",
+        "http_status": 200,
+        "api_success": true,
+        "obj_success": true,
+        "obj_errors": [],
+        "busy": "unbusy",
+        "price": 16560,
+        "price_default": 16600,
+        "rooms_available": 5,
+        "is_booking_now": true
+      },
+      {
+        "date": "2026-07-04",
+        "nights": 4,
+        "date_begin": "2026-07-04 14:00:00",
+        "date_end": "2026-07-08 11:00:00",
+        "http_status": 200,
+        "api_success": true,
+        "obj_success": true,
+        "obj_errors": [],
+        "busy": "unbusy",
+        "price": 16100,
+        "price_default": 16100,
+        "rooms_available": 5,
+        "is_booking_now": true
+      },
+      {
+        "date": "2026-07-05",
+        "nights": 4,
+        "date_begin": "2026-07-05 14:00:00",
+        "date_end": "2026-07-09 11:00:00",
+        "http_status": 200,
+        "api_success": true,
+        "obj_success": true,
+        "obj_errors": [],
+        "busy": "unbusy",
+        "price": 15640,
+        "price_default": 15600,
+        "rooms_available": 6,
+        "is_booking_now": true
+      },
+      {
+        "date": "2026-07-06",
+        "nights": 4,
+        "date_begin": "2026-07-06 14:00:00",
+        "date_end": "2026-07-10 11:00:00",
+        "http_status": 200,
+        "api_success": true,
+        "obj_success": true,
+        "obj_errors": [],
+        "busy": "unbusy",
+        "price": 15640,
+        "price_default": 15600,
+        "rooms_available": 6,
+        "is_booking_now": true
+      },
+      {
+        "date": "2026-07-07",
+        "nights": 4,
+        "date_begin": "2026-07-07 14:00:00",
+        "date_end": "2026-07-11 11:00:00",
+        "http_status": 200,
+        "api_success": true,
+        "obj_success": true,
+        "obj_errors": [],
+        "busy": "unbusy",
+        "price": 16100,
+        "price_default": 16100,
+        "rooms_available": 7,
+        "is_booking_now": true
+      },
+      {
+        "date": "2026-07-08",
+        "nights": 4,
+        "date_begin": "2026-07-08 14:00:00",
+        "date_end": "2026-07-12 11:00:00",
+        "http_status": 200,
+        "api_success": true,
+        "obj_success": true,
+        "obj_errors": [],
+        "busy": "unbusy",
+        "price": 16560,
+        "price_default": 16600,
+        "rooms_available": 7,
+        "is_booking_now": true
+      },
+      {
+        "date": "2026-07-09",
+        "nights": 4,
+        "date_begin": "2026-07-09 14:00:00",
+        "date_end": "2026-07-13 11:00:00",
+        "http_status": 200,
+        "api_success": true,
+        "obj_success": true,
+        "obj_errors": [],
+        "busy": "unbusy",
+        "price": 16560,
+        "price_default": 16600,
+        "rooms_available": 6,
+        "is_booking_now": true
+      },
+      {
+        "date": "2026-07-10",
+        "nights": 4,
+        "date_begin": "2026-07-10 14:00:00",
+        "date_end": "2026-07-14 11:00:00",
+        "http_status": 200,
+        "api_success": true,
+        "obj_success": true,
+        "obj_errors": [],
+        "busy": "unbusy",
+        "price": 16560,
+        "price_default": 16600,
+        "rooms_available": 6,
+        "is_booking_now": true
+      },
+      {
+        "date": "2026-07-11",
+        "nights": 4,
+        "date_begin": "2026-07-11 14:00:00",
+        "date_end": "2026-07-15 11:00:00",
+        "http_status": 200,
+        "api_success": true,
+        "obj_success": true,
+        "obj_errors": [],
+        "busy": "unbusy",
+        "price": 16100,
+        "price_default": 16100,
+        "rooms_available": 6,
+        "is_booking_now": true
+      },
+      {
+        "date": "2026-07-12",
+        "nights": 4,
+        "date_begin": "2026-07-12 14:00:00",
+        "date_end": "2026-07-16 11:00:00",
+        "http_status": 200,
+        "api_success": true,
+        "obj_success": true,
+        "obj_errors": [],
+        "busy": "unbusy",
+        "price": 15640,
+        "price_default": 15600,
+        "rooms_available": 6,
+        "is_booking_now": true
+      },
+      {
+        "date": "2026-07-13",
+        "nights": 4,
+        "date_begin": "2026-07-13 14:00:00",
+        "date_end": "2026-07-17 11:00:00",
+        "http_status": 200,
+        "api_success": true,
+        "obj_success": true,
+        "obj_errors": [],
+        "busy": "unbusy",
+        "price": 15640,
+        "price_default": 15600,
+        "rooms_available": 6,
+        "is_booking_now": true
+      },
+      {
+        "date": "2026-07-14",
+        "nights": 4,
+        "date_begin": "2026-07-14 14:00:00",
+        "date_end": "2026-07-18 11:00:00",
+        "http_status": 200,
+        "api_success": true,
+        "obj_success": true,
+        "obj_errors": [],
+        "busy": "unbusy",
+        "price": 16100,
+        "price_default": 16100,
+        "rooms_available": 6,
+        "is_booking_now": true
+      }
+    ]
+  }
+}

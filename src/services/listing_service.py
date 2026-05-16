@@ -1,12 +1,9 @@
 """Сервис парсинга карточки объявления — извлечение календаря занятости и цен через API."""
-
 import asyncio
 import re
 import time
 from datetime import date, timedelta
-
 from playwright.async_api import Page
-
 from src.config.logger import get_logger
 from src.config.settings import Settings
 from src.models.listing import RawListing
@@ -17,54 +14,39 @@ logger = get_logger("listing")
 
 # URL внутреннего API для получения цен и занятости
 _API_PRICES_URL: str = "https://sutochno.ru/api/json/objects/getPricesAndAvailabilities"
-
 # Количество дней в одном пакетном запросе к API
 _API_BATCH_SIZE: int = 5
-
 # Пауза между пакетами запросов (секунды) — защита от rate-limit
 _API_BATCH_DELAY: float = 0.5
-
 # Максимальное количество попыток загрузки страницы карточки
 _MAX_GOTO_RETRIES: int = 3
-
 # Пауза между повторными попытками загрузки (секунды)
 _GOTO_RETRY_DELAY: float = 5.0
-
 # Таймаут остановки одного прокси-браузера (секунды)
 _WORKER_STOP_TIMEOUT: float = 15.0
-
 # Таймаут мягкого ожидания networkidle (мс)
 _NETWORKIDLE_SOFT_TIMEOUT_MS: int = 10000
-
 # Селекторы, подтверждающие что карточка загрузилась
 _PAGE_READY_SELECTORS: list[str] = [
     ".sc-detail-dates",
     ".sc-detail-aside-price__cost",
     ".sc-detail-hotel-booking__price-sale",
 ]
-
 # Таймаут ожидания готовности страницы (мс)
 _PAGE_READY_TIMEOUT_MS: int = 15000
-
 # Количество гостей по умолчанию (используется в API-запросе)
 _DEFAULT_GUESTS: int = 2
-
 # Максимальное количество retry при полном провале
 _MAX_API_RETRIES: int = 2
-
 # Пауза перед повторной попыткой после перезагрузки страницы (секунды)
 _RELOAD_WAIT_SECONDS: float = 10.0
-
 # Варианты min_nights для адаптивного запроса (по возрастанию).
 # Расширен до 30 — встречаются объекты с min_nights=10, 14, 30.
 _MIN_NIGHTS_VARIANTS: list[int] = [2, 3, 4, 5, 6, 7, 10, 14, 30]
-
 # Количество дней для анализа
 _DAYS_COUNT: int = 60
-
 # Порог ошибок, после которого скользящее окно считается провалившимся
 _ERROR_THRESHOLD: int = 30
-
 # Ключевые слова в ответе API, указывающие на ограничение min_nights
 _MIN_NIGHTS_ERROR_KEYWORDS: list[str] = [
     "min_nights",
@@ -81,7 +63,6 @@ _MIN_NIGHTS_ERROR_KEYWORDS: list[str] = [
     "minimum_stay",
     "min_stay",
 ]
-
 # Типы записей detail[], содержащие базовую цену за сутки.
 # API возвращает type="season_price" (сезонные цены с диапазонами дат)
 # или type=1 (числовой тип — единая базовая цена без дат).
@@ -917,11 +898,11 @@ class ListingService:
     ) -> list[int]:
         """Определяет занятость каждого дня с адаптацией min_nights и retry.
 
-        Перебирает варианты min_nights по возрастанию. Если ошибок много
-        и detected min_nights указывает на более высокое значение —
-        переходит к следующему варианту. Если detected <= текущего nights,
-        но ошибок всё ещё много — тоже переходит к следующему варианту
-        (API может занижать реальный min_nights в тексте ошибки).
+        Обрабатывает динамические ограничения min_nights (когда разные даты
+        требуют разное минимальное количество суток). Ошибки типа
+        «Минимальное количество суток - N» трактуются как доступность (0),
+        так как они указывают на правила бронирования, а не на фактическую
+        занятость объекта.
 
         Args:
             page: Вкладка браузера.
@@ -934,91 +915,50 @@ class ListingService:
         """
         current_token = token
         best_calendar: list[int] = [-1] * _DAYS_COUNT
-        best_error_days: int = _DAYS_COUNT
-        reloaded_for_nights: int | None = None
+        best_unresolved: int = _DAYS_COUNT
 
         for nights in _MIN_NIGHTS_VARIANTS:
             calendar, errors_details = await self._fetch_availability(
                 page, object_id, current_token, nights=nights
             )
 
-            error_days = sum(1 for c in calendar if c == -1)
+            # Разрешаем ошибки: min_nights -> 0 (свободно), остальные -> -1
+            resolved = list(calendar)
+            unresolved_count = 0
 
-            # Сохраняем лучший результат
-            if error_days < best_error_days:
-                best_calendar = calendar
-                best_error_days = error_days
+            for idx, status in enumerate(calendar):
+                if status == -1:
+                    is_min_nights_err = False
+                    for err_info in errors_details:
+                        if err_info.get("day") == idx:
+                            err_text = str(err_info.get("errors", "")) + " " + str(err_info.get("error", ""))
+                            if any(kw in err_text.lower() for kw in _MIN_NIGHTS_ERROR_KEYWORDS):
+                                is_min_nights_err = True
+                                break
 
-            if error_days == 0:
-                # Идеально — все дни определены
-                return calendar
+                    if is_min_nights_err:
+                        resolved[idx] = 0  # Считаем свободным (ограничение бронирования)
+                    else:
+                        unresolved_count += 1
 
-            if error_days <= 5:
-                # Мало ошибок — нормализуем (ошибка ≠ занятость)
-                return [0 if c == -1 else c for c in calendar]
+            if unresolved_count < best_unresolved:
+                best_calendar = resolved
+                best_unresolved = unresolved_count
 
-            # Много ошибок — проверяем причину
-            detected = self._detect_min_nights(errors_details)
+            if unresolved_count == 0:
+                return resolved
 
-            if detected is not None and detected > nights:
-                # min_nights явно больше текущего — продолжаем цикл
-                logger.info(
-                    "адаптация_min_nights",
-                    step=f"id={object_id}, текущий={nights}, нужен={detected}",
-                )
-                continue
+            if unresolved_count <= 5:
+                return resolved
 
-            # detected <= nights ИЛИ detected is None, но ошибок много.
-            # Возможные причины:
-            # - API занижает min_nights (говорит "3", но на самом деле нужно 5+)
-            # - min_nights меняется по дням (одни дни=3, другие=7)
-            # - Токен протух
-            #
-            # Стратегия: пробуем следующий вариант nights.
-            # Перезагрузку делаем только один раз за весь цикл.
-            if error_days >= _ERROR_THRESHOLD and reloaded_for_nights is None:
-                logger.info(
-                    "много_ошибок_пробуем_перезагрузку",
-                    step=f"id={object_id}, ночей={nights}, ошибок={error_days}",
-                )
+            if unresolved_count >= _ERROR_THRESHOLD:
                 new_token = await self._reload_and_get_token(page, url, object_id)
                 if new_token:
                     current_token = new_token
-                    reloaded_for_nights = nights
+                else:
+                    break
 
-                    # Повторяем текущий nights с новым токеном
-                    calendar_retry, _ = await self._fetch_availability(
-                        page, object_id, current_token, nights=nights
-                    )
-                    error_days_retry = sum(1 for c in calendar_retry if c == -1)
-
-                    if error_days_retry < best_error_days:
-                        best_calendar = calendar_retry
-                        best_error_days = error_days_retry
-
-                    if best_error_days == 0:
-                        return best_calendar
-                    if best_error_days <= 5:
-                        return [0 if c == -1 else c for c in best_calendar]
-
-            # Продолжаем на следующий вариант nights
-            logger.debug(
-                "переход_к_следующему_nights",
-                step=f"id={object_id}, текущий={nights}, ошибок={error_days}, "
-                     f"detected={detected}",
-            )
-            continue
-
-        # Все варианты перебраны — нормализуем лучший результат
-        normalized = [0 if c == -1 else c for c in best_calendar]
-
-        if best_error_days > 10:
-            logger.warning(
-                "занятость_с_ошибками",
-                step=f"id={object_id}, ошибок_нормализовано={best_error_days}",
-            )
-
-        return normalized
+        return [0 if c == -1 else c for c in best_calendar]
 
     async def _full_sliding_window(
         self, page: Page, object_id: str, token: str, url: str
