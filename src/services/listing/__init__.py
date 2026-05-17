@@ -8,8 +8,8 @@ from src.services.listing.constants import (
     MAX_TOKEN_RETRIES,
     SUTOCHNO_BASE_URL,
 )
+from src.services.listing.enrich_strategies import EnrichStrategies
 from src.services.listing.hybrid_strategy import HybridStrategy
-from src.services.listing.listing_parser import ListingParser
 from src.services.listing.listing_service import ListingService
 from src.services.listing.page_loader import PageLoader
 from src.services.listing.price_parser import PriceParser
@@ -19,8 +19,8 @@ __all__ = [
     "ApiClient",
     "DAYS_COUNT",
     "DEFAULT_GUESTS",
+    "EnrichStrategies",
     "HybridStrategy",
-    "ListingParser",
     "ListingService",
     "PageLoader",
     "PriceParser",

@@ -1,4 +1,10 @@
-"""Константы модуля парсинга карточек объявлений."""
+"""Константы и вспомогательные функции модуля парсинга карточек объявлений."""
+
+import asyncio
+
+from src.config.logger import get_logger
+
+logger = get_logger("listing")
 
 # URL внутреннего API для получения цен и занятости
 API_PRICES_URL: str = "https://sutochno.ru/api/json/objects/getPricesAndAvailabilities"
@@ -75,7 +81,7 @@ MIN_NIGHTS_ERROR_KEYWORDS: list[str] = [
 BASE_PRICE_TYPE_INT: int = 1
 SEASON_PRICE_TYPE: str = "season_price"
 
-# ── Добавлено для совместимости с listing_parser.py и listing_service.py ──
+# ── Дополнительные константы для совместимости ──
 
 SUTOCHNO_BASE_URL: str = "https://sutochno.ru"
 
@@ -86,3 +92,54 @@ MAX_TOKEN_RETRIES: int = 3
 MAX_TABS: int = 5
 
 TAB_DELAY_SECONDS: float = 1.0
+
+
+# ── Вспомогательные функции ──
+
+
+def format_duration(seconds: float) -> str:
+    """Форматирует длительность в секундах в человекочитаемый вид.
+
+    Args:
+        seconds: Длительность в секундах.
+
+    Returns:
+        Строка вида «Xм Yс» или «Yс» если менее минуты.
+    """
+    total_seconds = int(seconds)
+    minutes = total_seconds // 60
+    secs = total_seconds % 60
+
+    if minutes > 0:
+        return f"{minutes}м {secs}с"
+    return f"{secs}с"
+
+
+async def safe_stop_browser(browser_service: "any", worker_idx: int) -> None:  # type: ignore[name-defined]
+    """Безопасно останавливает прокси-браузер с таймаутом.
+
+    Args:
+        browser_service: Экземпляр BrowserService для остановки.
+        worker_idx: Номер воркера (для логов).
+    """
+    try:
+        await asyncio.wait_for(
+            browser_service.stop(),
+            timeout=WORKER_STOP_TIMEOUT,
+        )
+        logger.info(
+            "воркер_браузер_остановлен",
+            step=f"воркер={worker_idx}",
+        )
+    except asyncio.TimeoutError:
+        logger.warning(
+            "воркер_браузер_таймаут_остановки",
+            step=f"воркер={worker_idx}, лимит={WORKER_STOP_TIMEOUT}с",
+        )
+    except Exception as e:
+        logger.warning(
+            "воркер_ошибка_остановки_браузера",
+            error=str(e),
+            error_type=type(e).__name__,
+            step=f"воркер={worker_idx}",
+        )
