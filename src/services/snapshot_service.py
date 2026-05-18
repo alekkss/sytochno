@@ -33,12 +33,7 @@ class SnapshotService:
         чтобы все объявления одного прогона имели одинаковую метку времени.
 
         Args:
-            listings: Список объявлений после парсинга.
-                      Ожидаются объекты с атрибутами:
-                      - external_id: str
-                      - calendar: str (60 символов '0'/'1')
-                      - day_prices: list[dict] с ключами 'date' и 'price'
-                        или список объектов с атрибутами date/price.
+            listings: Список объявлений RawListing после парсинга.
 
         Returns:
             Список сохранённых снимков с присвоенными ID.
@@ -75,10 +70,11 @@ class SnapshotService:
         return saved
 
     def _build_snapshot(self, listing: object, snapshot_dt: datetime) -> ListingSnapshot:
-        """Строит объект снимка из данных объявления.
+        """Строит объект снимка из данных объявления RawListing.
 
         Args:
-            listing: Объявление с атрибутами external_id, calendar, day_prices.
+            listing: Объявление RawListing с атрибутами
+                     external_id, calendar_60_days, prices_60_days.
             snapshot_dt: Единая дата и время для всей партии снимков.
 
         Returns:
@@ -86,10 +82,12 @@ class SnapshotService:
 
         Raises:
             AttributeError: Если у объявления отсутствуют обязательные атрибуты.
-            ValueError: Если calendar не содержит ровно 60 символов.
         """
         external_id: str = listing.external_id  # type: ignore[union-attr]
-        calendar: str = listing.calendar or ("0" * 60)  # type: ignore[union-attr]
+
+        # calendar_60_days — список int (0/1), преобразуем в строку '0'/'1'
+        raw_calendar: list[int] = getattr(listing, "calendar_60_days", [])
+        calendar = "".join(str(v) for v in raw_calendar)
 
         if len(calendar) != 60:
             logger.warning(
@@ -97,7 +95,6 @@ class SnapshotService:
                 external_id=external_id,
                 length=len(calendar),
             )
-            # Дополняем нулями или обрезаем до 60
             calendar = calendar.ljust(60, "0")[:60]
 
         prices = self._extract_prices(listing)
@@ -110,43 +107,40 @@ class SnapshotService:
         )
 
     def _extract_prices(self, listing: object) -> list[DayPrice]:
-        """Извлекает цены по дням из объявления.
+        """Извлекает цены по дням из RawListing.prices_60_days.
 
-        Поддерживает два формата day_prices:
-        - список объектов с атрибутами .date и .price
-        - список словарей с ключами 'date' и 'price'
+        prices_60_days — список int, где 0 означает занятый день.
+        Дата каждого дня вычисляется как snapshot_date + индекс.
 
         Args:
-            listing: Объявление с атрибутом day_prices.
+            listing: Объявление RawListing с атрибутами
+                     prices_60_days и snapshot_date.
 
         Returns:
             Список DayPrice. Пустой список, если цены недоступны.
         """
-        raw_prices = getattr(listing, "day_prices", None)
+        from datetime import timedelta
+
+        raw_prices: list[int] = getattr(listing, "prices_60_days", [])
         if not raw_prices:
             return []
 
-        result: list[DayPrice] = []
+        # Базовая дата — дата снимка объявления
+        base_date = getattr(listing, "snapshot_date", datetime.now()).date()
 
-        for item in raw_prices:
+        result: list[DayPrice] = []
+        for i, price in enumerate(raw_prices):
             try:
-                if isinstance(item, dict):
-                    result.append(
-                        DayPrice(
-                            date=item["date"],
-                            price=float(item["price"]),
-                        )
+                result.append(
+                    DayPrice(
+                        date=base_date + timedelta(days=i),
+                        price=float(price),
                     )
-                else:
-                    result.append(
-                        DayPrice(
-                            date=item.date,
-                            price=float(item.price),
-                        )
-                    )
-            except (KeyError, AttributeError, TypeError, ValueError) as e:
+                )
+            except (TypeError, ValueError) as e:
                 logger.warning(
                     "цена_пропущена",
+                    index=i,
                     error=str(e),
                     error_type=type(e).__name__,
                 )

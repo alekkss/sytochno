@@ -1,9 +1,9 @@
 """Абстракция и SQLite-реализация репозитория снимков объявлений."""
 
-import json
 import sqlite3
 from abc import ABC, abstractmethod
 from datetime import date, datetime
+from pathlib import Path
 
 from src.config.logger import get_logger
 from src.models.snapshot import DayPrice, ListingSnapshot
@@ -72,20 +72,31 @@ class SQLiteSnapshotRepository(BaseSnapshotRepository):
         self._conn: sqlite3.Connection | None = None
 
     def _get_conn(self) -> sqlite3.Connection:
-        """Возвращает активное соединение, создавая его при необходимости.
+        """Возвращает активное соединение с БД.
 
         Returns:
             Активное соединение с БД.
+
+        Raises:
+            RuntimeError: Если соединение не установлено (не вызван initialize).
         """
         if self._conn is None:
-            self._conn = sqlite3.connect(self._db_path)
-            self._conn.row_factory = sqlite3.Row
+            raise RuntimeError(
+                "Соединение с БД снимков не установлено. Вызовите initialize() перед использованием."
+            )
         return self._conn
 
     def initialize(self) -> None:
-        """Создаёт таблицы снимков, если они не существуют."""
-        conn = self._get_conn()
-        conn.executescript("""
+        """Создаёт директорию, открывает соединение и создаёт таблицы снимков."""
+        db_file = Path(self._db_path)
+        db_file.parent.mkdir(parents=True, exist_ok=True)
+
+        self._conn = sqlite3.connect(str(db_file))
+        self._conn.row_factory = sqlite3.Row
+        self._conn.execute("PRAGMA journal_mode=WAL")
+        self._conn.execute("PRAGMA busy_timeout=5000")
+
+        self._conn.executescript("""
             CREATE TABLE IF NOT EXISTS listing_snapshots (
                 id               INTEGER PRIMARY KEY AUTOINCREMENT,
                 external_id      TEXT    NOT NULL,
@@ -103,7 +114,7 @@ class SQLiteSnapshotRepository(BaseSnapshotRepository):
                 price       REAL    NOT NULL
             );
         """)
-        conn.commit()
+        self._conn.commit()
         logger.info("таблицы_снимков_инициализированы")
 
     def save(self, snapshot: ListingSnapshot) -> int:
@@ -163,7 +174,6 @@ class SQLiteSnapshotRepository(BaseSnapshotRepository):
         """
         conn = self._get_conn()
 
-        # Берём два последних снимка по дате
         rows = conn.execute(
             """
             SELECT id, external_id, snapshot_dt, calendar
