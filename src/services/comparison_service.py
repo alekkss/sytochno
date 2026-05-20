@@ -16,10 +16,13 @@ class ComparisonService:
     """Сервис детектирования броней и отмен между двумя снимками.
 
     Алгоритм:
-    1. Сравнивает календари снимка №1 и снимка №2 день за днём.
-    2. Собирает блоки дней с одинаковым типом изменения (0→1 или 1→0).
-    3. Для каждого блока вычисляет экономику: глубину, цену, итог.
-    4. Возвращает список событий BookingEvent и CancellationEvent.
+    1. Строит словари {дата: значение} для каждого снимка на основе
+       snapshot_dt.date() — реальной даты начала календаря.
+    2. Находит пересечение дат (дни, присутствующие в обоих снимках).
+    3. Сравнивает значения только для пересекающихся дат.
+    4. Собирает блоки дней с одинаковым типом изменения (0→1 или 1→0).
+    5. Для каждого блока вычисляет экономику: глубину, цену, итог.
+    6. Возвращает список событий BookingEvent и CancellationEvent.
     """
 
     def compare(
@@ -29,6 +32,9 @@ class ComparisonService:
         listing_title: str = "",
     ) -> list[AnyEvent]:
         """Сравнивает два снимка и возвращает список событий.
+
+        Выравнивает календари по реальным датам — корректно работает
+        даже если снимки сделаны в разные дни.
 
         Args:
             old_snapshot: Снимок №1 (предыдущий прогон).
@@ -51,16 +57,47 @@ class ComparisonService:
             )
             return []
 
-        # Базовая дата — день, с которого начинается календарь снимка №2
-        base_date: date = new_snapshot.snapshot_dt.date()
+        # Базовые даты — день, с которого начинается календарь каждого снимка
+        old_base_date: date = old_snapshot.snapshot_dt.date()
+        new_base_date: date = new_snapshot.snapshot_dt.date()
 
-        # Собираем список изменений по дням
-        changes: list[tuple[date, int, int]] = []  # (дата, старое, новое)
-        for i in range(60):
-            old_val = old_calendar[i]
-            new_val = new_calendar[i]
+        # Строим словари {дата: значение_занятости} для каждого снимка
+        old_by_date: dict[date, int] = {
+            old_base_date + timedelta(days=i): old_calendar[i]
+            for i in range(60)
+        }
+        new_by_date: dict[date, int] = {
+            new_base_date + timedelta(days=i): new_calendar[i]
+            for i in range(60)
+        }
+
+        # Пересечение — даты, присутствующие в обоих снимках
+        common_dates = sorted(set(old_by_date.keys()) & set(new_by_date.keys()))
+
+        if not common_dates:
+            logger.warning(
+                "нет_пересекающихся_дат",
+                external_id=new_snapshot.listing_external_id,
+                old_base=old_base_date.isoformat(),
+                new_base=new_base_date.isoformat(),
+            )
+            return []
+
+        logger.debug(
+            "выравнивание_календарей",
+            external_id=new_snapshot.listing_external_id,
+            old_base=old_base_date.isoformat(),
+            new_base=new_base_date.isoformat(),
+            common_days=len(common_dates),
+            offset_days=(new_base_date - old_base_date).days,
+        )
+
+        # Сравниваем значения для пересекающихся дат
+        changes: list[tuple[date, int, int]] = []
+        for day in common_dates:
+            old_val = old_by_date[day]
+            new_val = new_by_date[day]
             if old_val != new_val:
-                day = base_date + timedelta(days=i)
                 changes.append((day, old_val, new_val))
 
         if not changes:
