@@ -110,6 +110,7 @@ class ComparisonService:
         # Склеиваем изменения в блоки и строим события
         events = self._build_events(
             changes=changes,
+            old_snapshot=old_snapshot,
             new_snapshot=new_snapshot,
             listing_title=listing_title,
         )
@@ -125,6 +126,7 @@ class ComparisonService:
     def _build_events(
         self,
         changes: list[tuple[date, int, int]],
+        old_snapshot: ListingSnapshot,
         new_snapshot: ListingSnapshot,
         listing_title: str,
     ) -> list[AnyEvent]:
@@ -135,7 +137,8 @@ class ComparisonService:
 
         Args:
             changes: Список (дата, старое_значение, новое_значение).
-            new_snapshot: Снимок №2 для получения цен и метаданных.
+            old_snapshot: Снимок №1 — нужен для цен при брони.
+            new_snapshot: Снимок №2 — нужен для цен при отмене.
             listing_title: Название объявления.
 
         Returns:
@@ -149,6 +152,7 @@ class ComparisonService:
         for block in blocks:
             event = self._build_single_event(
                 block=block,
+                old_snapshot=old_snapshot,
                 new_snapshot=new_snapshot,
                 listing_title=listing_title,
             )
@@ -199,14 +203,21 @@ class ComparisonService:
     def _build_single_event(
         self,
         block: list[tuple[date, int, int]],
+        old_snapshot: ListingSnapshot,
         new_snapshot: ListingSnapshot,
         listing_title: str,
     ) -> AnyEvent | None:
         """Строит одно событие из блока дней.
 
+        Для брони (0→1) цены берутся из old_snapshot — там дни ещё
+        были свободны и содержат актуальную цену.
+        Для отмены (1→0) цены берутся из new_snapshot — там дни уже
+        освободились и содержат актуальную цену.
+
         Args:
             block: Список дней одного блока (дата, старое, новое).
-            new_snapshot: Снимок №2 для получения цен.
+            old_snapshot: Снимок №1 (предыдущий прогон).
+            new_snapshot: Снимок №2 (текущий прогон).
             listing_title: Название объявления.
 
         Returns:
@@ -238,10 +249,13 @@ class ComparisonService:
         snapshot_date = new_snapshot.snapshot_dt.date()
         depth_days = (checkin_date - snapshot_date).days
 
-        # Средняя цена по дням блока
+        # Для брони берём цены из старого снимка (дни были свободны → цена есть).
+        # Для отмены берём цены из нового снимка (дни снова свободны → цена есть).
+        price_snapshot = old_snapshot if event_type == EventType.BOOKING else new_snapshot
+
         price_per_night = self._calc_avg_price(
             block=block,
-            snapshot=new_snapshot,
+            snapshot=price_snapshot,
         )
         total_price = price_per_night * nights
 
@@ -269,13 +283,13 @@ class ComparisonService:
     ) -> float:
         """Вычисляет среднюю цену за ночь по дням блока.
 
-        Берёт цены из снимка №2 для каждого дня блока.
-        Если цена для дня не найдена — день не учитывается в среднем.
-        Если цены нет совсем — возвращает 0.0.
+        Берёт цены из переданного снимка для каждого дня блока.
+        Если цена для дня не найдена или равна нулю — день не учитывается.
+        Если цен нет совсем — возвращает 0.0.
 
         Args:
             block: Список дней блока.
-            snapshot: Снимок №2 с ценами.
+            snapshot: Снимок, из которого берутся цены.
 
         Returns:
             Средняя цена за ночь в рублях.
