@@ -8,6 +8,7 @@
 - EnrichStrategies — параллельная обработка через вкладки и прокси.
 """
 
+import asyncio
 import time
 from typing import TYPE_CHECKING
 
@@ -29,6 +30,12 @@ if TYPE_CHECKING:
     from src.models.proxy import ProxyConfig
 
 logger = get_logger("listing")
+
+# Максимальное количество попыток обогащения одной карточки
+_MAX_ENRICH_ATTEMPTS = 3
+
+# Пауза перед повторной попыткой (секунды)
+_RETRY_DELAY_SECONDS = 3.0
 
 
 class ListingService:
@@ -73,6 +80,15 @@ class ListingService:
     ) -> RawListing:
         """Обогащает объявление данными календаря занятости и ценами.
 
+        Выполняет до _MAX_ENRICH_ATTEMPTS попыток. Повторная попытка
+        запускается при трёх сценариях сбоя:
+        - страница не загрузилась;
+        - токен API не перехвачен (частая проблема при параллельных вкладках);
+        - hybrid_strategy вернула нулевой sentinel ([0]*60, [0]*60).
+
+        Нулевой sentinel отличается от реально свободного объявления тем,
+        что у свободного объявления цены > 0, а у sentinel все цены = 0.
+
         Args:
             listing: Объявление с базовыми данными из каталога.
             page: Вкладка для работы. Если None — используется основная страница браузера.
@@ -89,48 +105,83 @@ class ListingService:
             step=f"id={listing.external_id}",
         )
 
-        try:
-            loaded, token = await self._page_loader.goto_and_capture_token(
-                active_page, listing.url
-            )
+        for attempt in range(1, _MAX_ENRICH_ATTEMPTS + 1):
+            try:
+                # Повторные попытки: пауза перед загрузкой страницы
+                if attempt > 1:
+                    logger.info(
+                        "повтор_карточки",
+                        step=f"id={listing.external_id}, попытка={attempt}/{_MAX_ENRICH_ATTEMPTS}",
+                    )
+                    await asyncio.sleep(_RETRY_DELAY_SECONDS)
 
-            if not loaded:
-                logger.warning(
-                    "страница_не_загрузилась",
-                    step=f"id={listing.external_id}",
+                loaded, token = await self._page_loader.goto_and_capture_token(
+                    active_page, listing.url
                 )
-                return listing
 
-            if not token:
-                logger.warning(
-                    "токен_не_получен_пропуск_карточки",
-                    step=f"id={listing.external_id}",
+                if not loaded:
+                    logger.warning(
+                        "страница_не_загрузилась",
+                        step=f"id={listing.external_id}, попытка={attempt}",
+                    )
+                    # Страница не загрузилась — пробуем ещё раз
+                    continue
+
+                if not token:
+                    logger.warning(
+                        "токен_не_получен_повтор",
+                        step=f"id={listing.external_id}, попытка={attempt}/{_MAX_ENRICH_ATTEMPTS}",
+                    )
+                    # Токен не перехвачен — пробуем ещё раз
+                    continue
+
+                await self._browser.random_delay()
+
+                calendar, prices = await self._strategy.fetch_calendar_and_prices(
+                    active_page, listing.external_id, token, listing.url
                 )
-                return listing
 
-            await self._browser.random_delay()
+                # Проверяем: не получили ли мы нулевой sentinel вместо данных.
+                # Реально свободное объявление (busy=unbusy) имеет prices > 0.
+                # Нулевой sentinel возвращается при полном провале стратегии.
+                if self._is_failure_sentinel(calendar, prices):
+                    logger.warning(
+                        "нулевой_результат_повтор",
+                        step=f"id={listing.external_id}, попытка={attempt}/{_MAX_ENRICH_ATTEMPTS}",
+                    )
+                    # Данные не получены — пробуем ещё раз
+                    continue
 
-            calendar, prices = await self._strategy.fetch_calendar_and_prices(
-                active_page, listing.external_id, token, listing.url
-            )
+                # Успех — сохраняем результат и выходим из цикла
+                listing.calendar_60_days = calendar
+                listing.prices_60_days = prices
 
-            listing.calendar_60_days = calendar
-            listing.prices_60_days = prices
+                logger.info(
+                    "карточка_обогащена",
+                    step=f"id={listing.external_id}",
+                    total=f"свободных={sum(1 for c in calendar if c == 0)}, "
+                          f"занятых={sum(1 for c in calendar if c == 1)}, "
+                          f"цен={sum(1 for p in prices if p > 0)}"
+                          + (f", попытка={attempt}" if attempt > 1 else ""),
+                )
+                break
 
-            logger.info(
-                "карточка_обогащена",
-                step=f"id={listing.external_id}",
-                total=f"свободных={sum(1 for c in calendar if c == 0)}, "
-                      f"занятых={sum(1 for c in calendar if c == 1)}, "
-                      f"цен={sum(1 for p in prices if p > 0)}",
-            )
+            except Exception as e:
+                logger.warning(
+                    "ошибка_парсинга_карточки",
+                    error=str(e),
+                    error_type=type(e).__name__,
+                    step=f"id={listing.external_id}, попытка={attempt}",
+                )
+                # Исключение — пробуем ещё раз если есть попытки
+                if attempt < _MAX_ENRICH_ATTEMPTS:
+                    continue
 
-        except Exception as e:
+        else:
+            # Все попытки исчерпаны — карточка остаётся пустой
             logger.warning(
-                "ошибка_парсинга_карточки",
-                error=str(e),
-                error_type=type(e).__name__,
-                step=f"id={listing.external_id}",
+                "карточка_не_обогащена_все_попытки_исчерпаны",
+                step=f"id={listing.external_id}, попыток={_MAX_ENRICH_ATTEMPTS}",
             )
 
         elapsed = time.perf_counter() - start_time
@@ -141,6 +192,30 @@ class ListingService:
         )
 
         return listing
+
+    @staticmethod
+    def _is_failure_sentinel(calendar: list[int], prices: list[int]) -> bool:
+        """Определяет, является ли результат нулевым sentinel'ом сбоя.
+
+        HybridStrategy возвращает [0]*60, [0]*60 при полном провале.
+        Реально свободное объявление (busy=unbusy) всегда имеет prices > 0.
+        Реально занятое объявление (busy=busy) имеет calendar с единицами.
+
+        Args:
+            calendar: Список занятости на 60 дней.
+            prices: Список цен на 60 дней.
+
+        Returns:
+            True если результат является sentinel'ом сбоя.
+        """
+        if len(calendar) != DAYS_COUNT or len(prices) != DAYS_COUNT:
+            return True
+
+        # Все нули в обоих списках — признак сбоя, а не реальных данных
+        all_calendar_zero = all(c == 0 for c in calendar)
+        all_prices_zero = all(p == 0 for p in prices)
+
+        return all_calendar_zero and all_prices_zero
 
     async def enrich_listings(self, listings: list[RawListing]) -> list[RawListing]:
         """Обогащает список объявлений последовательно.

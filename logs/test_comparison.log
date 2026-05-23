@@ -1,0 +1,28 @@
+{"timestamp": "2026-05-23T07:02:27.467924+00:00", "level": "INFO", "message": "тест_запущен", "logger": "test.comparison", "trace_id": "fb3f8d7e0e0c", "context": {"limit": 20, "log_file": "logs\\test_comparison.log"}}
+{"timestamp": "2026-05-23T07:02:29.833685+00:00", "level": "INFO", "message": "прогон_начало", "logger": "test.comparison", "trace_id": "fb3f8d7e0e0c", "context": {"step": "прогон=1"}}
+{"timestamp": "2026-05-23T07:02:29.834132+00:00", "level": "INFO", "message": "парсинг_каталога", "logger": "test.comparison", "trace_id": "fb3f8d7e0e0c", "context": {"step": "прогон=1"}}
+{"timestamp": "2026-05-23T07:11:37.500684+00:00", "level": "INFO", "message": "тест_завершён", "logger": "test.comparison", "trace_id": "fb3f8d7e0e0c"}
+{"timestamp": "2026-05-23T07:12:38.309552+00:00", "level": "INFO", "message": "тест_запущен", "logger": "test.comparison", "trace_id": "5fbeaa425cea", "context": {"limit": 20, "log_file": "logs\\test_comparison.log"}}
+{"timestamp": "2026-05-23T07:12:38.957098+00:00", "level": "INFO", "message": "прогон_начало", "logger": "test.comparison", "trace_id": "5fbeaa425cea", "context": {"step": "прогон=1"}}
+{"timestamp": "2026-05-23T07:12:38.957458+00:00", "level": "INFO", "message": "парсинг_каталога", "logger": "test.comparison", "trace_id": "5fbeaa425cea", "context": {"step": "прогон=1"}}
+{"timestamp": "2026-05-23T07:13:10.253305+00:00", "level": "INFO", "message": "список_обрезан", "logger": "test.comparison", "trace_id": "5fbeaa425cea", "context": {"total": 20, "step": "прогон=1"}}
+{"timestamp": "2026-05-23T07:13:10.253543+00:00", "level": "INFO", "message": "каталог_собран", "logger": "test.comparison", "trace_id": "5fbeaa425cea", "context": {"total": 20, "step": "прогон=1"}}
+{"timestamp": "2026-05-23T07:13:10.253731+00:00", "level": "INFO", "message": "обогащение_карточек", "logger": "test.comparison", "trace_id": "5fbeaa425cea", "context": {"step": "прогон=1"}}
+{"timestamp": "2026-05-23T07:21:56.182202+00:00", "level": "INFO", "message": "карточки_обработаны", "logger": "test.comparison", "trace_id": "5fbeaa425cea", "context": {"total": 20, "step": "прогон=1"}}
+{"timestamp": "2026-05-23T07:21:56.201658+00:00", "level": "INFO", "message": "данные_сохранены", "logger": "test.comparison", "trace_id": "5fbeaa425cea", "context": {"total": 20, "step": "прогон=1"}}
+{"timestamp": "2026-05-23T07:21:56.307842+00:00", "level": "INFO", "message": "снимки_сохранены", "logger": "test.comparison", "trace_id": "5fbeaa425cea", "context": {"step": "прогон=1"}}
+{"timestamp": "2026-05-23T07:21:56.308013+00:00", "level": "INFO", "message": "прогон_завершён", "logger": "test.comparison", "trace_id": "5fbeaa425cea", "context": {"step": "прогон=1", "total": 20}}
+{"timestamp": "2026-05-23T07:21:56.308176+00:00", "level": "INFO", "message": "ожидание_начало", "logger": "test.comparison", "trace_id": "5fbeaa425cea", "context": {"total": "10 минут"}}
+{"timestamp": "2026-05-23T07:31:56.399216+00:00", "level": "INFO", "message": "ожидание_завершено", "logger": "test.comparison", "trace_id": "5fbeaa425cea"}
+{"timestamp": "2026-05-23T07:31:56.400014+00:00", "level": "INFO", "message": "прогон_начало", "logger": "test.comparison", "trace_id": "5fbeaa425cea", "context": {"step": "прогон=2"}}
+{"timestamp": "2026-05-23T07:31:56.400218+00:00", "level": "INFO", "message": "парсинг_каталога", "logger": "test.comparison", "trace_id": "5fbeaa425cea", "context": {"step": "прогон=2"}}
+{"timestamp": "2026-05-23T07:32:24.779867+00:00", "level": "INFO", "message": "список_обрезан", "logger": "test.comparison", "trace_id": "5fbeaa425cea", "context": {"total": 20, "step": "прогон=2"}}
+{"timestamp": "2026-05-23T07:32:24.780057+00:00", "level": "INFO", "message": "каталог_собран", "logger": "test.comparison", "trace_id": "5fbeaa425cea", "context": {"total": 20, "step": "прогон=2"}}
+{"timestamp": "2026-05-23T07:32:24.780284+00:00", "level": "INFO", "message": "обогащение_карточек", "logger": "test.comparison", "trace_id": "5fbeaa425cea", "context": {"step": "прогон=2"}}
+{"timestamp": "2026-05-23T07:41:18.479438+00:00", "level": "INFO", "message": "карточки_обработаны", "logger": "test.comparison", "trace_id": "5fbeaa425cea", "context": {"total": 20, "step": "прогон=2"}}
+{"timestamp": "2026-05-23T07:41:18.485758+00:00", "level": "INFO", "message": "данные_сохранены", "logger": "test.comparison", "trace_id": "5fbeaa425cea", "context": {"total": 20, "step": "прогон=2"}}
+{"timestamp": "2026-05-23T07:41:18.584083+00:00", "level": "INFO", "message": "снимки_сохранены", "logger": "test.comparison", "trace_id": "5fbeaa425cea", "context": {"step": "прогон=2"}}
+{"timestamp": "2026-05-23T07:41:18.584330+00:00", "level": "INFO", "message": "прогон_завершён", "logger": "test.comparison", "trace_id": "5fbeaa425cea", "context": {"step": "прогон=2", "total": 20}}
+{"timestamp": "2026-05-23T07:41:18.608590+00:00", "level": "INFO", "message": "сравнение_завершено", "logger": "test.comparison", "trace_id": "5fbeaa425cea", "context": {"compared": 20, "skipped": 0, "total_events": 1}}
+{"timestamp": "2026-05-23T07:41:18.620476+00:00", "level": "INFO", "message": "отчёт_сравнения_сохранён", "logger": "test.comparison", "trace_id": "5fbeaa425cea", "context": {"path": "data\\comparison_report_20260523_104118.xlsx"}}
+{"timestamp": "2026-05-23T07:41:18.714662+00:00", "level": "INFO", "message": "тест_завершён", "logger": "test.comparison", "trace_id": "5fbeaa425cea"}
