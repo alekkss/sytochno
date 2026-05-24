@@ -69,6 +69,9 @@ class EnrichStrategies:
         )
 
         semaphore = asyncio.Semaphore(max_tabs)
+        # navigation_lock используется ТОЛЬКО для стаггера запуска вкладок.
+        # Он НЕ должен держаться во время обработки карточки — иначе вкладки
+        # работают последовательно и весь параллелизм теряется.
         navigation_lock = asyncio.Lock()
         processed_count = 0
         count_lock = asyncio.Lock()
@@ -76,17 +79,23 @@ class EnrichStrategies:
         async def _process_one(listing: RawListing) -> None:
             """Обрабатывает одну карточку в отдельной вкладке."""
             nonlocal processed_count
+            page: Page | None = None
 
             async with semaphore:
-                page = await self._browser.create_page()
+                # Задержка нужна только при СТАРТЕ вкладки — чтобы не открывать
+                # все вкладки одновременно. Лок освобождается сразу после sleep,
+                # дальнейшая обработка идёт параллельно у всех вкладок.
+                async with navigation_lock:
+                    await asyncio.sleep(tab_delay_ms / 1000.0)
 
                 try:
-                    async with navigation_lock:
-                        await asyncio.sleep(tab_delay_ms / 1000.0)
-                        await self._listing_service.enrich_listing(listing, page)
-
+                    page = await self._browser.create_page()
+                    await self._listing_service.enrich_listing(listing, page)
                 finally:
-                    await self._browser.close_page(page)
+                    # Закрываем страницу в любом случае — даже если create_page()
+                    # или enrich_listing() завершились с ошибкой.
+                    if page is not None:
+                        await self._browser.close_page(page)
 
                 async with count_lock:
                     processed_count += 1
@@ -101,10 +110,10 @@ class EnrichStrategies:
         tasks = [_process_one(listing) for listing in listings]
         results = await asyncio.gather(*tasks, return_exceptions=True)
 
-        error_count = sum(1 for r in results if isinstance(r, Exception))
+        error_count = sum(1 for r in results if isinstance(r, BaseException))
         if error_count > 0:
             for idx, result in enumerate(results):
-                if isinstance(result, Exception):
+                if isinstance(result, BaseException):
                     logger.warning(
                         "ошибка_в_задаче_вкладки",
                         error=str(result),
@@ -161,7 +170,7 @@ class EnrichStrategies:
         browsers_to_stop: list[tuple[BrowserService, int]] = []
 
         for worker_idx, result in enumerate(results, start=1):
-            if isinstance(result, Exception):
+            if isinstance(result, BaseException):
                 logger.warning(
                     "воркер_завершился_с_ошибкой",
                     error=str(result),

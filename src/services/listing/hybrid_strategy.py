@@ -1,6 +1,7 @@
 """Гибридная стратегия получения календаря и цен."""
 
 import re
+from datetime import date
 
 from playwright.async_api import Page
 
@@ -31,6 +32,10 @@ class HybridStrategy:
        Перезагрузка страницы + повтор с новым токеном.
     5. При массовых ошибках в скользящем окне (>30 из 60) →
        перезагрузка страницы + повтор (НЕ нормализация как "свободен").
+
+    Дата начала календаря (today) фиксируется один раз в начале
+    fetch_calendar_and_prices и передаётся во все методы api_client —
+    это гарантирует согласованность данных при прогонах, пересекающих полночь.
     """
 
     def __init__(
@@ -64,6 +69,11 @@ class HybridStrategy:
         Returns:
             Кортеж (calendar_60_days, prices_60_days).
         """
+        # Фиксируем дату один раз на весь прогон карточки.
+        # Все методы api_client используют эту же дату — календари
+        # не разъедутся даже если прогон пересечёт полночь.
+        today = date.today()
+
         current_token = token
 
         # ── Валидация токена ──
@@ -89,7 +99,7 @@ class HybridStrategy:
 
         # ── Шаг 1: Bulk-запрос на 60 ночей → цены ──
         busy_status, prices_60, bulk_success = await self._api.fetch_bulk_prices(
-            page, object_id, current_token, guests=self._guests
+            page, object_id, current_token, guests=self._guests, today=today
         )
 
         if not bulk_success:
@@ -104,7 +114,7 @@ class HybridStrategy:
             if new_token:
                 current_token = new_token
                 busy_status, prices_60, bulk_success = await self._api.fetch_bulk_prices(
-                    page, object_id, current_token, guests=self._guests
+                    page, object_id, current_token, guests=self._guests, today=today
                 )
 
             if not bulk_success:
@@ -113,7 +123,7 @@ class HybridStrategy:
                     step=f"id={object_id}",
                 )
                 return await self._full_sliding_window(
-                    page, object_id, current_token, url
+                    page, object_id, current_token, url, today=today
                 )
 
         # ── Шаг 2: Определение занятости ──
@@ -127,7 +137,7 @@ class HybridStrategy:
 
         # busy="busy" — нужно определить какие дни заняты
         calendar_60 = await self._determine_availability(
-            page, object_id, current_token, url
+            page, object_id, current_token, url, today=today
         )
 
         # Объединяем: обнуляем цены для занятых дней
@@ -151,21 +161,21 @@ class HybridStrategy:
         return calendar_60, final_prices
 
     async def _determine_availability(
-        self, page: Page, object_id: str, token: str, url: str
+        self,
+        page: Page,
+        object_id: str,
+        token: str,
+        url: str,
+        today: date | None = None,
     ) -> list[int]:
         """Определяет занятость каждого дня с адаптацией min_nights и retry.
-
-        Перебирает варианты min_nights по возрастанию. Если ошибок много
-        и detected min_nights указывает на более высокое значение —
-        переходит к следующему варианту. Если detected <= текущего nights,
-        но ошибок всё ещё много — тоже переходит к следующему варианту
-        (API может занижать реальный min_nights в тексте ошибки).
 
         Args:
             page: Вкладка браузера.
             object_id: ID объявления.
             token: Токен API.
             url: URL карточки.
+            today: Дата начала календаря.
 
         Returns:
             Список из 60 значений: 0=свободен, 1=занят.
@@ -177,12 +187,12 @@ class HybridStrategy:
 
         for nights in MIN_NIGHTS_VARIANTS:
             calendar, errors_details = await self._api.fetch_availability(
-                page, object_id, current_token, nights=nights, guests=self._guests
+                page, object_id, current_token,
+                nights=nights, guests=self._guests, today=today,
             )
 
             error_days = sum(1 for c in calendar if c == -1)
 
-            # Сохраняем лучший результат
             if error_days < best_error_days:
                 best_calendar = calendar
                 best_error_days = error_days
@@ -193,7 +203,6 @@ class HybridStrategy:
             if error_days <= 5:
                 return [0 if c == -1 else c for c in calendar]
 
-            # Много ошибок — проверяем причину
             detected = self._detect_min_nights(errors_details)
 
             if detected is not None and detected > nights:
@@ -203,9 +212,6 @@ class HybridStrategy:
                 )
                 continue
 
-            # detected <= nights ИЛИ detected is None, но ошибок много.
-            # Стратегия: пробуем следующий вариант nights.
-            # Перезагрузку делаем только один раз за весь цикл.
             if error_days >= ERROR_THRESHOLD and reloaded_for_nights is None:
                 logger.info(
                     "много_ошибок_пробуем_перезагрузку",
@@ -218,9 +224,9 @@ class HybridStrategy:
                     current_token = new_token
                     reloaded_for_nights = nights
 
-                    # Повторяем текущий nights с новым токеном
                     calendar_retry, _ = await self._api.fetch_availability(
-                        page, object_id, current_token, nights=nights, guests=self._guests
+                        page, object_id, current_token,
+                        nights=nights, guests=self._guests, today=today,
                     )
                     error_days_retry = sum(1 for c in calendar_retry if c == -1)
 
@@ -240,7 +246,6 @@ class HybridStrategy:
             )
             continue
 
-        # Все варианты перебраны — нормализуем лучший результат
         normalized = [0 if c == -1 else c for c in best_calendar]
 
         if best_error_days > 10:
@@ -252,17 +257,21 @@ class HybridStrategy:
         return normalized
 
     async def _full_sliding_window(
-        self, page: Page, object_id: str, token: str, url: str
+        self,
+        page: Page,
+        object_id: str,
+        token: str,
+        url: str,
+        today: date | None = None,
     ) -> tuple[list[int], list[int]]:
         """Получает и цены, и занятость через скользящее окно (fallback).
-
-        Используется когда bulk-запрос полностью не работает.
 
         Args:
             page: Вкладка браузера.
             object_id: ID объявления.
             token: Токен API.
             url: URL карточки.
+            today: Дата начала календаря.
 
         Returns:
             Кортеж (calendar_60_days, prices_60_days).
@@ -276,15 +285,15 @@ class HybridStrategy:
             )
 
             calendar, errors_details = await self._api.fetch_availability(
-                page, object_id, current_token, nights=nights, guests=self._guests
+                page, object_id, current_token,
+                nights=nights, guests=self._guests, today=today,
             )
 
             error_days = sum(1 for c in calendar if c == -1)
 
             if error_days == 0:
-                # Данные получены — пробуем bulk для цен
                 busy_status, prices_60, bulk_ok = await self._api.fetch_bulk_prices(
-                    page, object_id, current_token, guests=self._guests
+                    page, object_id, current_token, guests=self._guests, today=today
                 )
                 if bulk_ok and sum(1 for p in prices_60 if p > 0) > 0:
                     final_prices = [
@@ -294,14 +303,14 @@ class HybridStrategy:
                     return calendar, final_prices
 
                 return await self._api.sliding_window_with_prices(
-                    page, object_id, current_token, nights=nights, guests=self._guests
+                    page, object_id, current_token,
+                    nights=nights, guests=self._guests, today=today,
                 )
 
             if error_days < ERROR_THRESHOLD:
-                # Частичный успех — нормализуем и пробуем bulk для цен
                 calendar_norm = [0 if c == -1 else c for c in calendar]
                 _, prices_60, bulk_ok = await self._api.fetch_bulk_prices(
-                    page, object_id, current_token, guests=self._guests
+                    page, object_id, current_token, guests=self._guests, today=today
                 )
                 if bulk_ok:
                     final_prices = [
@@ -311,10 +320,10 @@ class HybridStrategy:
                     return calendar_norm, final_prices
 
                 return await self._api.sliding_window_with_prices(
-                    page, object_id, current_token, nights=nights, guests=self._guests
+                    page, object_id, current_token,
+                    nights=nights, guests=self._guests, today=today,
                 )
 
-            # Много ошибок — проверяем min_nights и продолжаем цикл
             detected = self._detect_min_nights(errors_details)
 
             if detected is not None and detected > nights:
@@ -324,7 +333,6 @@ class HybridStrategy:
                 )
                 continue
 
-            # detected <= nights или None — пробуем следующий вариант
             if nights < MIN_NIGHTS_VARIANTS[-1]:
                 logger.debug(
                     "скользящее_окно_следующий_вариант",
@@ -332,7 +340,6 @@ class HybridStrategy:
                 )
                 continue
 
-            # Последний вариант — перезагрузка как крайняя мера
             new_token = await self._token_manager.reload_and_get_token(
                 page, url, object_id
             )
@@ -341,14 +348,15 @@ class HybridStrategy:
                 continue
             break
 
-        # Полный провал
         logger.warning(
             "полный_провал_нет_данных",
             step=f"id={object_id}",
         )
         return [0] * DAYS_COUNT, [0] * DAYS_COUNT
 
-    def _detect_min_nights(self, errors_details: list[dict[str, str | int]]) -> int | None:
+    def _detect_min_nights(
+        self, errors_details: list[dict[str, str | int]]
+    ) -> int | None:
         """Определяет min_nights из текстов ошибок API.
 
         Args:

@@ -89,6 +89,10 @@ class ListingService:
         Нулевой sentinel отличается от реально свободного объявления тем,
         что у свободного объявления цены > 0, а у sentinel все цены = 0.
 
+        asyncio.CancelledError намеренно пробрасывается выше — это штатная
+        отмена задачи, а не сбой обработки. Перед пробросом фиксируется лог,
+        чтобы пустая карточка не оставалась без следов в логах.
+
         Args:
             listing: Объявление с базовыми данными из каталога.
             page: Вкладка для работы. Если None — используется основная страница браузера.
@@ -124,7 +128,6 @@ class ListingService:
                         "страница_не_загрузилась",
                         step=f"id={listing.external_id}, попытка={attempt}",
                     )
-                    # Страница не загрузилась — пробуем ещё раз
                     continue
 
                 if not token:
@@ -132,7 +135,6 @@ class ListingService:
                         "токен_не_получен_повтор",
                         step=f"id={listing.external_id}, попытка={attempt}/{_MAX_ENRICH_ATTEMPTS}",
                     )
-                    # Токен не перехвачен — пробуем ещё раз
                     continue
 
                 await self._browser.random_delay()
@@ -149,7 +151,6 @@ class ListingService:
                         "нулевой_результат_повтор",
                         step=f"id={listing.external_id}, попытка={attempt}/{_MAX_ENRICH_ATTEMPTS}",
                     )
-                    # Данные не получены — пробуем ещё раз
                     continue
 
                 # Успех — сохраняем результат и выходим из цикла
@@ -165,6 +166,17 @@ class ListingService:
                           + (f", попытка={attempt}" if attempt > 1 else ""),
                 )
                 break
+
+            except asyncio.CancelledError:
+                # CancelledError — штатная отмена задачи (например, при сбое
+                # другой вкладки в asyncio.gather). Логируем факт отмены,
+                # чтобы пустая карточка не оставалась без следов, и пробрасываем
+                # выше — подавлять отмену нельзя.
+                logger.warning(
+                    "карточка_отменена",
+                    step=f"id={listing.external_id}, попытка={attempt}",
+                )
+                raise
 
             except Exception as e:
                 logger.warning(

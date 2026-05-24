@@ -2,6 +2,7 @@
 
 import asyncio
 import sys
+from datetime import datetime, timezone
 from pathlib import Path
 
 from src.config.logger import configure as configure_logging
@@ -32,8 +33,9 @@ async def run() -> None:
     6. Сохранение результатов в SQLite.
     7. Сохранение снимков текущего прогона.
     8. Сравнение с предыдущими снимками и экспорт отчёта изменений.
-    9. Экспорт основного отчёта в Excel.
-    10. Корректное завершение работы.
+    9. Экспорт основного отчёта в Excel (перезаписывается).
+    10. Экспорт датированного снимка Excel (накапливается).
+    11. Корректное завершение работы.
     """
     # --- Шаг 1: Загрузка конфигурации ---
     try:
@@ -141,13 +143,31 @@ async def run() -> None:
                 step="comparison_export",
             )
 
-        # --- Шаг 11: Экспорт основного отчёта в Excel ---
+        # --- Шаг 11: Экспорт отчётов в Excel ---
         logger.info("экспорт_в_excel", step="export")
         all_listings = repository.get_all()
+
+        # Основной отчёт — перезаписывается при каждом запуске
         export_path = export_service.export(all_listings)
         logger.info(
-            "экспорт_завершён",
+            "основной_отчёт_сохранён",
             path=export_path,
+            total=len(all_listings),
+            step="export",
+        )
+
+        # Датированный снимок — накапливается, имя содержит дату и время парсинга.
+        # Формат: sutochno_report_YYYYMMDD_HHMMSS.xlsx
+        # Сохраняется в ту же папку, что и основной отчёт.
+        run_timestamp = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
+        base_name = Path(settings.export_path).stem
+        snapshot_filename = f"{base_name}_{run_timestamp}.xlsx"
+        snapshot_path = str(Path(export_dir) / snapshot_filename)
+
+        export_service.export(all_listings, output_path=snapshot_path)
+        logger.info(
+            "датированный_отчёт_сохранён",
+            path=snapshot_path,
             total=len(all_listings),
             step="export",
         )
@@ -206,7 +226,6 @@ def _run_comparison(
 
         snapshots = snapshot_repository.get_last_two(external_id)
 
-        # Сравнение возможно только при наличии двух снимков
         if len(snapshots) < 2:
             skipped += 1
             continue
@@ -229,7 +248,6 @@ def _run_comparison(
         step="comparison",
     )
 
-    # Сортируем все события по дате заезда
     return sorted(all_events, key=lambda e: e.checkin_date)
 
 

@@ -24,6 +24,11 @@ class ApiClient:
     - fetch_bulk_prices: один запрос на 60 ночей → все цены из detail[].
     - fetch_availability: скользящее окно → занятость каждого дня.
     - sliding_window_with_prices: скользящее окно → и занятость, и цены.
+
+    Все методы принимают опциональный параметр today: date — дату начала
+    календаря. Если не передан, вычисляется как date.today(). Передавать
+    явно рекомендуется чтобы все методы в рамках одного прогона использовали
+    одинаковую дату и календари не разъезжались при пересечении полуночи.
     """
 
     def __init__(self, price_parser: PriceParser | None = None) -> None:
@@ -35,7 +40,12 @@ class ApiClient:
         self._price_parser = price_parser or PriceParser()
 
     async def fetch_bulk_prices(
-        self, page: Page, object_id: str, token: str, guests: int = DEFAULT_GUESTS
+        self,
+        page: Page,
+        object_id: str,
+        token: str,
+        guests: int = DEFAULT_GUESTS,
+        today: date | None = None,
     ) -> tuple[str | None, list[int], bool]:
         """Получает все цены одним запросом на 60 ночей.
 
@@ -44,6 +54,7 @@ class ApiClient:
             object_id: ID объявления.
             token: Сессионный токен API.
             guests: Количество гостей.
+            today: Дата начала календаря. Если None — date.today().
 
         Returns:
             Кортеж (busy_status, prices_60_days, success).
@@ -51,15 +62,15 @@ class ApiClient:
             prices_60_days: массив из 60 цен.
             success: True если запрос успешен.
         """
-        today = date.today()
-        end_date = today + timedelta(days=DAYS_COUNT)
+        start_date = today or date.today()
+        end_date = start_date + timedelta(days=DAYS_COUNT)
 
-        date_begin = f"{today.isoformat()} 14:00:00"
+        date_begin = f"{start_date.isoformat()} 14:00:00"
         date_end = f"{end_date.isoformat()} 11:00:00"
 
         logger.debug(
             "запрос_цен_bulk",
-            step=f"id={object_id}, период={today}→{end_date}",
+            step=f"id={object_id}, период={start_date}→{end_date}",
         )
 
         result = await page.evaluate(
@@ -148,8 +159,9 @@ class ApiClient:
         busy_status = result.get("busy")
         detail = result.get("detail", [])
 
-        # Используем PriceParser для разворачивания цен
-        prices_60 = self._price_parser.extract_prices_from_detail(detail)
+        prices_60 = self._price_parser.extract_prices_from_detail(
+            detail, today=start_date
+        )
 
         prices_filled = sum(1 for p in prices_60 if p > 0)
         logger.debug(
@@ -158,10 +170,15 @@ class ApiClient:
         )
 
         return busy_status, prices_60, True
-    
+
     async def fetch_availability(
-        self, page: Page, object_id: str, token: str,
-        nights: int = 2, guests: int = DEFAULT_GUESTS
+        self,
+        page: Page,
+        object_id: str,
+        token: str,
+        nights: int = 2,
+        guests: int = DEFAULT_GUESTS,
+        today: date | None = None,
     ) -> tuple[list[int], list[dict[str, str | int]]]:
         """Определяет занятость каждого дня через скользящее окно.
 
@@ -174,16 +191,17 @@ class ApiClient:
             token: Сессионный токен API.
             nights: Количество ночей в окне.
             guests: Количество гостей.
+            today: Дата начала календаря. Если None — date.today().
 
         Returns:
             Кортеж (calendar_60_days, errors_details).
             calendar: 0=свободен, 1=занят, -1=ошибка.
         """
-        today = date.today()
+        start_date = today or date.today()
 
         days_data = []
         for i in range(DAYS_COUNT):
-            day = today + timedelta(days=i)
+            day = start_date + timedelta(days=i)
             end_day = day + timedelta(days=nights)
             days_data.append({
                 "date_begin": f"{day.isoformat()} 14:00:00",
@@ -333,8 +351,13 @@ class ApiClient:
         return calendar, errors_details
 
     async def sliding_window_with_prices(
-        self, page: Page, object_id: str, token: str,
-        nights: int = 2, guests: int = DEFAULT_GUESTS
+        self,
+        page: Page,
+        object_id: str,
+        token: str,
+        nights: int = 2,
+        guests: int = DEFAULT_GUESTS,
+        today: date | None = None,
     ) -> tuple[list[int], list[int]]:
         """Скользящее окно с извлечением цен из каждого ответа.
 
@@ -346,15 +369,16 @@ class ApiClient:
             token: Токен API.
             nights: Количество ночей в окне.
             guests: Количество гостей.
+            today: Дата начала календаря. Если None — date.today().
 
         Returns:
             Кортеж (calendar, prices).
         """
-        today = date.today()
+        start_date = today or date.today()
 
         days_data = []
         for i in range(DAYS_COUNT):
-            day = today + timedelta(days=i)
+            day = start_date + timedelta(days=i)
             end_day = day + timedelta(days=nights)
             days_data.append({
                 "date_begin": f"{day.isoformat()} 14:00:00",
@@ -462,6 +486,7 @@ class ApiClient:
 
         calendar: list[int] = []
         prices: list[int] = []
+        error_days: int = 0
 
         for day_result in result:
             if day_result.get("status") == "ok":
@@ -472,8 +497,19 @@ class ApiClient:
                     calendar.append(0)
                     prices.append(day_result.get("price", 0))
             else:
-                # Ошибка → свободен (лучше не терять данные)
-                calendar.append(0)
+                # Ошибка — помечаем как -1, нормализуем после цикла.
+                # Не трактуем сразу как "свободен" — это маскирует реальные сбои.
+                calendar.append(-1)
                 prices.append(0)
+                error_days += 1
+
+        # Нормализуем ошибочные дни в "свободен" — sliding_window_with_prices
+        # является последним fallback, терять дни нельзя, но логируем факт.
+        if error_days > 0:
+            logger.warning(
+                "скользящее_окно_с_ценами_ошибки_нормализованы",
+                step=f"ошибок={error_days}/{DAYS_COUNT}",
+            )
+            calendar = [0 if c == -1 else c for c in calendar]
 
         return calendar, prices

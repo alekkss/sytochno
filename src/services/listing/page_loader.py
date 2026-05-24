@@ -103,8 +103,26 @@ class PageLoader:
                     logger.debug("страница_готова", step=f"попытка={attempt}")
                     return True
 
-                logger.debug(
-                    "элементы_не_найдены_но_продолжаем",
+                # Ключевые элементы не найдены — возможна CAPTCHA, редирект
+                # или изменение вёрстки. Проверяем URL: если нас увели
+                # со страницы карточки — это явный признак блокировки.
+                current_url = page.url
+                if "sutochno.ru" not in current_url:
+                    logger.warning(
+                        "редирект_за_пределы_сайта",
+                        path=current_url,
+                        step=f"попытка={attempt}",
+                    )
+                    if attempt < MAX_GOTO_RETRIES:
+                        await asyncio.sleep(GOTO_RETRY_DELAY)
+                        continue
+                    return False
+
+                # URL в порядке, но элементы не найдены — вёрстка могла
+                # измениться. Продолжаем: токен может быть уже перехвачен.
+                logger.warning(
+                    "элементы_карточки_не_найдены",
+                    path=current_url,
                     step=f"попытка={attempt}",
                 )
                 return True

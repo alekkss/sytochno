@@ -49,11 +49,22 @@ class ExportService:
         """
         self._settings = settings
 
-    def export(self, listings: list[RawListing]) -> str:
+    def export(
+        self,
+        listings: list[RawListing],
+        output_path: str | None = None,
+    ) -> str:
         """Экспортирует список объявлений в Excel-файл.
+
+        Если output_path не передан — сохраняет в settings.export_path
+        (основной отчёт, перезаписывается при каждом запуске).
+        Если output_path передан — сохраняет по указанному пути
+        (используется для создания датированных снимков).
 
         Args:
             listings: Список объявлений для экспорта.
+            output_path: Путь для сохранения файла. Если None — используется
+                путь из настроек.
 
         Returns:
             Путь к созданному файлу.
@@ -66,8 +77,9 @@ class ExportService:
                 "Нет данных для экспорта. Парсинг не вернул ни одного объявления."
             )
 
-        export_path = Path(self._settings.export_path)
-        export_path.parent.mkdir(parents=True, exist_ok=True)
+        # Используем переданный путь или путь из настроек
+        resolved_path = Path(output_path) if output_path else Path(self._settings.export_path)
+        resolved_path.parent.mkdir(parents=True, exist_ok=True)
 
         wb = Workbook()
         ws = wb.active
@@ -75,30 +87,20 @@ class ExportService:
             ws = wb.create_sheet()
         ws.title = "Объявления"
 
-        # Формируем заголовок
         self._write_header(ws)
-
-        # Заполняем данные
         self._write_data(ws, listings)
-
-        # Настраиваем ширину столбцов
         self._set_column_widths(ws)
-
-        # Добавляем автофильтр
         self._add_autofilter(ws, len(listings))
-
-        # Закрепляем первую строку
         ws.freeze_panes = "A2"
 
-        # Сохраняем файл
-        wb.save(str(export_path))
+        wb.save(str(resolved_path))
 
         logger.info(
             "отчёт_сохранён",
-            path=str(export_path),
+            path=str(resolved_path),
             total=len(listings),
         )
-        return str(export_path)
+        return str(resolved_path)
 
     def _write_header(self, ws: Worksheet) -> None:
         """Записывает и стилизует строку заголовка.
@@ -146,26 +148,28 @@ class ExportService:
                 value="Да" if listing.has_instant_booking else "Нет",
             )
 
-            # Занятость (%)
             ws.cell(row=row_idx, column=11, value=listing.occupancy_percent)
 
-            # Календарь 60 дней — компактная строка
-            calendar_str = "".join(str(d) for d in listing.calendar_60_days) if listing.calendar_60_days else ""
+            calendar_str = (
+                "".join(str(d) for d in listing.calendar_60_days)
+                if listing.calendar_60_days
+                else ""
+            )
             ws.cell(row=row_idx, column=12, value=calendar_str)
 
-            # Средняя цена (руб./сут.)
             ws.cell(row=row_idx, column=13, value=listing.average_price)
 
-            # Цены 60 дней — через точку с запятой
-            prices_str = ";".join(str(p) for p in listing.prices_60_days) if listing.prices_60_days else ""
+            prices_str = (
+                ";".join(str(p) for p in listing.prices_60_days)
+                if listing.prices_60_days
+                else ""
+            )
             ws.cell(row=row_idx, column=14, value=prices_str)
 
-            # Кликабельная ссылка
             link_cell = ws.cell(row=row_idx, column=15, value="Открыть")
             link_cell.hyperlink = listing.url
             link_cell.font = link_font
 
-            # Дата снимка
             ws.cell(
                 row=row_idx,
                 column=16,

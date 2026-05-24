@@ -1,7 +1,7 @@
 """Модель объявления посуточной аренды с sutochno.ru."""
 
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import datetime, timezone
 
 
 @dataclass
@@ -38,7 +38,7 @@ class RawListing:
     has_instant_booking: bool = False
     calendar_60_days: list[int] = field(default_factory=list)
     prices_60_days: list[int] = field(default_factory=list)
-    snapshot_date: datetime = field(default_factory=datetime.now)
+    snapshot_date: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
 
     @property
     def occupancy_percent(self) -> float:

@@ -30,18 +30,25 @@ class PriceParser:
     цена за сутки.
     """
 
-    def extract_prices_from_detail(self, detail: list[dict]) -> list[int]:
+    def extract_prices_from_detail(
+        self,
+        detail: list[dict],
+        today: date | None = None,
+    ) -> list[int]:
         """Извлекает массив цен на 60 дней из detail[].
 
         Приоритет: season_price (с датами) → type=1 (базовая цена).
 
         Args:
             detail: Массив detail[] из ответа API (bulk-запрос на 60 ночей).
+            today: Дата начала календаря. Если None — date.today().
+                   Передавать явно чтобы синхронизировать с остальными
+                   методами в рамках одного прогона.
 
         Returns:
             Список из DAYS_COUNT цен (0 если цена не определена).
         """
-        today = date.today()
+        start_date = today or date.today()
 
         # ── Извлекаем базовую цену из type=1 (fallback) ──
         base_price: int = 0
@@ -81,7 +88,7 @@ class PriceParser:
         # Приоритет: season_price (с датами) → type=1 (базовая цена)
         prices_60: list[int] = []
         for i in range(DAYS_COUNT):
-            day = today + timedelta(days=i)
+            day = start_date + timedelta(days=i)
             day_key = day.isoformat()
             price = daily_prices.get(day_key, base_price)
             prices_60.append(price)

@@ -59,8 +59,16 @@ class ScraperService:
         # Переходим на первую страницу каталога
         await self._browser.navigate(self._settings.sutochno_search_url)
 
-        # Ожидаем загрузку карточек
-        await self._wait_for_cards()
+        # Ожидаем загрузку карточек на первой странице.
+        # Если не появились — страница не загрузилась или изменилась вёрстка.
+        # Прерываем прогон сразу, не тратя время на парсинг пустой страницы.
+        cards_found = await self._wait_for_cards()
+        if not cards_found:
+            logger.warning(
+                "первая_страница_не_загрузилась_прерываем",
+                path=self._settings.sutochno_search_url,
+            )
+            return []
 
         while current_page <= max_pages:
             logger.info(
@@ -107,10 +115,13 @@ class ScraperService:
 
         return all_listings
 
-    async def _wait_for_cards(self) -> None:
+    async def _wait_for_cards(self) -> bool:
         """Ожидает появления карточек объявлений на странице.
 
         Ждёт до 30 секунд появления хотя бы одной карточки.
+
+        Returns:
+            True если карточки появились, False если таймаут или ошибка.
         """
         page = self._browser.page
         try:
@@ -118,8 +129,15 @@ class ScraperService:
                 ".card[data-observe-id]",
                 timeout=30000,
             )
-        except Exception:
-            logger.warning("карточки_не_найдены_на_странице")
+            return True
+        except Exception as e:
+            logger.warning(
+                "карточки_не_найдены_на_странице",
+                error=str(e)[:200],
+                error_type=type(e).__name__,
+                path=page.url,
+            )
+            return False
 
     async def _parse_current_page(self) -> list[RawListing]:
         """Парсит все карточки объявлений на текущей странице.

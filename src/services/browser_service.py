@@ -166,6 +166,7 @@ class BrowserService:
                 "--disable-dev-shm-usage",
                 "--no-sandbox",
             ],
+            ignore_default_args=["--enable-automation"],
         )
 
         self._context = await self._browser.new_context(
