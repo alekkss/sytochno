@@ -19,9 +19,10 @@ _BASE_URL = "https://sutochno.ru"
 class ScraperService:
     """Сервис парсинга каталога sutochno.ru.
 
-    Обходит страницы каталога, извлекает данные объявлений из карточек,
-    обрабатывает пагинацию и возвращает список уникальных RawListing.
+    Обходит несколько URL поиска последовательно, извлекает данные объявлений
+    из карточек, обрабатывает пагинацию и возвращает список уникальных RawListing.
     Дедупликация выполняется по external_id в процессе сбора.
+    MAX_PAGES применяется суммарно ко всем ссылкам.
     """
 
     def __init__(self, settings: Settings, browser_service: BrowserService) -> None:
@@ -37,44 +38,123 @@ class ScraperService:
         self._duplicates_count: int = 0
 
     async def scrape_catalog(self) -> list[RawListing]:
-        """Основной метод — обходит каталог и собирает все уникальные объявления.
+        """Основной метод — обходит все URL поиска и собирает уникальные объявления.
 
-        Обрабатывает пагинацию до MAX_PAGES или до последней страницы.
-        Дубликаты (по external_id) отбрасываются автоматически.
+        Последовательно обрабатывает каждый URL из settings.search_urls.
+        Общий счётчик страниц применяется суммарно ко всем ссылкам:
+        если MAX_PAGES=20 и на первой ссылке пройдено 20 страниц —
+        парсер останавливается и не переходит к следующим ссылкам.
 
         Returns:
-            Список уникальных объявлений со всех обработанных страниц.
+            Список уникальных объявлений со всех обработанных страниц и ссылок.
         """
         all_listings: list[RawListing] = []
         self._seen_ids.clear()
         self._duplicates_count = 0
-        current_page = 1
+
         max_pages = self._settings.max_pages or 999
+        total_pages_processed = 0
 
         logger.info(
             "начало_парсинга_каталога",
-            path=self._settings.sutochno_search_url,
+            urls_count=len(self._settings.search_urls),
+            max_pages=max_pages,
         )
 
-        # Переходим на первую страницу каталога
-        await self._browser.navigate(self._settings.sutochno_search_url)
+        for url_index, search_url in enumerate(self._settings.search_urls, start=1):
+            # Проверяем, не исчерпан ли лимит страниц
+            if total_pages_processed >= max_pages:
+                logger.info(
+                    "лимит_страниц_достигнут_пропуск_ссылки",
+                    url_index=url_index,
+                    total_pages_processed=total_pages_processed,
+                    max_pages=max_pages,
+                )
+                break
 
-        # Ожидаем загрузку карточек на первой странице.
-        # Если не появились — страница не загрузилась или изменилась вёрстка.
-        # Прерываем прогон сразу, не тратя время на парсинг пустой страницы.
+            remaining_pages = max_pages - total_pages_processed
+
+            logger.info(
+                "начало_обхода_ссылки",
+                url_index=url_index,
+                urls_total=len(self._settings.search_urls),
+                remaining_pages=remaining_pages,
+                url=search_url[:80] + "..." if len(search_url) > 80 else search_url,
+            )
+
+            pages_from_url = await self._scrape_single_url(
+                search_url=search_url,
+                url_index=url_index,
+                remaining_pages=remaining_pages,
+                all_listings=all_listings,
+            )
+
+            total_pages_processed += pages_from_url
+
+            logger.info(
+                "ссылка_обработана",
+                url_index=url_index,
+                pages_from_url=pages_from_url,
+                total_pages_processed=total_pages_processed,
+                listings_so_far=len(all_listings),
+            )
+
+        logger.info(
+            "парсинг_каталога_завершён",
+            total=len(all_listings),
+            total_pages=total_pages_processed,
+            urls_processed=min(len(self._settings.search_urls), url_index if 'url_index' in dir() else 0),
+        )
+
+        if self._duplicates_count > 0:
+            logger.info(
+                "дубликаты_отброшены",
+                total=self._duplicates_count,
+            )
+
+        return all_listings
+
+    async def _scrape_single_url(
+        self,
+        search_url: str,
+        url_index: int,
+        remaining_pages: int,
+        all_listings: list[RawListing],
+    ) -> int:
+        """Обходит один URL поиска с пагинацией.
+
+        Args:
+            search_url: URL страницы поиска.
+            url_index: Порядковый номер ссылки (для логов).
+            remaining_pages: Сколько страниц ещё можно обработать (общий лимит).
+            all_listings: Общий список объявлений (мутируется — добавляются новые).
+
+        Returns:
+            Количество обработанных страниц для этой ссылки.
+        """
+        # Переходим на первую страницу каталога
+        await self._browser.navigate(search_url)
+
+        # Ожидаем загрузку карточек на первой странице
         cards_found = await self._wait_for_cards()
         if not cards_found:
             logger.warning(
-                "первая_страница_не_загрузилась_прерываем",
-                path=self._settings.sutochno_search_url,
+                "страница_не_загрузилась",
+                url_index=url_index,
+                url=search_url[:80] + "..." if len(search_url) > 80 else search_url,
             )
-            return []
+            return 0
 
-        while current_page <= max_pages:
+        pages_processed = 0
+
+        while pages_processed < remaining_pages:
+            current_page = pages_processed + 1
+
             logger.info(
                 "парсинг_страницы",
-                current=current_page,
-                total=max_pages,
+                url_index=url_index,
+                page=current_page,
+                remaining=remaining_pages - pages_processed,
             )
 
             # Прокручиваем страницу для подгрузки контента
@@ -85,35 +165,30 @@ class ScraperService:
             page_listings = await self._parse_current_page()
             all_listings.extend(page_listings)
 
+            pages_processed += 1
+
             logger.info(
                 "страница_обработана",
-                current=current_page,
-                total=len(page_listings),
+                url_index=url_index,
+                page=current_page,
+                found=len(page_listings),
+                total_so_far=len(all_listings),
             )
 
             # Проверяем, нужна ли следующая страница
-            if current_page >= max_pages:
+            if pages_processed >= remaining_pages:
                 break
 
             has_next = await self._go_to_next_page()
             if not has_next:
-                logger.info("последняя_страница_достигнута", current=current_page)
+                logger.info(
+                    "последняя_страница_достигнута",
+                    url_index=url_index,
+                    page=current_page,
+                )
                 break
 
-            current_page += 1
-
-        logger.info(
-            "парсинг_каталога_завершён",
-            total=len(all_listings),
-        )
-
-        if self._duplicates_count > 0:
-            logger.info(
-                "дубликаты_отброшены",
-                total=self._duplicates_count,
-            )
-
-        return all_listings
+        return pages_processed
 
     async def _wait_for_cards(self) -> bool:
         """Ожидает появления карточек объявлений на странице.

@@ -28,7 +28,7 @@ async def run() -> None:
     1. Загрузку конфигурации.
     2. Инициализацию базы данных.
     3. Запуск браузера.
-    4. Парсинг каталога.
+    4. Парсинг каталога (последовательный обход всех URL).
     5. Обогащение объявлений данными календаря.
     6. Сохранение результатов в SQLite.
     7. Сохранение снимков текущего прогона.
@@ -50,7 +50,12 @@ async def run() -> None:
         log_file_path=settings.log_file_path,
     )
     logger = get_logger("main")
-    logger.info("приложение_запущено", step="init")
+    logger.info(
+        "приложение_запущено",
+        step="init",
+        search_urls_count=len(settings.search_urls),
+        max_pages=settings.max_pages,
+    )
 
     # --- Шаг 3: Инициализация репозиториев ---
     repository = SQLiteListingRepository(db_path=settings.db_path)
@@ -77,7 +82,11 @@ async def run() -> None:
         await browser_service.start()
 
         # --- Шаг 6: Парсинг каталога ---
-        logger.info("начало_парсинга_каталога", step="scraping")
+        logger.info(
+            "начало_парсинга_каталога",
+            step="scraping",
+            urls_count=len(settings.search_urls),
+        )
         listings = await scraper_service.scrape_catalog()
 
         if not listings:

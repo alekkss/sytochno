@@ -1,7 +1,7 @@
 """Модуль конфигурации — загрузка и валидация переменных окружения."""
 
 import os
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 
 from dotenv import load_dotenv
@@ -70,6 +70,35 @@ def _get_int(key: str, default: str) -> int:
         )
 
 
+def _load_search_urls() -> list[str]:
+    """Загружает список URL поиска из переменных окружения.
+
+    Читает SUTOCHNO_SEARCH_URL_1 ... SUTOCHNO_SEARCH_URL_4,
+    фильтрует пустые значения. Хотя бы одна должна быть заполнена.
+
+    Returns:
+        Список непустых URL поиска (от 1 до 4 штук).
+
+    Raises:
+        RuntimeError: Если ни одна ссылка не задана.
+    """
+    urls: list[str] = []
+
+    for i in range(1, 5):
+        key = f"SUTOCHNO_SEARCH_URL_{i}"
+        value = os.getenv(key, "").strip()
+        if value:
+            urls.append(value)
+
+    if not urls:
+        raise RuntimeError(
+            "Ни одна ссылка поиска не задана. "
+            "Заполните хотя бы SUTOCHNO_SEARCH_URL_1 в файле .env (см. .env.example)."
+        )
+
+    return urls
+
+
 @dataclass(frozen=True)
 class Settings:
     """Неизменяемые настройки приложения.
@@ -78,34 +107,34 @@ class Settings:
     frozen=True гарантирует, что настройки не будут случайно изменены.
     """
 
-    # Обязательные
-    sutochno_search_url: str
+    # URL поиска (от 1 до 4 ссылок)
+    search_urls: tuple[str, ...] = field(default_factory=tuple)
 
     # Браузер
-    headless_mode: bool
-    navigation_timeout: int
-    min_delay_ms: int
-    max_delay_ms: int
+    headless_mode: bool = False
+    navigation_timeout: int = 60000
+    min_delay_ms: int = 2000
+    max_delay_ms: int = 5000
 
     # Парсинг
-    max_pages: int
+    max_pages: int = 5
 
     # Параллельные вкладки
-    max_tabs: int
-    tab_delay_ms: int
+    max_tabs: int = 5
+    tab_delay_ms: int = 3000
 
     # Хранилище
-    db_path: str
-    export_path: str
+    db_path: str = "data/sutochno_listings.db"
+    export_path: str = "data/sutochno_report.xlsx"
 
     # Логирование
-    log_level: str
-    log_file_path: str
+    log_level: str = "INFO"
+    log_file_path: str = "logs/app.log"
 
     # Прокси
-    use_proxy: bool
-    proxies_path: str
-    max_proxy_workers: int
+    use_proxy: bool = False
+    proxies_path: str = "data/proxies.txt"
+    max_proxy_workers: int = 5
 
     @classmethod
     def load(cls) -> "Settings":
@@ -121,8 +150,10 @@ class Settings:
         """
         _load_env()
 
+        search_urls = _load_search_urls()
+
         settings = cls(
-            sutochno_search_url=_get_required("SUTOCHNO_SEARCH_URL"),
+            search_urls=tuple(search_urls),
             headless_mode=_get_bool("HEADLESS_MODE", "false"),
             navigation_timeout=_get_int("NAVIGATION_TIMEOUT", "60000"),
             min_delay_ms=_get_int("MIN_DELAY_MS", "2000"),
