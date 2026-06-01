@@ -683,3 +683,1012 @@
 {"timestamp": "2026-05-31T16:45:54.445156+00:00", "level": "DEBUG", "message": "клик_далее_выполнен", "logger": "scraper", "trace_id": "6ee94006b2f5"}
 {"timestamp": "2026-05-31T16:46:30.453919+00:00", "level": "INFO", "message": "переход_на_следующую_страницу_выполнен", "logger": "scraper", "trace_id": "6ee94006b2f5"}
 {"timestamp": "2026-05-31T16:46:30.454130+00:00", "level": "INFO", "message": "парсинг_страницы", "logger": "scraper", "trace_id": "6ee94006b2f5", "context": {"url_index": 3, "page": 89, "remaining": 834}}
+{"timestamp": "2026-06-01T07:48:18.461107+00:00", "level": "INFO", "message": "приложение_запущено", "logger": "main", "trace_id": "b7cd3a74d66b", "context": {"step": "init", "search_urls_count": 3, "max_pages": 0}}
+{"timestamp": "2026-06-01T07:48:18.462400+00:00", "level": "INFO", "message": "база_данных_инициализирована", "logger": "repository", "trace_id": "b7cd3a74d66b", "context": {"path": "data/sutochno_listings.db"}}
+{"timestamp": "2026-06-01T07:48:18.462971+00:00", "level": "INFO", "message": "таблицы_снимков_инициализированы", "logger": "repository.snapshot", "trace_id": "b7cd3a74d66b"}
+{"timestamp": "2026-06-01T07:48:18.463180+00:00", "level": "INFO", "message": "режим_прокси_включён", "logger": "main", "trace_id": "b7cd3a74d66b", "context": {"step": "proxy_check"}}
+{"timestamp": "2026-06-01T07:48:18.464194+00:00", "level": "INFO", "message": "прокси_загружены", "logger": "proxy", "trace_id": "b7cd3a74d66b", "context": {"total": 8, "path": "data/proxies.txt"}}
+{"timestamp": "2026-06-01T07:48:18.464280+00:00", "level": "INFO", "message": "начало_проверки_прокси", "logger": "proxy", "trace_id": "b7cd3a74d66b", "context": {"total": 8}}
+{"timestamp": "2026-06-01T07:48:59.637795+00:00", "level": "INFO", "message": "прокси_работает", "logger": "proxy", "trace_id": "b7cd3a74d66b", "context": {"step": "212.81.39.56:9698:MbaGHb:***"}}
+{"timestamp": "2026-06-01T07:48:59.638702+00:00", "level": "INFO", "message": "прокси_работает", "logger": "proxy", "trace_id": "b7cd3a74d66b", "context": {"step": "212.81.38.3:9423:MbaGHb:***"}}
+{"timestamp": "2026-06-01T07:48:59.639123+00:00", "level": "INFO", "message": "прокси_работает", "logger": "proxy", "trace_id": "b7cd3a74d66b", "context": {"step": "212.81.39.236:9778:MbaGHb:***"}}
+{"timestamp": "2026-06-01T07:48:59.639341+00:00", "level": "INFO", "message": "прокси_работает", "logger": "proxy", "trace_id": "b7cd3a74d66b", "context": {"step": "212.81.39.42:9852:MbaGHb:***"}}
+{"timestamp": "2026-06-01T07:48:59.639538+00:00", "level": "INFO", "message": "прокси_работает", "logger": "proxy", "trace_id": "b7cd3a74d66b", "context": {"step": "212.81.37.186:9517:MbaGHb:***"}}
+{"timestamp": "2026-06-01T07:48:59.639735+00:00", "level": "INFO", "message": "прокси_работает", "logger": "proxy", "trace_id": "b7cd3a74d66b", "context": {"step": "212.81.39.54:9253:MbaGHb:***"}}
+{"timestamp": "2026-06-01T07:48:59.640181+00:00", "level": "INFO", "message": "прокси_работает", "logger": "proxy", "trace_id": "b7cd3a74d66b", "context": {"step": "212.81.36.74:9566:MbaGHb:***"}}
+{"timestamp": "2026-06-01T07:48:59.640399+00:00", "level": "INFO", "message": "прокси_работает", "logger": "proxy", "trace_id": "b7cd3a74d66b", "context": {"step": "212.81.36.222:9912:MbaGHb:***"}}
+{"timestamp": "2026-06-01T07:48:59.640697+00:00", "level": "INFO", "message": "проверка_прокси_завершена", "logger": "proxy", "trace_id": "b7cd3a74d66b", "context": {"total": 8, "step": "из 8"}}
+{"timestamp": "2026-06-01T07:48:59.640989+00:00", "level": "INFO", "message": "прокси_готовы", "logger": "main", "trace_id": "b7cd3a74d66b", "context": {"total": 8, "step": "proxy_check"}}
+{"timestamp": "2026-06-01T07:48:59.641661+00:00", "level": "INFO", "message": "запуск_браузера", "logger": "browser", "trace_id": "b7cd3a74d66b", "context": {"step": "без прокси"}}
+{"timestamp": "2026-06-01T07:49:00.231029+00:00", "level": "INFO", "message": "браузер_запущен", "logger": "browser", "trace_id": "b7cd3a74d66b", "context": {"step": "без прокси"}}
+{"timestamp": "2026-06-01T07:49:00.231372+00:00", "level": "INFO", "message": "начало_парсинга_каталога", "logger": "main", "trace_id": "b7cd3a74d66b", "context": {"step": "scraping", "urls_count": 3, "mode": "параллельный"}}
+{"timestamp": "2026-06-01T07:49:00.231699+00:00", "level": "INFO", "message": "начало_парсинга_каталога", "logger": "scraper", "trace_id": "b7cd3a74d66b", "context": {"urls_count": 3, "max_pages": 999}}
+{"timestamp": "2026-06-01T07:49:00.231958+00:00", "level": "INFO", "message": "параллельный_парсинг_каталога", "logger": "scraper", "trace_id": "b7cd3a74d66b", "context": {"workers": 3, "urls": 3, "proxies": 8}}
+{"timestamp": "2026-06-01T07:49:00.232393+00:00", "level": "INFO", "message": "запуск_браузера", "logger": "browser", "trace_id": "b7cd3a74d66b", "context": {"step": "212.81.39.56:9698:MbaGHb:***"}}
+{"timestamp": "2026-06-01T07:49:00.232741+00:00", "level": "INFO", "message": "запуск_браузера", "logger": "browser", "trace_id": "b7cd3a74d66b", "context": {"step": "212.81.38.3:9423:MbaGHb:***"}}
+{"timestamp": "2026-06-01T07:49:00.233050+00:00", "level": "INFO", "message": "запуск_браузера", "logger": "browser", "trace_id": "b7cd3a74d66b", "context": {"step": "212.81.39.236:9778:MbaGHb:***"}}
+{"timestamp": "2026-06-01T07:49:00.853659+00:00", "level": "INFO", "message": "браузер_запущен", "logger": "browser", "trace_id": "b7cd3a74d66b", "context": {"step": "212.81.39.236:9778:MbaGHb:***"}}
+{"timestamp": "2026-06-01T07:49:00.853999+00:00", "level": "INFO", "message": "воркер_начало_обхода_ссылки", "logger": "scraper", "trace_id": "b7cd3a74d66b", "context": {"worker": 2, "url_index": 1, "remaining_pages": 333, "url": "https://sutochno.ru/front/searchapp/search?guests_adults=2&term=%D0%A1%D0%B0%D0%..."}}
+{"timestamp": "2026-06-01T07:49:00.854290+00:00", "level": "DEBUG", "message": "навигация", "logger": "browser", "trace_id": "b7cd3a74d66b", "context": {"path": "https://sutochno.ru/front/searchapp/search?guests_adults=2&term=%D0%A1%D0%B0%D0%BD%D0%BA%D1%82-%D0%9F%D0%B5%D1%82%D0%B5%D1%80%D0%B1%D1%83%D1%80%D0%B3&id=397367&type=city&SW.lat=59.78064105467368&SW.lng=30.035056815429677&NE.lat=60.05472305920819&NE.lng=30.57476018457031&price_per=1&is_apartment=1&price=3000,4000"}}
+{"timestamp": "2026-06-01T07:49:00.892025+00:00", "level": "INFO", "message": "браузер_запущен", "logger": "browser", "trace_id": "b7cd3a74d66b", "context": {"step": "212.81.39.56:9698:MbaGHb:***"}}
+{"timestamp": "2026-06-01T07:49:00.892444+00:00", "level": "INFO", "message": "воркер_начало_обхода_ссылки", "logger": "scraper", "trace_id": "b7cd3a74d66b", "context": {"worker": 0, "url_index": 1, "remaining_pages": 333, "url": "https://sutochno.ru/front/searchapp/search?guests_adults=2&term=%D0%A1%D0%B0%D0%..."}}
+{"timestamp": "2026-06-01T07:49:00.892699+00:00", "level": "DEBUG", "message": "навигация", "logger": "browser", "trace_id": "b7cd3a74d66b", "context": {"path": "https://sutochno.ru/front/searchapp/search?guests_adults=2&term=%D0%A1%D0%B0%D0%BD%D0%BA%D1%82-%D0%9F%D0%B5%D1%82%D0%B5%D1%80%D0%B1%D1%83%D1%80%D0%B3&id=397367&type=city&SW.lat=59.78064105467368&SW.lng=30.035056815429677&NE.lat=60.05472305920819&NE.lng=30.57476018457031&price_per=1&is_apartment=1&price=,2000"}}
+{"timestamp": "2026-06-01T07:49:00.897442+00:00", "level": "INFO", "message": "браузер_запущен", "logger": "browser", "trace_id": "b7cd3a74d66b", "context": {"step": "212.81.38.3:9423:MbaGHb:***"}}
+{"timestamp": "2026-06-01T07:49:00.897679+00:00", "level": "INFO", "message": "воркер_начало_обхода_ссылки", "logger": "scraper", "trace_id": "b7cd3a74d66b", "context": {"worker": 1, "url_index": 1, "remaining_pages": 333, "url": "https://sutochno.ru/front/searchapp/search?guests_adults=2&term=%D0%A1%D0%B0%D0%..."}}
+{"timestamp": "2026-06-01T07:49:00.897897+00:00", "level": "DEBUG", "message": "навигация", "logger": "browser", "trace_id": "b7cd3a74d66b", "context": {"path": "https://sutochno.ru/front/searchapp/search?guests_adults=2&term=%D0%A1%D0%B0%D0%BD%D0%BA%D1%82-%D0%9F%D0%B5%D1%82%D0%B5%D1%80%D0%B1%D1%83%D1%80%D0%B3&id=397367&type=city&SW.lat=59.78064105467368&SW.lng=30.035056815429677&NE.lat=60.05472305920819&NE.lng=30.57476018457031&price_per=1&is_apartment=1&price=2000,3000"}}
+{"timestamp": "2026-06-01T07:49:19.208302+00:00", "level": "INFO", "message": "парсинг_страницы", "logger": "scraper", "trace_id": "b7cd3a74d66b", "context": {"url_index": 1, "page": 1, "remaining": 15}}
+{"timestamp": "2026-06-01T07:49:20.732095+00:00", "level": "INFO", "message": "парсинг_страницы", "logger": "scraper", "trace_id": "b7cd3a74d66b", "context": {"url_index": 1, "page": 1, "remaining": 15}}
+{"timestamp": "2026-06-01T07:49:21.681705+00:00", "level": "INFO", "message": "парсинг_страницы", "logger": "scraper", "trace_id": "b7cd3a74d66b", "context": {"url_index": 1, "page": 1, "remaining": 15}}
+{"timestamp": "2026-06-01T07:49:52.912545+00:00", "level": "INFO", "message": "страница_обработана", "logger": "scraper", "trace_id": "b7cd3a74d66b", "context": {"url_index": 1, "page": 1, "found": 50, "total_so_far": 50}}
+{"timestamp": "2026-06-01T07:49:54.297215+00:00", "level": "DEBUG", "message": "клик_далее_выполнен", "logger": "scraper", "trace_id": "b7cd3a74d66b"}
+{"timestamp": "2026-06-01T07:49:54.619062+00:00", "level": "INFO", "message": "страница_обработана", "logger": "scraper", "trace_id": "b7cd3a74d66b", "context": {"url_index": 1, "page": 1, "found": 46, "total_so_far": 46}}
+{"timestamp": "2026-06-01T07:49:55.102598+00:00", "level": "INFO", "message": "страница_обработана", "logger": "scraper", "trace_id": "b7cd3a74d66b", "context": {"url_index": 1, "page": 1, "found": 50, "total_so_far": 50}}
+{"timestamp": "2026-06-01T07:49:55.991241+00:00", "level": "DEBUG", "message": "клик_далее_выполнен", "logger": "scraper", "trace_id": "b7cd3a74d66b"}
+{"timestamp": "2026-06-01T07:49:56.427945+00:00", "level": "DEBUG", "message": "клик_далее_выполнен", "logger": "scraper", "trace_id": "b7cd3a74d66b"}
+{"timestamp": "2026-06-01T07:50:02.602804+00:00", "level": "INFO", "message": "переход_на_следующую_страницу_выполнен", "logger": "scraper", "trace_id": "b7cd3a74d66b"}
+{"timestamp": "2026-06-01T07:50:02.603397+00:00", "level": "INFO", "message": "парсинг_страницы", "logger": "scraper", "trace_id": "b7cd3a74d66b", "context": {"url_index": 1, "page": 2, "remaining": 14}}
+{"timestamp": "2026-06-01T07:50:03.821337+00:00", "level": "INFO", "message": "переход_на_следующую_страницу_выполнен", "logger": "scraper", "trace_id": "b7cd3a74d66b"}
+{"timestamp": "2026-06-01T07:50:03.821958+00:00", "level": "INFO", "message": "парсинг_страницы", "logger": "scraper", "trace_id": "b7cd3a74d66b", "context": {"url_index": 1, "page": 2, "remaining": 14}}
+{"timestamp": "2026-06-01T07:50:31.523961+00:00", "level": "INFO", "message": "переход_на_следующую_страницу_выполнен", "logger": "scraper", "trace_id": "b7cd3a74d66b"}
+{"timestamp": "2026-06-01T07:50:31.524529+00:00", "level": "INFO", "message": "парсинг_страницы", "logger": "scraper", "trace_id": "b7cd3a74d66b", "context": {"url_index": 1, "page": 2, "remaining": 14}}
+{"timestamp": "2026-06-01T07:50:33.902556+00:00", "level": "INFO", "message": "страница_обработана", "logger": "scraper", "trace_id": "b7cd3a74d66b", "context": {"url_index": 1, "page": 2, "found": 49, "total_so_far": 95}}
+{"timestamp": "2026-06-01T07:50:35.256300+00:00", "level": "DEBUG", "message": "клик_далее_выполнен", "logger": "scraper", "trace_id": "b7cd3a74d66b"}
+{"timestamp": "2026-06-01T07:50:35.520353+00:00", "level": "INFO", "message": "страница_обработана", "logger": "scraper", "trace_id": "b7cd3a74d66b", "context": {"url_index": 1, "page": 2, "found": 50, "total_so_far": 100}}
+{"timestamp": "2026-06-01T07:50:36.797513+00:00", "level": "DEBUG", "message": "клик_далее_выполнен", "logger": "scraper", "trace_id": "b7cd3a74d66b"}
+{"timestamp": "2026-06-01T07:51:02.474689+00:00", "level": "INFO", "message": "страница_обработана", "logger": "scraper", "trace_id": "b7cd3a74d66b", "context": {"url_index": 1, "page": 2, "found": 49, "total_so_far": 99}}
+{"timestamp": "2026-06-01T07:51:03.725589+00:00", "level": "DEBUG", "message": "клик_далее_выполнен", "logger": "scraper", "trace_id": "b7cd3a74d66b"}
+{"timestamp": "2026-06-01T07:51:13.171795+00:00", "level": "INFO", "message": "переход_на_следующую_страницу_выполнен", "logger": "scraper", "trace_id": "b7cd3a74d66b"}
+{"timestamp": "2026-06-01T07:51:13.172207+00:00", "level": "INFO", "message": "парсинг_страницы", "logger": "scraper", "trace_id": "b7cd3a74d66b", "context": {"url_index": 1, "page": 3, "remaining": 13}}
+{"timestamp": "2026-06-01T07:51:14.303536+00:00", "level": "INFO", "message": "переход_на_следующую_страницу_выполнен", "logger": "scraper", "trace_id": "b7cd3a74d66b"}
+{"timestamp": "2026-06-01T07:51:14.303884+00:00", "level": "INFO", "message": "парсинг_страницы", "logger": "scraper", "trace_id": "b7cd3a74d66b", "context": {"url_index": 1, "page": 3, "remaining": 13}}
+{"timestamp": "2026-06-01T07:51:40.351945+00:00", "level": "INFO", "message": "переход_на_следующую_страницу_выполнен", "logger": "scraper", "trace_id": "b7cd3a74d66b"}
+{"timestamp": "2026-06-01T07:51:40.352182+00:00", "level": "INFO", "message": "парсинг_страницы", "logger": "scraper", "trace_id": "b7cd3a74d66b", "context": {"url_index": 1, "page": 3, "remaining": 13}}
+{"timestamp": "2026-06-01T07:51:46.437091+00:00", "level": "INFO", "message": "страница_обработана", "logger": "scraper", "trace_id": "b7cd3a74d66b", "context": {"url_index": 1, "page": 3, "found": 49, "total_so_far": 144}}
+{"timestamp": "2026-06-01T07:51:47.771540+00:00", "level": "DEBUG", "message": "клик_далее_выполнен", "logger": "scraper", "trace_id": "b7cd3a74d66b"}
+{"timestamp": "2026-06-01T07:51:49.216868+00:00", "level": "INFO", "message": "страница_обработана", "logger": "scraper", "trace_id": "b7cd3a74d66b", "context": {"url_index": 1, "page": 3, "found": 50, "total_so_far": 150}}
+{"timestamp": "2026-06-01T07:51:50.475308+00:00", "level": "DEBUG", "message": "клик_далее_выполнен", "logger": "scraper", "trace_id": "b7cd3a74d66b"}
+{"timestamp": "2026-06-01T07:52:10.256709+00:00", "level": "INFO", "message": "страница_обработана", "logger": "scraper", "trace_id": "b7cd3a74d66b", "context": {"url_index": 1, "page": 3, "found": 47, "total_so_far": 146}}
+{"timestamp": "2026-06-01T07:52:11.570199+00:00", "level": "DEBUG", "message": "клик_далее_выполнен", "logger": "scraper", "trace_id": "b7cd3a74d66b"}
+{"timestamp": "2026-06-01T07:52:25.439213+00:00", "level": "INFO", "message": "переход_на_следующую_страницу_выполнен", "logger": "scraper", "trace_id": "b7cd3a74d66b"}
+{"timestamp": "2026-06-01T07:52:25.439665+00:00", "level": "INFO", "message": "парсинг_страницы", "logger": "scraper", "trace_id": "b7cd3a74d66b", "context": {"url_index": 1, "page": 4, "remaining": 12}}
+{"timestamp": "2026-06-01T07:52:28.139899+00:00", "level": "INFO", "message": "переход_на_следующую_страницу_выполнен", "logger": "scraper", "trace_id": "b7cd3a74d66b"}
+{"timestamp": "2026-06-01T07:52:28.140029+00:00", "level": "INFO", "message": "парсинг_страницы", "logger": "scraper", "trace_id": "b7cd3a74d66b", "context": {"url_index": 1, "page": 4, "remaining": 12}}
+{"timestamp": "2026-06-01T07:52:45.812858+00:00", "level": "INFO", "message": "страница_обработана", "logger": "scraper", "trace_id": "b7cd3a74d66b", "context": {"url_index": 1, "page": 4, "found": 26, "total_so_far": 176}}
+{"timestamp": "2026-06-01T07:52:46.828183+00:00", "level": "DEBUG", "message": "кнопка_далее_не_найдена", "logger": "scraper", "trace_id": "b7cd3a74d66b"}
+{"timestamp": "2026-06-01T07:52:46.828561+00:00", "level": "INFO", "message": "последняя_страница_достигнута", "logger": "scraper", "trace_id": "b7cd3a74d66b", "context": {"url_index": 1, "page": 4}}
+{"timestamp": "2026-06-01T07:52:46.828916+00:00", "level": "INFO", "message": "воркер_ссылка_обработана", "logger": "scraper", "trace_id": "b7cd3a74d66b", "context": {"worker": 0, "url_index": 1, "pages_from_url": 4, "listings_so_far": 176}}
+{"timestamp": "2026-06-01T07:52:47.030103+00:00", "level": "INFO", "message": "браузер_остановлен", "logger": "browser", "trace_id": "b7cd3a74d66b"}
+{"timestamp": "2026-06-01T07:52:47.595125+00:00", "level": "INFO", "message": "переход_на_следующую_страницу_выполнен", "logger": "scraper", "trace_id": "b7cd3a74d66b"}
+{"timestamp": "2026-06-01T07:52:47.595282+00:00", "level": "INFO", "message": "парсинг_страницы", "logger": "scraper", "trace_id": "b7cd3a74d66b", "context": {"url_index": 1, "page": 4, "remaining": 12}}
+{"timestamp": "2026-06-01T07:52:57.344689+00:00", "level": "INFO", "message": "страница_обработана", "logger": "scraper", "trace_id": "b7cd3a74d66b", "context": {"url_index": 1, "page": 4, "found": 49, "total_so_far": 193}}
+{"timestamp": "2026-06-01T07:52:58.631319+00:00", "level": "DEBUG", "message": "клик_далее_выполнен", "logger": "scraper", "trace_id": "b7cd3a74d66b"}
+{"timestamp": "2026-06-01T07:53:18.831846+00:00", "level": "INFO", "message": "страница_обработана", "logger": "scraper", "trace_id": "b7cd3a74d66b", "context": {"url_index": 1, "page": 4, "found": 47, "total_so_far": 193}}
+{"timestamp": "2026-06-01T07:53:20.111746+00:00", "level": "DEBUG", "message": "клик_далее_выполнен", "logger": "scraper", "trace_id": "b7cd3a74d66b"}
+{"timestamp": "2026-06-01T07:53:34.562883+00:00", "level": "INFO", "message": "переход_на_следующую_страницу_выполнен", "logger": "scraper", "trace_id": "b7cd3a74d66b"}
+{"timestamp": "2026-06-01T07:53:34.563077+00:00", "level": "INFO", "message": "парсинг_страницы", "logger": "scraper", "trace_id": "b7cd3a74d66b", "context": {"url_index": 1, "page": 5, "remaining": 11}}
+{"timestamp": "2026-06-01T07:53:56.251749+00:00", "level": "INFO", "message": "переход_на_следующую_страницу_выполнен", "logger": "scraper", "trace_id": "b7cd3a74d66b"}
+{"timestamp": "2026-06-01T07:53:56.252202+00:00", "level": "INFO", "message": "парсинг_страницы", "logger": "scraper", "trace_id": "b7cd3a74d66b", "context": {"url_index": 1, "page": 5, "remaining": 11}}
+{"timestamp": "2026-06-01T07:54:06.224348+00:00", "level": "INFO", "message": "страница_обработана", "logger": "scraper", "trace_id": "b7cd3a74d66b", "context": {"url_index": 1, "page": 5, "found": 50, "total_so_far": 243}}
+{"timestamp": "2026-06-01T07:54:07.473516+00:00", "level": "DEBUG", "message": "клик_далее_выполнен", "logger": "scraper", "trace_id": "b7cd3a74d66b"}
+{"timestamp": "2026-06-01T07:54:26.175198+00:00", "level": "INFO", "message": "страница_обработана", "logger": "scraper", "trace_id": "b7cd3a74d66b", "context": {"url_index": 1, "page": 5, "found": 49, "total_so_far": 242}}
+{"timestamp": "2026-06-01T07:54:27.442587+00:00", "level": "DEBUG", "message": "клик_далее_выполнен", "logger": "scraper", "trace_id": "b7cd3a74d66b"}
+{"timestamp": "2026-06-01T07:54:43.996122+00:00", "level": "INFO", "message": "переход_на_следующую_страницу_выполнен", "logger": "scraper", "trace_id": "b7cd3a74d66b"}
+{"timestamp": "2026-06-01T07:54:43.996377+00:00", "level": "INFO", "message": "парсинг_страницы", "logger": "scraper", "trace_id": "b7cd3a74d66b", "context": {"url_index": 1, "page": 6, "remaining": 10}}
+{"timestamp": "2026-06-01T07:55:04.245501+00:00", "level": "INFO", "message": "переход_на_следующую_страницу_выполнен", "logger": "scraper", "trace_id": "b7cd3a74d66b"}
+{"timestamp": "2026-06-01T07:55:04.245673+00:00", "level": "INFO", "message": "парсинг_страницы", "logger": "scraper", "trace_id": "b7cd3a74d66b", "context": {"url_index": 1, "page": 6, "remaining": 10}}
+{"timestamp": "2026-06-01T07:55:15.202775+00:00", "level": "INFO", "message": "страница_обработана", "logger": "scraper", "trace_id": "b7cd3a74d66b", "context": {"url_index": 1, "page": 6, "found": 50, "total_so_far": 293}}
+{"timestamp": "2026-06-01T07:55:16.415190+00:00", "level": "DEBUG", "message": "клик_далее_выполнен", "logger": "scraper", "trace_id": "b7cd3a74d66b"}
+{"timestamp": "2026-06-01T07:55:33.879322+00:00", "level": "INFO", "message": "страница_обработана", "logger": "scraper", "trace_id": "b7cd3a74d66b", "context": {"url_index": 1, "page": 6, "found": 44, "total_so_far": 286}}
+{"timestamp": "2026-06-01T07:55:35.120769+00:00", "level": "DEBUG", "message": "клик_далее_выполнен", "logger": "scraper", "trace_id": "b7cd3a74d66b"}
+{"timestamp": "2026-06-01T07:55:54.376370+00:00", "level": "INFO", "message": "переход_на_следующую_страницу_выполнен", "logger": "scraper", "trace_id": "b7cd3a74d66b"}
+{"timestamp": "2026-06-01T07:55:54.376621+00:00", "level": "INFO", "message": "парсинг_страницы", "logger": "scraper", "trace_id": "b7cd3a74d66b", "context": {"url_index": 1, "page": 7, "remaining": 9}}
+{"timestamp": "2026-06-01T07:56:12.355179+00:00", "level": "INFO", "message": "переход_на_следующую_страницу_выполнен", "logger": "scraper", "trace_id": "b7cd3a74d66b"}
+{"timestamp": "2026-06-01T07:56:12.355471+00:00", "level": "INFO", "message": "парсинг_страницы", "logger": "scraper", "trace_id": "b7cd3a74d66b", "context": {"url_index": 1, "page": 7, "remaining": 9}}
+{"timestamp": "2026-06-01T07:56:24.842433+00:00", "level": "INFO", "message": "страница_обработана", "logger": "scraper", "trace_id": "b7cd3a74d66b", "context": {"url_index": 1, "page": 7, "found": 49, "total_so_far": 342}}
+{"timestamp": "2026-06-01T07:56:26.033140+00:00", "level": "DEBUG", "message": "клик_далее_выполнен", "logger": "scraper", "trace_id": "b7cd3a74d66b"}
+{"timestamp": "2026-06-01T07:56:44.440225+00:00", "level": "INFO", "message": "страница_обработана", "logger": "scraper", "trace_id": "b7cd3a74d66b", "context": {"url_index": 1, "page": 7, "found": 48, "total_so_far": 334}}
+{"timestamp": "2026-06-01T07:56:45.762855+00:00", "level": "DEBUG", "message": "клик_далее_выполнен", "logger": "scraper", "trace_id": "b7cd3a74d66b"}
+{"timestamp": "2026-06-01T07:57:03.560987+00:00", "level": "INFO", "message": "переход_на_следующую_страницу_выполнен", "logger": "scraper", "trace_id": "b7cd3a74d66b"}
+{"timestamp": "2026-06-01T07:57:03.561487+00:00", "level": "INFO", "message": "парсинг_страницы", "logger": "scraper", "trace_id": "b7cd3a74d66b", "context": {"url_index": 1, "page": 8, "remaining": 8}}
+{"timestamp": "2026-06-01T07:57:23.700598+00:00", "level": "INFO", "message": "переход_на_следующую_страницу_выполнен", "logger": "scraper", "trace_id": "b7cd3a74d66b"}
+{"timestamp": "2026-06-01T07:57:23.702290+00:00", "level": "INFO", "message": "парсинг_страницы", "logger": "scraper", "trace_id": "b7cd3a74d66b", "context": {"url_index": 1, "page": 8, "remaining": 8}}
+{"timestamp": "2026-06-01T07:57:35.507982+00:00", "level": "INFO", "message": "страница_обработана", "logger": "scraper", "trace_id": "b7cd3a74d66b", "context": {"url_index": 1, "page": 8, "found": 48, "total_so_far": 390}}
+{"timestamp": "2026-06-01T07:57:36.673192+00:00", "level": "DEBUG", "message": "клик_далее_выполнен", "logger": "scraper", "trace_id": "b7cd3a74d66b"}
+{"timestamp": "2026-06-01T07:57:52.300811+00:00", "level": "INFO", "message": "страница_обработана", "logger": "scraper", "trace_id": "b7cd3a74d66b", "context": {"url_index": 1, "page": 8, "found": 47, "total_so_far": 381}}
+{"timestamp": "2026-06-01T07:57:53.608768+00:00", "level": "DEBUG", "message": "клик_далее_выполнен", "logger": "scraper", "trace_id": "b7cd3a74d66b"}
+{"timestamp": "2026-06-01T07:58:12.446008+00:00", "level": "INFO", "message": "переход_на_следующую_страницу_выполнен", "logger": "scraper", "trace_id": "b7cd3a74d66b"}
+{"timestamp": "2026-06-01T07:58:12.446188+00:00", "level": "INFO", "message": "парсинг_страницы", "logger": "scraper", "trace_id": "b7cd3a74d66b", "context": {"url_index": 1, "page": 9, "remaining": 7}}
+{"timestamp": "2026-06-01T07:58:29.160228+00:00", "level": "INFO", "message": "переход_на_следующую_страницу_выполнен", "logger": "scraper", "trace_id": "b7cd3a74d66b"}
+{"timestamp": "2026-06-01T07:58:29.160360+00:00", "level": "INFO", "message": "парсинг_страницы", "logger": "scraper", "trace_id": "b7cd3a74d66b", "context": {"url_index": 1, "page": 9, "remaining": 7}}
+{"timestamp": "2026-06-01T07:58:43.137457+00:00", "level": "INFO", "message": "страница_обработана", "logger": "scraper", "trace_id": "b7cd3a74d66b", "context": {"url_index": 1, "page": 9, "found": 50, "total_so_far": 440}}
+{"timestamp": "2026-06-01T07:58:44.347592+00:00", "level": "DEBUG", "message": "клик_далее_выполнен", "logger": "scraper", "trace_id": "b7cd3a74d66b"}
+{"timestamp": "2026-06-01T07:59:00.827811+00:00", "level": "INFO", "message": "страница_обработана", "logger": "scraper", "trace_id": "b7cd3a74d66b", "context": {"url_index": 1, "page": 9, "found": 46, "total_so_far": 427}}
+{"timestamp": "2026-06-01T07:59:02.152624+00:00", "level": "DEBUG", "message": "клик_далее_выполнен", "logger": "scraper", "trace_id": "b7cd3a74d66b"}
+{"timestamp": "2026-06-01T07:59:20.638679+00:00", "level": "INFO", "message": "переход_на_следующую_страницу_выполнен", "logger": "scraper", "trace_id": "b7cd3a74d66b"}
+{"timestamp": "2026-06-01T07:59:20.638832+00:00", "level": "INFO", "message": "парсинг_страницы", "logger": "scraper", "trace_id": "b7cd3a74d66b", "context": {"url_index": 1, "page": 10, "remaining": 6}}
+{"timestamp": "2026-06-01T07:59:38.793930+00:00", "level": "INFO", "message": "переход_на_следующую_страницу_выполнен", "logger": "scraper", "trace_id": "b7cd3a74d66b"}
+{"timestamp": "2026-06-01T07:59:38.794261+00:00", "level": "INFO", "message": "парсинг_страницы", "logger": "scraper", "trace_id": "b7cd3a74d66b", "context": {"url_index": 1, "page": 10, "remaining": 6}}
+{"timestamp": "2026-06-01T07:59:53.340237+00:00", "level": "INFO", "message": "страница_обработана", "logger": "scraper", "trace_id": "b7cd3a74d66b", "context": {"url_index": 1, "page": 10, "found": 50, "total_so_far": 490}}
+{"timestamp": "2026-06-01T07:59:54.511367+00:00", "level": "DEBUG", "message": "клик_далее_выполнен", "logger": "scraper", "trace_id": "b7cd3a74d66b"}
+{"timestamp": "2026-06-01T08:00:12.001767+00:00", "level": "INFO", "message": "страница_обработана", "logger": "scraper", "trace_id": "b7cd3a74d66b", "context": {"url_index": 1, "page": 10, "found": 47, "total_so_far": 474}}
+{"timestamp": "2026-06-01T08:00:13.294217+00:00", "level": "DEBUG", "message": "клик_далее_выполнен", "logger": "scraper", "trace_id": "b7cd3a74d66b"}
+{"timestamp": "2026-06-01T08:00:31.533116+00:00", "level": "INFO", "message": "переход_на_следующую_страницу_выполнен", "logger": "scraper", "trace_id": "b7cd3a74d66b"}
+{"timestamp": "2026-06-01T08:00:31.533765+00:00", "level": "INFO", "message": "парсинг_страницы", "logger": "scraper", "trace_id": "b7cd3a74d66b", "context": {"url_index": 1, "page": 11, "remaining": 5}}
+{"timestamp": "2026-06-01T08:00:50.402452+00:00", "level": "INFO", "message": "переход_на_следующую_страницу_выполнен", "logger": "scraper", "trace_id": "b7cd3a74d66b"}
+{"timestamp": "2026-06-01T08:00:50.402604+00:00", "level": "INFO", "message": "парсинг_страницы", "logger": "scraper", "trace_id": "b7cd3a74d66b", "context": {"url_index": 1, "page": 11, "remaining": 5}}
+{"timestamp": "2026-06-01T08:01:03.080829+00:00", "level": "INFO", "message": "страница_обработана", "logger": "scraper", "trace_id": "b7cd3a74d66b", "context": {"url_index": 1, "page": 11, "found": 48, "total_so_far": 538}}
+{"timestamp": "2026-06-01T08:01:04.259658+00:00", "level": "DEBUG", "message": "клик_далее_выполнен", "logger": "scraper", "trace_id": "b7cd3a74d66b"}
+{"timestamp": "2026-06-01T08:01:23.088597+00:00", "level": "INFO", "message": "страница_обработана", "logger": "scraper", "trace_id": "b7cd3a74d66b", "context": {"url_index": 1, "page": 11, "found": 46, "total_so_far": 520}}
+{"timestamp": "2026-06-01T08:01:24.325638+00:00", "level": "DEBUG", "message": "клик_далее_выполнен", "logger": "scraper", "trace_id": "b7cd3a74d66b"}
+{"timestamp": "2026-06-01T08:01:40.515453+00:00", "level": "INFO", "message": "переход_на_следующую_страницу_выполнен", "logger": "scraper", "trace_id": "b7cd3a74d66b"}
+{"timestamp": "2026-06-01T08:01:40.515635+00:00", "level": "INFO", "message": "парсинг_страницы", "logger": "scraper", "trace_id": "b7cd3a74d66b", "context": {"url_index": 1, "page": 12, "remaining": 4}}
+{"timestamp": "2026-06-01T08:02:00.541820+00:00", "level": "INFO", "message": "переход_на_следующую_страницу_выполнен", "logger": "scraper", "trace_id": "b7cd3a74d66b"}
+{"timestamp": "2026-06-01T08:02:00.542303+00:00", "level": "INFO", "message": "парсинг_страницы", "logger": "scraper", "trace_id": "b7cd3a74d66b", "context": {"url_index": 1, "page": 12, "remaining": 4}}
+{"timestamp": "2026-06-01T08:02:12.108909+00:00", "level": "INFO", "message": "страница_обработана", "logger": "scraper", "trace_id": "b7cd3a74d66b", "context": {"url_index": 1, "page": 12, "found": 46, "total_so_far": 584}}
+{"timestamp": "2026-06-01T08:02:13.273864+00:00", "level": "DEBUG", "message": "клик_далее_выполнен", "logger": "scraper", "trace_id": "b7cd3a74d66b"}
+{"timestamp": "2026-06-01T08:02:32.556628+00:00", "level": "INFO", "message": "страница_обработана", "logger": "scraper", "trace_id": "b7cd3a74d66b", "context": {"url_index": 1, "page": 12, "found": 48, "total_so_far": 568}}
+{"timestamp": "2026-06-01T08:02:33.847485+00:00", "level": "DEBUG", "message": "клик_далее_выполнен", "logger": "scraper", "trace_id": "b7cd3a74d66b"}
+{"timestamp": "2026-06-01T08:02:50.986263+00:00", "level": "INFO", "message": "переход_на_следующую_страницу_выполнен", "logger": "scraper", "trace_id": "b7cd3a74d66b"}
+{"timestamp": "2026-06-01T08:02:50.986433+00:00", "level": "INFO", "message": "парсинг_страницы", "logger": "scraper", "trace_id": "b7cd3a74d66b", "context": {"url_index": 1, "page": 13, "remaining": 3}}
+{"timestamp": "2026-06-01T08:03:09.793322+00:00", "level": "INFO", "message": "переход_на_следующую_страницу_выполнен", "logger": "scraper", "trace_id": "b7cd3a74d66b"}
+{"timestamp": "2026-06-01T08:03:09.793483+00:00", "level": "INFO", "message": "парсинг_страницы", "logger": "scraper", "trace_id": "b7cd3a74d66b", "context": {"url_index": 1, "page": 13, "remaining": 3}}
+{"timestamp": "2026-06-01T08:03:21.070821+00:00", "level": "INFO", "message": "страница_обработана", "logger": "scraper", "trace_id": "b7cd3a74d66b", "context": {"url_index": 1, "page": 13, "found": 49, "total_so_far": 633}}
+{"timestamp": "2026-06-01T08:03:22.243000+00:00", "level": "DEBUG", "message": "клик_далее_выполнен", "logger": "scraper", "trace_id": "b7cd3a74d66b"}
+{"timestamp": "2026-06-01T08:03:41.248323+00:00", "level": "INFO", "message": "страница_обработана", "logger": "scraper", "trace_id": "b7cd3a74d66b", "context": {"url_index": 1, "page": 13, "found": 47, "total_so_far": 615}}
+{"timestamp": "2026-06-01T08:03:42.561313+00:00", "level": "DEBUG", "message": "клик_далее_выполнен", "logger": "scraper", "trace_id": "b7cd3a74d66b"}
+{"timestamp": "2026-06-01T08:03:58.593593+00:00", "level": "INFO", "message": "переход_на_следующую_страницу_выполнен", "logger": "scraper", "trace_id": "b7cd3a74d66b"}
+{"timestamp": "2026-06-01T08:03:58.593754+00:00", "level": "INFO", "message": "парсинг_страницы", "logger": "scraper", "trace_id": "b7cd3a74d66b", "context": {"url_index": 1, "page": 14, "remaining": 2}}
+{"timestamp": "2026-06-01T08:04:18.195451+00:00", "level": "INFO", "message": "переход_на_следующую_страницу_выполнен", "logger": "scraper", "trace_id": "b7cd3a74d66b"}
+{"timestamp": "2026-06-01T08:04:18.196085+00:00", "level": "INFO", "message": "парсинг_страницы", "logger": "scraper", "trace_id": "b7cd3a74d66b", "context": {"url_index": 1, "page": 14, "remaining": 2}}
+{"timestamp": "2026-06-01T08:04:29.372524+00:00", "level": "INFO", "message": "страница_обработана", "logger": "scraper", "trace_id": "b7cd3a74d66b", "context": {"url_index": 1, "page": 14, "found": 50, "total_so_far": 683}}
+{"timestamp": "2026-06-01T08:04:30.562431+00:00", "level": "DEBUG", "message": "клик_далее_выполнен", "logger": "scraper", "trace_id": "b7cd3a74d66b"}
+{"timestamp": "2026-06-01T08:04:50.769756+00:00", "level": "INFO", "message": "страница_обработана", "logger": "scraper", "trace_id": "b7cd3a74d66b", "context": {"url_index": 1, "page": 14, "found": 46, "total_so_far": 661}}
+{"timestamp": "2026-06-01T08:04:51.989998+00:00", "level": "DEBUG", "message": "клик_далее_выполнен", "logger": "scraper", "trace_id": "b7cd3a74d66b"}
+{"timestamp": "2026-06-01T08:05:08.176031+00:00", "level": "INFO", "message": "переход_на_следующую_страницу_выполнен", "logger": "scraper", "trace_id": "b7cd3a74d66b"}
+{"timestamp": "2026-06-01T08:05:08.176576+00:00", "level": "INFO", "message": "парсинг_страницы", "logger": "scraper", "trace_id": "b7cd3a74d66b", "context": {"url_index": 1, "page": 15, "remaining": 1}}
+{"timestamp": "2026-06-01T08:05:27.494309+00:00", "level": "INFO", "message": "переход_на_следующую_страницу_выполнен", "logger": "scraper", "trace_id": "b7cd3a74d66b"}
+{"timestamp": "2026-06-01T08:05:27.494535+00:00", "level": "INFO", "message": "парсинг_страницы", "logger": "scraper", "trace_id": "b7cd3a74d66b", "context": {"url_index": 1, "page": 15, "remaining": 1}}
+{"timestamp": "2026-06-01T08:05:41.220863+00:00", "level": "INFO", "message": "страница_обработана", "logger": "scraper", "trace_id": "b7cd3a74d66b", "context": {"url_index": 1, "page": 15, "found": 47, "total_so_far": 730}}
+{"timestamp": "2026-06-01T08:05:41.221172+00:00", "level": "INFO", "message": "перезагрузка_контекста", "logger": "scraper", "trace_id": "b7cd3a74d66b", "context": {"url_index": 1, "pages_processed": 15, "next_batch_start": 16}}
+{"timestamp": "2026-06-01T08:05:41.221421+00:00", "level": "DEBUG", "message": "навигация", "logger": "browser", "trace_id": "b7cd3a74d66b", "context": {"path": "https://sutochno.ru/front/searchapp/search?guests_adults=2&term=%D0%A1%D0%B0%D0%BD%D0%BA%D1%82-%D0%9F%D0%B5%D1%82%D0%B5%D1%80%D0%B1%D1%83%D1%80%D0%B3&id=397367&type=city&SW.lat=59.78064105467368&SW.lng=30.035056815429677&NE.lat=60.05472305920819&NE.lng=30.57476018457031&price_per=1&is_apartment=1&price=2000,3000"}}
+{"timestamp": "2026-06-01T08:05:54.340380+00:00", "level": "INFO", "message": "быстрая_перемотка", "logger": "scraper", "trace_id": "b7cd3a74d66b", "context": {"url_index": 1, "target_page": 16, "pages_to_skip": 15}}
+{"timestamp": "2026-06-01T08:06:02.300759+00:00", "level": "INFO", "message": "страница_обработана", "logger": "scraper", "trace_id": "b7cd3a74d66b", "context": {"url_index": 1, "page": 15, "found": 49, "total_so_far": 710}}
+{"timestamp": "2026-06-01T08:06:02.301750+00:00", "level": "INFO", "message": "перезагрузка_контекста", "logger": "scraper", "trace_id": "b7cd3a74d66b", "context": {"url_index": 1, "pages_processed": 15, "next_batch_start": 16}}
+{"timestamp": "2026-06-01T08:06:02.302800+00:00", "level": "DEBUG", "message": "навигация", "logger": "browser", "trace_id": "b7cd3a74d66b", "context": {"path": "https://sutochno.ru/front/searchapp/search?guests_adults=2&term=%D0%A1%D0%B0%D0%BD%D0%BA%D1%82-%D0%9F%D0%B5%D1%82%D0%B5%D1%80%D0%B1%D1%83%D1%80%D0%B3&id=397367&type=city&SW.lat=59.78064105467368&SW.lng=30.035056815429677&NE.lat=60.05472305920819&NE.lng=30.57476018457031&price_per=1&is_apartment=1&price=3000,4000"}}
+{"timestamp": "2026-06-01T08:06:14.864908+00:00", "level": "INFO", "message": "быстрая_перемотка", "logger": "scraper", "trace_id": "b7cd3a74d66b", "context": {"url_index": 1, "target_page": 16, "pages_to_skip": 15}}
+{"timestamp": "2026-06-01T08:11:07.601980+00:00", "level": "DEBUG", "message": "перемотка_прогресс", "logger": "scraper", "trace_id": "b7cd3a74d66b", "context": {"skipped": 10, "target": 15}}
+{"timestamp": "2026-06-01T08:11:27.862670+00:00", "level": "DEBUG", "message": "перемотка_прогресс", "logger": "scraper", "trace_id": "b7cd3a74d66b", "context": {"skipped": 10, "target": 15}}
+{"timestamp": "2026-06-01T08:13:44.575547+00:00", "level": "INFO", "message": "парсинг_страницы", "logger": "scraper", "trace_id": "b7cd3a74d66b", "context": {"url_index": 1, "page": 16, "remaining": 15}}
+{"timestamp": "2026-06-01T08:14:04.893467+00:00", "level": "INFO", "message": "парсинг_страницы", "logger": "scraper", "trace_id": "b7cd3a74d66b", "context": {"url_index": 1, "page": 16, "remaining": 15}}
+{"timestamp": "2026-06-01T08:14:22.460931+00:00", "level": "INFO", "message": "страница_обработана", "logger": "scraper", "trace_id": "b7cd3a74d66b", "context": {"url_index": 1, "page": 16, "found": 50, "total_so_far": 780}}
+{"timestamp": "2026-06-01T08:14:23.778612+00:00", "level": "DEBUG", "message": "клик_далее_выполнен", "logger": "scraper", "trace_id": "b7cd3a74d66b"}
+{"timestamp": "2026-06-01T08:14:41.845508+00:00", "level": "INFO", "message": "страница_обработана", "logger": "scraper", "trace_id": "b7cd3a74d66b", "context": {"url_index": 1, "page": 16, "found": 43, "total_so_far": 753}}
+{"timestamp": "2026-06-01T08:14:43.094991+00:00", "level": "DEBUG", "message": "клик_далее_выполнен", "logger": "scraper", "trace_id": "b7cd3a74d66b"}
+{"timestamp": "2026-06-01T08:15:01.643960+00:00", "level": "INFO", "message": "переход_на_следующую_страницу_выполнен", "logger": "scraper", "trace_id": "b7cd3a74d66b"}
+{"timestamp": "2026-06-01T08:15:01.645547+00:00", "level": "INFO", "message": "парсинг_страницы", "logger": "scraper", "trace_id": "b7cd3a74d66b", "context": {"url_index": 1, "page": 17, "remaining": 14}}
+{"timestamp": "2026-06-01T08:15:19.610032+00:00", "level": "INFO", "message": "переход_на_следующую_страницу_выполнен", "logger": "scraper", "trace_id": "b7cd3a74d66b"}
+{"timestamp": "2026-06-01T08:15:19.610206+00:00", "level": "INFO", "message": "парсинг_страницы", "logger": "scraper", "trace_id": "b7cd3a74d66b", "context": {"url_index": 1, "page": 17, "remaining": 14}}
+{"timestamp": "2026-06-01T08:15:31.615994+00:00", "level": "INFO", "message": "страница_обработана", "logger": "scraper", "trace_id": "b7cd3a74d66b", "context": {"url_index": 1, "page": 17, "found": 50, "total_so_far": 830}}
+{"timestamp": "2026-06-01T08:15:32.834642+00:00", "level": "DEBUG", "message": "клик_далее_выполнен", "logger": "scraper", "trace_id": "b7cd3a74d66b"}
+{"timestamp": "2026-06-01T08:15:53.156213+00:00", "level": "INFO", "message": "страница_обработана", "logger": "scraper", "trace_id": "b7cd3a74d66b", "context": {"url_index": 1, "page": 17, "found": 48, "total_so_far": 801}}
+{"timestamp": "2026-06-01T08:15:54.439942+00:00", "level": "DEBUG", "message": "клик_далее_выполнен", "logger": "scraper", "trace_id": "b7cd3a74d66b"}
+{"timestamp": "2026-06-01T08:16:09.206864+00:00", "level": "INFO", "message": "переход_на_следующую_страницу_выполнен", "logger": "scraper", "trace_id": "b7cd3a74d66b"}
+{"timestamp": "2026-06-01T08:16:09.207655+00:00", "level": "INFO", "message": "парсинг_страницы", "logger": "scraper", "trace_id": "b7cd3a74d66b", "context": {"url_index": 1, "page": 18, "remaining": 13}}
+{"timestamp": "2026-06-01T08:16:31.625298+00:00", "level": "INFO", "message": "переход_на_следующую_страницу_выполнен", "logger": "scraper", "trace_id": "b7cd3a74d66b"}
+{"timestamp": "2026-06-01T08:16:31.625523+00:00", "level": "INFO", "message": "парсинг_страницы", "logger": "scraper", "trace_id": "b7cd3a74d66b", "context": {"url_index": 1, "page": 18, "remaining": 13}}
+{"timestamp": "2026-06-01T08:16:40.841353+00:00", "level": "INFO", "message": "страница_обработана", "logger": "scraper", "trace_id": "b7cd3a74d66b", "context": {"url_index": 1, "page": 18, "found": 49, "total_so_far": 879}}
+{"timestamp": "2026-06-01T08:16:42.150678+00:00", "level": "DEBUG", "message": "клик_далее_выполнен", "logger": "scraper", "trace_id": "b7cd3a74d66b"}
+{"timestamp": "2026-06-01T08:17:03.420007+00:00", "level": "INFO", "message": "страница_обработана", "logger": "scraper", "trace_id": "b7cd3a74d66b", "context": {"url_index": 1, "page": 18, "found": 47, "total_so_far": 848}}
+{"timestamp": "2026-06-01T08:17:04.636203+00:00", "level": "DEBUG", "message": "клик_далее_выполнен", "logger": "scraper", "trace_id": "b7cd3a74d66b"}
+{"timestamp": "2026-06-01T08:17:17.607365+00:00", "level": "INFO", "message": "переход_на_следующую_страницу_выполнен", "logger": "scraper", "trace_id": "b7cd3a74d66b"}
+{"timestamp": "2026-06-01T08:17:17.607624+00:00", "level": "INFO", "message": "парсинг_страницы", "logger": "scraper", "trace_id": "b7cd3a74d66b", "context": {"url_index": 1, "page": 19, "remaining": 12}}
+{"timestamp": "2026-06-01T08:17:41.369855+00:00", "level": "INFO", "message": "переход_на_следующую_страницу_выполнен", "logger": "scraper", "trace_id": "b7cd3a74d66b"}
+{"timestamp": "2026-06-01T08:17:41.370044+00:00", "level": "INFO", "message": "парсинг_страницы", "logger": "scraper", "trace_id": "b7cd3a74d66b", "context": {"url_index": 1, "page": 19, "remaining": 12}}
+{"timestamp": "2026-06-01T08:17:50.338908+00:00", "level": "INFO", "message": "страница_обработана", "logger": "scraper", "trace_id": "b7cd3a74d66b", "context": {"url_index": 1, "page": 19, "found": 49, "total_so_far": 928}}
+{"timestamp": "2026-06-01T08:17:51.540645+00:00", "level": "DEBUG", "message": "клик_далее_выполнен", "logger": "scraper", "trace_id": "b7cd3a74d66b"}
+{"timestamp": "2026-06-01T08:18:13.975949+00:00", "level": "INFO", "message": "страница_обработана", "logger": "scraper", "trace_id": "b7cd3a74d66b", "context": {"url_index": 1, "page": 19, "found": 46, "total_so_far": 894}}
+{"timestamp": "2026-06-01T08:18:15.252552+00:00", "level": "DEBUG", "message": "клик_далее_выполнен", "logger": "scraper", "trace_id": "b7cd3a74d66b"}
+{"timestamp": "2026-06-01T08:18:28.411978+00:00", "level": "INFO", "message": "переход_на_следующую_страницу_выполнен", "logger": "scraper", "trace_id": "b7cd3a74d66b"}
+{"timestamp": "2026-06-01T08:18:28.412097+00:00", "level": "INFO", "message": "парсинг_страницы", "logger": "scraper", "trace_id": "b7cd3a74d66b", "context": {"url_index": 1, "page": 20, "remaining": 11}}
+{"timestamp": "2026-06-01T08:18:52.452150+00:00", "level": "INFO", "message": "переход_на_следующую_страницу_выполнен", "logger": "scraper", "trace_id": "b7cd3a74d66b"}
+{"timestamp": "2026-06-01T08:18:52.452336+00:00", "level": "INFO", "message": "парсинг_страницы", "logger": "scraper", "trace_id": "b7cd3a74d66b", "context": {"url_index": 1, "page": 20, "remaining": 11}}
+{"timestamp": "2026-06-01T08:18:59.993029+00:00", "level": "INFO", "message": "страница_обработана", "logger": "scraper", "trace_id": "b7cd3a74d66b", "context": {"url_index": 1, "page": 20, "found": 48, "total_so_far": 976}}
+{"timestamp": "2026-06-01T08:19:01.364371+00:00", "level": "DEBUG", "message": "клик_далее_выполнен", "logger": "scraper", "trace_id": "b7cd3a74d66b"}
+{"timestamp": "2026-06-01T08:19:25.243003+00:00", "level": "INFO", "message": "страница_обработана", "logger": "scraper", "trace_id": "b7cd3a74d66b", "context": {"url_index": 1, "page": 20, "found": 48, "total_so_far": 942}}
+{"timestamp": "2026-06-01T08:19:26.525617+00:00", "level": "DEBUG", "message": "клик_далее_выполнен", "logger": "scraper", "trace_id": "b7cd3a74d66b"}
+{"timestamp": "2026-06-01T08:19:38.037374+00:00", "level": "INFO", "message": "переход_на_следующую_страницу_выполнен", "logger": "scraper", "trace_id": "b7cd3a74d66b"}
+{"timestamp": "2026-06-01T08:19:38.037795+00:00", "level": "INFO", "message": "парсинг_страницы", "logger": "scraper", "trace_id": "b7cd3a74d66b", "context": {"url_index": 1, "page": 21, "remaining": 10}}
+{"timestamp": "2026-06-01T08:20:01.970436+00:00", "level": "INFO", "message": "переход_на_следующую_страницу_выполнен", "logger": "scraper", "trace_id": "b7cd3a74d66b"}
+{"timestamp": "2026-06-01T08:20:01.970609+00:00", "level": "INFO", "message": "парсинг_страницы", "logger": "scraper", "trace_id": "b7cd3a74d66b", "context": {"url_index": 1, "page": 21, "remaining": 10}}
+{"timestamp": "2026-06-01T08:20:16.056708+00:00", "level": "INFO", "message": "страница_обработана", "logger": "scraper", "trace_id": "b7cd3a74d66b", "context": {"url_index": 1, "page": 21, "found": 49, "total_so_far": 1025}}
+{"timestamp": "2026-06-01T08:20:17.401228+00:00", "level": "DEBUG", "message": "клик_далее_выполнен", "logger": "scraper", "trace_id": "b7cd3a74d66b"}
+{"timestamp": "2026-06-01T08:20:37.873399+00:00", "level": "INFO", "message": "страница_обработана", "logger": "scraper", "trace_id": "b7cd3a74d66b", "context": {"url_index": 1, "page": 21, "found": 47, "total_so_far": 989}}
+{"timestamp": "2026-06-01T08:20:39.113486+00:00", "level": "DEBUG", "message": "клик_далее_выполнен", "logger": "scraper", "trace_id": "b7cd3a74d66b"}
+{"timestamp": "2026-06-01T08:20:53.168399+00:00", "level": "INFO", "message": "переход_на_следующую_страницу_выполнен", "logger": "scraper", "trace_id": "b7cd3a74d66b"}
+{"timestamp": "2026-06-01T08:20:53.169107+00:00", "level": "INFO", "message": "парсинг_страницы", "logger": "scraper", "trace_id": "b7cd3a74d66b", "context": {"url_index": 1, "page": 22, "remaining": 9}}
+{"timestamp": "2026-06-01T08:21:15.292298+00:00", "level": "INFO", "message": "переход_на_следующую_страницу_выполнен", "logger": "scraper", "trace_id": "b7cd3a74d66b"}
+{"timestamp": "2026-06-01T08:21:15.293553+00:00", "level": "INFO", "message": "парсинг_страницы", "logger": "scraper", "trace_id": "b7cd3a74d66b", "context": {"url_index": 1, "page": 22, "remaining": 9}}
+{"timestamp": "2026-06-01T08:21:24.094542+00:00", "level": "INFO", "message": "страница_обработана", "logger": "scraper", "trace_id": "b7cd3a74d66b", "context": {"url_index": 1, "page": 22, "found": 46, "total_so_far": 1071}}
+{"timestamp": "2026-06-01T08:21:25.296184+00:00", "level": "DEBUG", "message": "клик_далее_выполнен", "logger": "scraper", "trace_id": "b7cd3a74d66b"}
+{"timestamp": "2026-06-01T08:21:47.280800+00:00", "level": "INFO", "message": "страница_обработана", "logger": "scraper", "trace_id": "b7cd3a74d66b", "context": {"url_index": 1, "page": 22, "found": 48, "total_so_far": 1037}}
+{"timestamp": "2026-06-01T08:21:48.486528+00:00", "level": "DEBUG", "message": "клик_далее_выполнен", "logger": "scraper", "trace_id": "b7cd3a74d66b"}
+{"timestamp": "2026-06-01T08:22:01.569524+00:00", "level": "INFO", "message": "переход_на_следующую_страницу_выполнен", "logger": "scraper", "trace_id": "b7cd3a74d66b"}
+{"timestamp": "2026-06-01T08:22:01.570229+00:00", "level": "INFO", "message": "парсинг_страницы", "logger": "scraper", "trace_id": "b7cd3a74d66b", "context": {"url_index": 1, "page": 23, "remaining": 8}}
+{"timestamp": "2026-06-01T08:22:25.188364+00:00", "level": "INFO", "message": "переход_на_следующую_страницу_выполнен", "logger": "scraper", "trace_id": "b7cd3a74d66b"}
+{"timestamp": "2026-06-01T08:22:25.188677+00:00", "level": "INFO", "message": "парсинг_страницы", "logger": "scraper", "trace_id": "b7cd3a74d66b", "context": {"url_index": 1, "page": 23, "remaining": 8}}
+{"timestamp": "2026-06-01T08:22:34.562165+00:00", "level": "INFO", "message": "страница_обработана", "logger": "scraper", "trace_id": "b7cd3a74d66b", "context": {"url_index": 1, "page": 23, "found": 49, "total_so_far": 1120}}
+{"timestamp": "2026-06-01T08:22:35.879526+00:00", "level": "DEBUG", "message": "клик_далее_выполнен", "logger": "scraper", "trace_id": "b7cd3a74d66b"}
+{"timestamp": "2026-06-01T08:22:56.763540+00:00", "level": "INFO", "message": "страница_обработана", "logger": "scraper", "trace_id": "b7cd3a74d66b", "context": {"url_index": 1, "page": 23, "found": 48, "total_so_far": 1085}}
+{"timestamp": "2026-06-01T08:22:58.062087+00:00", "level": "DEBUG", "message": "клик_далее_выполнен", "logger": "scraper", "trace_id": "b7cd3a74d66b"}
+{"timestamp": "2026-06-01T08:23:10.987860+00:00", "level": "INFO", "message": "переход_на_следующую_страницу_выполнен", "logger": "scraper", "trace_id": "b7cd3a74d66b"}
+{"timestamp": "2026-06-01T08:23:10.988041+00:00", "level": "INFO", "message": "парсинг_страницы", "logger": "scraper", "trace_id": "b7cd3a74d66b", "context": {"url_index": 1, "page": 24, "remaining": 7}}
+{"timestamp": "2026-06-01T08:23:34.569852+00:00", "level": "INFO", "message": "переход_на_следующую_страницу_выполнен", "logger": "scraper", "trace_id": "b7cd3a74d66b"}
+{"timestamp": "2026-06-01T08:23:34.570144+00:00", "level": "INFO", "message": "парсинг_страницы", "logger": "scraper", "trace_id": "b7cd3a74d66b", "context": {"url_index": 1, "page": 24, "remaining": 7}}
+{"timestamp": "2026-06-01T08:23:43.200180+00:00", "level": "INFO", "message": "страница_обработана", "logger": "scraper", "trace_id": "b7cd3a74d66b", "context": {"url_index": 1, "page": 24, "found": 49, "total_so_far": 1169}}
+{"timestamp": "2026-06-01T08:23:44.501867+00:00", "level": "DEBUG", "message": "клик_далее_выполнен", "logger": "scraper", "trace_id": "b7cd3a74d66b"}
+{"timestamp": "2026-06-01T08:24:05.952740+00:00", "level": "INFO", "message": "страница_обработана", "logger": "scraper", "trace_id": "b7cd3a74d66b", "context": {"url_index": 1, "page": 24, "found": 44, "total_so_far": 1129}}
+{"timestamp": "2026-06-01T08:24:07.255540+00:00", "level": "DEBUG", "message": "клик_далее_выполнен", "logger": "scraper", "trace_id": "b7cd3a74d66b"}
+{"timestamp": "2026-06-01T08:24:19.742570+00:00", "level": "INFO", "message": "переход_на_следующую_страницу_выполнен", "logger": "scraper", "trace_id": "b7cd3a74d66b"}
+{"timestamp": "2026-06-01T08:24:19.743206+00:00", "level": "INFO", "message": "парсинг_страницы", "logger": "scraper", "trace_id": "b7cd3a74d66b", "context": {"url_index": 1, "page": 25, "remaining": 6}}
+{"timestamp": "2026-06-01T08:24:43.797924+00:00", "level": "INFO", "message": "переход_на_следующую_страницу_выполнен", "logger": "scraper", "trace_id": "b7cd3a74d66b"}
+{"timestamp": "2026-06-01T08:24:43.798053+00:00", "level": "INFO", "message": "парсинг_страницы", "logger": "scraper", "trace_id": "b7cd3a74d66b", "context": {"url_index": 1, "page": 25, "remaining": 6}}
+{"timestamp": "2026-06-01T08:24:52.463159+00:00", "level": "INFO", "message": "страница_обработана", "logger": "scraper", "trace_id": "b7cd3a74d66b", "context": {"url_index": 1, "page": 25, "found": 49, "total_so_far": 1218}}
+{"timestamp": "2026-06-01T08:24:53.713789+00:00", "level": "DEBUG", "message": "клик_далее_выполнен", "logger": "scraper", "trace_id": "b7cd3a74d66b"}
+{"timestamp": "2026-06-01T08:25:16.311529+00:00", "level": "INFO", "message": "страница_обработана", "logger": "scraper", "trace_id": "b7cd3a74d66b", "context": {"url_index": 1, "page": 25, "found": 48, "total_so_far": 1177}}
+{"timestamp": "2026-06-01T08:25:17.596191+00:00", "level": "DEBUG", "message": "клик_далее_выполнен", "logger": "scraper", "trace_id": "b7cd3a74d66b"}
+{"timestamp": "2026-06-01T08:25:31.612515+00:00", "level": "INFO", "message": "переход_на_следующую_страницу_выполнен", "logger": "scraper", "trace_id": "b7cd3a74d66b"}
+{"timestamp": "2026-06-01T08:25:31.612953+00:00", "level": "INFO", "message": "парсинг_страницы", "logger": "scraper", "trace_id": "b7cd3a74d66b", "context": {"url_index": 1, "page": 26, "remaining": 5}}
+{"timestamp": "2026-06-01T08:25:53.980478+00:00", "level": "INFO", "message": "переход_на_следующую_страницу_выполнен", "logger": "scraper", "trace_id": "b7cd3a74d66b"}
+{"timestamp": "2026-06-01T08:25:53.981316+00:00", "level": "INFO", "message": "парсинг_страницы", "logger": "scraper", "trace_id": "b7cd3a74d66b", "context": {"url_index": 1, "page": 26, "remaining": 5}}
+{"timestamp": "2026-06-01T08:26:01.031479+00:00", "level": "INFO", "message": "страница_обработана", "logger": "scraper", "trace_id": "b7cd3a74d66b", "context": {"url_index": 1, "page": 26, "found": 48, "total_so_far": 1266}}
+{"timestamp": "2026-06-01T08:26:02.347787+00:00", "level": "DEBUG", "message": "клик_далее_выполнен", "logger": "scraper", "trace_id": "b7cd3a74d66b"}
+{"timestamp": "2026-06-01T08:26:26.139094+00:00", "level": "INFO", "message": "страница_обработана", "logger": "scraper", "trace_id": "b7cd3a74d66b", "context": {"url_index": 1, "page": 26, "found": 48, "total_so_far": 1225}}
+{"timestamp": "2026-06-01T08:26:27.358745+00:00", "level": "DEBUG", "message": "клик_далее_выполнен", "logger": "scraper", "trace_id": "b7cd3a74d66b"}
+{"timestamp": "2026-06-01T08:26:37.570423+00:00", "level": "INFO", "message": "переход_на_следующую_страницу_выполнен", "logger": "scraper", "trace_id": "b7cd3a74d66b"}
+{"timestamp": "2026-06-01T08:26:37.570940+00:00", "level": "INFO", "message": "парсинг_страницы", "logger": "scraper", "trace_id": "b7cd3a74d66b", "context": {"url_index": 1, "page": 27, "remaining": 4}}
+{"timestamp": "2026-06-01T08:27:05.220310+00:00", "level": "INFO", "message": "переход_на_следующую_страницу_выполнен", "logger": "scraper", "trace_id": "b7cd3a74d66b"}
+{"timestamp": "2026-06-01T08:27:05.220827+00:00", "level": "INFO", "message": "парсинг_страницы", "logger": "scraper", "trace_id": "b7cd3a74d66b", "context": {"url_index": 1, "page": 27, "remaining": 4}}
+{"timestamp": "2026-06-01T08:27:13.929992+00:00", "level": "INFO", "message": "страница_обработана", "logger": "scraper", "trace_id": "b7cd3a74d66b", "context": {"url_index": 1, "page": 27, "found": 49, "total_so_far": 1315}}
+{"timestamp": "2026-06-01T08:27:15.198401+00:00", "level": "DEBUG", "message": "клик_далее_выполнен", "logger": "scraper", "trace_id": "b7cd3a74d66b"}
+{"timestamp": "2026-06-01T08:27:34.805933+00:00", "level": "INFO", "message": "страница_обработана", "logger": "scraper", "trace_id": "b7cd3a74d66b", "context": {"url_index": 1, "page": 27, "found": 44, "total_so_far": 1269}}
+{"timestamp": "2026-06-01T08:27:36.104822+00:00", "level": "DEBUG", "message": "клик_далее_выполнен", "logger": "scraper", "trace_id": "b7cd3a74d66b"}
+{"timestamp": "2026-06-01T08:27:51.161153+00:00", "level": "INFO", "message": "переход_на_следующую_страницу_выполнен", "logger": "scraper", "trace_id": "b7cd3a74d66b"}
+{"timestamp": "2026-06-01T08:27:51.161343+00:00", "level": "INFO", "message": "парсинг_страницы", "logger": "scraper", "trace_id": "b7cd3a74d66b", "context": {"url_index": 1, "page": 28, "remaining": 3}}
+{"timestamp": "2026-06-01T08:28:12.431558+00:00", "level": "INFO", "message": "переход_на_следующую_страницу_выполнен", "logger": "scraper", "trace_id": "b7cd3a74d66b"}
+{"timestamp": "2026-06-01T08:28:12.432238+00:00", "level": "INFO", "message": "парсинг_страницы", "logger": "scraper", "trace_id": "b7cd3a74d66b", "context": {"url_index": 1, "page": 28, "remaining": 3}}
+{"timestamp": "2026-06-01T08:28:21.463605+00:00", "level": "INFO", "message": "страница_обработана", "logger": "scraper", "trace_id": "b7cd3a74d66b", "context": {"url_index": 1, "page": 28, "found": 45, "total_so_far": 1360}}
+{"timestamp": "2026-06-01T08:28:22.713250+00:00", "level": "DEBUG", "message": "клик_далее_выполнен", "logger": "scraper", "trace_id": "b7cd3a74d66b"}
+{"timestamp": "2026-06-01T08:28:44.443413+00:00", "level": "INFO", "message": "страница_обработана", "logger": "scraper", "trace_id": "b7cd3a74d66b", "context": {"url_index": 1, "page": 28, "found": 48, "total_so_far": 1317}}
+{"timestamp": "2026-06-01T08:28:45.870084+00:00", "level": "DEBUG", "message": "клик_далее_выполнен", "logger": "scraper", "trace_id": "b7cd3a74d66b"}
+{"timestamp": "2026-06-01T08:28:59.677859+00:00", "level": "INFO", "message": "переход_на_следующую_страницу_выполнен", "logger": "scraper", "trace_id": "b7cd3a74d66b"}
+{"timestamp": "2026-06-01T08:28:59.678111+00:00", "level": "INFO", "message": "парсинг_страницы", "logger": "scraper", "trace_id": "b7cd3a74d66b", "context": {"url_index": 1, "page": 29, "remaining": 2}}
+{"timestamp": "2026-06-01T08:29:21.690731+00:00", "level": "INFO", "message": "переход_на_следующую_страницу_выполнен", "logger": "scraper", "trace_id": "b7cd3a74d66b"}
+{"timestamp": "2026-06-01T08:29:21.690868+00:00", "level": "INFO", "message": "парсинг_страницы", "logger": "scraper", "trace_id": "b7cd3a74d66b", "context": {"url_index": 1, "page": 29, "remaining": 2}}
+{"timestamp": "2026-06-01T08:29:33.832795+00:00", "level": "INFO", "message": "страница_обработана", "logger": "scraper", "trace_id": "b7cd3a74d66b", "context": {"url_index": 1, "page": 29, "found": 50, "total_so_far": 1410}}
+{"timestamp": "2026-06-01T08:29:35.117457+00:00", "level": "DEBUG", "message": "клик_далее_выполнен", "logger": "scraper", "trace_id": "b7cd3a74d66b"}
+{"timestamp": "2026-06-01T08:29:52.348694+00:00", "level": "INFO", "message": "страница_обработана", "logger": "scraper", "trace_id": "b7cd3a74d66b", "context": {"url_index": 1, "page": 29, "found": 45, "total_so_far": 1362}}
+{"timestamp": "2026-06-01T08:29:53.563837+00:00", "level": "DEBUG", "message": "клик_далее_выполнен", "logger": "scraper", "trace_id": "b7cd3a74d66b"}
+{"timestamp": "2026-06-01T08:30:12.385862+00:00", "level": "INFO", "message": "переход_на_следующую_страницу_выполнен", "logger": "scraper", "trace_id": "b7cd3a74d66b"}
+{"timestamp": "2026-06-01T08:30:12.385987+00:00", "level": "INFO", "message": "парсинг_страницы", "logger": "scraper", "trace_id": "b7cd3a74d66b", "context": {"url_index": 1, "page": 30, "remaining": 1}}
+{"timestamp": "2026-06-01T08:30:29.194031+00:00", "level": "INFO", "message": "переход_на_следующую_страницу_выполнен", "logger": "scraper", "trace_id": "b7cd3a74d66b"}
+{"timestamp": "2026-06-01T08:30:29.194423+00:00", "level": "INFO", "message": "парсинг_страницы", "logger": "scraper", "trace_id": "b7cd3a74d66b", "context": {"url_index": 1, "page": 30, "remaining": 1}}
+{"timestamp": "2026-06-01T08:30:47.744979+00:00", "level": "INFO", "message": "страница_обработана", "logger": "scraper", "trace_id": "b7cd3a74d66b", "context": {"url_index": 1, "page": 30, "found": 50, "total_so_far": 1460}}
+{"timestamp": "2026-06-01T08:30:47.745258+00:00", "level": "INFO", "message": "перезагрузка_контекста", "logger": "scraper", "trace_id": "b7cd3a74d66b", "context": {"url_index": 1, "pages_processed": 30, "next_batch_start": 31}}
+{"timestamp": "2026-06-01T08:30:47.745452+00:00", "level": "DEBUG", "message": "навигация", "logger": "browser", "trace_id": "b7cd3a74d66b", "context": {"path": "https://sutochno.ru/front/searchapp/search?guests_adults=2&term=%D0%A1%D0%B0%D0%BD%D0%BA%D1%82-%D0%9F%D0%B5%D1%82%D0%B5%D1%80%D0%B1%D1%83%D1%80%D0%B3&id=397367&type=city&SW.lat=59.78064105467368&SW.lng=30.035056815429677&NE.lat=60.05472305920819&NE.lng=30.57476018457031&price_per=1&is_apartment=1&price=2000,3000"}}
+{"timestamp": "2026-06-01T08:30:59.880397+00:00", "level": "INFO", "message": "страница_обработана", "logger": "scraper", "trace_id": "b7cd3a74d66b", "context": {"url_index": 1, "page": 30, "found": 46, "total_so_far": 1408}}
+{"timestamp": "2026-06-01T08:30:59.881319+00:00", "level": "INFO", "message": "перезагрузка_контекста", "logger": "scraper", "trace_id": "b7cd3a74d66b", "context": {"url_index": 1, "pages_processed": 30, "next_batch_start": 31}}
+{"timestamp": "2026-06-01T08:30:59.881984+00:00", "level": "DEBUG", "message": "навигация", "logger": "browser", "trace_id": "b7cd3a74d66b", "context": {"path": "https://sutochno.ru/front/searchapp/search?guests_adults=2&term=%D0%A1%D0%B0%D0%BD%D0%BA%D1%82-%D0%9F%D0%B5%D1%82%D0%B5%D1%80%D0%B1%D1%83%D1%80%D0%B3&id=397367&type=city&SW.lat=59.78064105467368&SW.lng=30.035056815429677&NE.lat=60.05472305920819&NE.lng=30.57476018457031&price_per=1&is_apartment=1&price=3000,4000"}}
+{"timestamp": "2026-06-01T08:30:59.954279+00:00", "level": "INFO", "message": "быстрая_перемотка", "logger": "scraper", "trace_id": "b7cd3a74d66b", "context": {"url_index": 1, "target_page": 31, "pages_to_skip": 30}}
+{"timestamp": "2026-06-01T08:31:13.296643+00:00", "level": "INFO", "message": "быстрая_перемотка", "logger": "scraper", "trace_id": "b7cd3a74d66b", "context": {"url_index": 1, "target_page": 31, "pages_to_skip": 30}}
+{"timestamp": "2026-06-01T08:36:13.402420+00:00", "level": "DEBUG", "message": "перемотка_прогресс", "logger": "scraper", "trace_id": "b7cd3a74d66b", "context": {"skipped": 10, "target": 30}}
+{"timestamp": "2026-06-01T08:36:24.955881+00:00", "level": "DEBUG", "message": "перемотка_прогресс", "logger": "scraper", "trace_id": "b7cd3a74d66b", "context": {"skipped": 10, "target": 30}}
+{"timestamp": "2026-06-01T08:41:27.364870+00:00", "level": "DEBUG", "message": "перемотка_прогресс", "logger": "scraper", "trace_id": "b7cd3a74d66b", "context": {"skipped": 20, "target": 30}}
+{"timestamp": "2026-06-01T08:41:36.781067+00:00", "level": "DEBUG", "message": "перемотка_прогресс", "logger": "scraper", "trace_id": "b7cd3a74d66b", "context": {"skipped": 20, "target": 30}}
+{"timestamp": "2026-06-01T08:45:38.503124+00:00", "level": "INFO", "message": "приложение_запущено", "logger": "main", "trace_id": "8c1245cf8f0f", "context": {"step": "init", "search_urls_count": 3, "max_pages": 0}}
+{"timestamp": "2026-06-01T08:45:38.504145+00:00", "level": "INFO", "message": "база_данных_инициализирована", "logger": "repository", "trace_id": "8c1245cf8f0f", "context": {"path": "data/sutochno_listings.db"}}
+{"timestamp": "2026-06-01T08:45:38.504695+00:00", "level": "INFO", "message": "таблицы_снимков_инициализированы", "logger": "repository.snapshot", "trace_id": "8c1245cf8f0f"}
+{"timestamp": "2026-06-01T08:45:38.504797+00:00", "level": "INFO", "message": "режим_прокси_включён", "logger": "main", "trace_id": "8c1245cf8f0f", "context": {"step": "proxy_check"}}
+{"timestamp": "2026-06-01T08:45:38.505090+00:00", "level": "INFO", "message": "прокси_загружены", "logger": "proxy", "trace_id": "8c1245cf8f0f", "context": {"total": 8, "path": "data/proxies.txt"}}
+{"timestamp": "2026-06-01T08:45:38.505180+00:00", "level": "INFO", "message": "начало_проверки_прокси", "logger": "proxy", "trace_id": "8c1245cf8f0f", "context": {"total": 8}}
+{"timestamp": "2026-06-01T08:46:17.710195+00:00", "level": "INFO", "message": "прокси_работает", "logger": "proxy", "trace_id": "8c1245cf8f0f", "context": {"step": "212.81.39.56:9698:MbaGHb:***"}}
+{"timestamp": "2026-06-01T08:46:17.710942+00:00", "level": "INFO", "message": "прокси_работает", "logger": "proxy", "trace_id": "8c1245cf8f0f", "context": {"step": "212.81.38.3:9423:MbaGHb:***"}}
+{"timestamp": "2026-06-01T08:46:17.712091+00:00", "level": "INFO", "message": "прокси_работает", "logger": "proxy", "trace_id": "8c1245cf8f0f", "context": {"step": "212.81.39.236:9778:MbaGHb:***"}}
+{"timestamp": "2026-06-01T08:46:17.712691+00:00", "level": "INFO", "message": "прокси_работает", "logger": "proxy", "trace_id": "8c1245cf8f0f", "context": {"step": "212.81.39.42:9852:MbaGHb:***"}}
+{"timestamp": "2026-06-01T08:46:17.712994+00:00", "level": "INFO", "message": "прокси_работает", "logger": "proxy", "trace_id": "8c1245cf8f0f", "context": {"step": "212.81.37.186:9517:MbaGHb:***"}}
+{"timestamp": "2026-06-01T08:46:17.713409+00:00", "level": "INFO", "message": "прокси_работает", "logger": "proxy", "trace_id": "8c1245cf8f0f", "context": {"step": "212.81.39.54:9253:MbaGHb:***"}}
+{"timestamp": "2026-06-01T08:46:17.713898+00:00", "level": "INFO", "message": "прокси_работает", "logger": "proxy", "trace_id": "8c1245cf8f0f", "context": {"step": "212.81.36.74:9566:MbaGHb:***"}}
+{"timestamp": "2026-06-01T08:46:17.714205+00:00", "level": "INFO", "message": "прокси_работает", "logger": "proxy", "trace_id": "8c1245cf8f0f", "context": {"step": "212.81.36.222:9912:MbaGHb:***"}}
+{"timestamp": "2026-06-01T08:46:17.714510+00:00", "level": "INFO", "message": "проверка_прокси_завершена", "logger": "proxy", "trace_id": "8c1245cf8f0f", "context": {"total": 8, "step": "из 8"}}
+{"timestamp": "2026-06-01T08:46:17.714918+00:00", "level": "INFO", "message": "прокси_готовы", "logger": "main", "trace_id": "8c1245cf8f0f", "context": {"total": 8, "step": "proxy_check"}}
+{"timestamp": "2026-06-01T08:46:17.715404+00:00", "level": "INFO", "message": "запуск_браузера", "logger": "browser", "trace_id": "8c1245cf8f0f", "context": {"step": "без прокси"}}
+{"timestamp": "2026-06-01T08:46:18.397428+00:00", "level": "INFO", "message": "браузер_запущен", "logger": "browser", "trace_id": "8c1245cf8f0f", "context": {"step": "без прокси"}}
+{"timestamp": "2026-06-01T08:46:18.397907+00:00", "level": "INFO", "message": "начало_парсинга_каталога", "logger": "main", "trace_id": "8c1245cf8f0f", "context": {"step": "scraping", "urls_count": 3, "mode": "параллельный"}}
+{"timestamp": "2026-06-01T08:46:18.398280+00:00", "level": "INFO", "message": "начало_парсинга_каталога", "logger": "scraper", "trace_id": "8c1245cf8f0f", "context": {"urls_count": 3, "max_pages": 999}}
+{"timestamp": "2026-06-01T08:46:18.398593+00:00", "level": "INFO", "message": "параллельный_парсинг_каталога", "logger": "scraper", "trace_id": "8c1245cf8f0f", "context": {"workers": 3, "urls": 3, "proxies": 8}}
+{"timestamp": "2026-06-01T08:46:18.399089+00:00", "level": "INFO", "message": "запуск_браузера", "logger": "browser", "trace_id": "8c1245cf8f0f", "context": {"step": "212.81.39.56:9698:MbaGHb:***"}}
+{"timestamp": "2026-06-01T08:46:18.399514+00:00", "level": "INFO", "message": "запуск_браузера", "logger": "browser", "trace_id": "8c1245cf8f0f", "context": {"step": "212.81.38.3:9423:MbaGHb:***"}}
+{"timestamp": "2026-06-01T08:46:18.399930+00:00", "level": "INFO", "message": "запуск_браузера", "logger": "browser", "trace_id": "8c1245cf8f0f", "context": {"step": "212.81.39.236:9778:MbaGHb:***"}}
+{"timestamp": "2026-06-01T08:46:19.024650+00:00", "level": "INFO", "message": "браузер_запущен", "logger": "browser", "trace_id": "8c1245cf8f0f", "context": {"step": "212.81.39.236:9778:MbaGHb:***"}}
+{"timestamp": "2026-06-01T08:46:19.025869+00:00", "level": "INFO", "message": "воркер_начало_обхода_ссылки", "logger": "scraper", "trace_id": "8c1245cf8f0f", "context": {"worker": 2, "url_index": 1, "remaining_pages": 333, "url": "https://sutochno.ru/front/searchapp/search?guests_adults=2&term=%D0%A1%D0%B0%D0%..."}}
+{"timestamp": "2026-06-01T08:46:19.026899+00:00", "level": "DEBUG", "message": "навигация", "logger": "browser", "trace_id": "8c1245cf8f0f", "context": {"path": "https://sutochno.ru/front/searchapp/search?guests_adults=2&term=%D0%A1%D0%B0%D0%BD%D0%BA%D1%82-%D0%9F%D0%B5%D1%82%D0%B5%D1%80%D0%B1%D1%83%D1%80%D0%B3&id=397367&type=city&SW.lat=59.78064105467368&SW.lng=30.035056815429677&NE.lat=60.05472305920819&NE.lng=30.57476018457031&price_per=1&is_apartment=1&price=3000,4000"}}
+{"timestamp": "2026-06-01T08:46:19.078989+00:00", "level": "INFO", "message": "браузер_запущен", "logger": "browser", "trace_id": "8c1245cf8f0f", "context": {"step": "212.81.38.3:9423:MbaGHb:***"}}
+{"timestamp": "2026-06-01T08:46:19.079526+00:00", "level": "INFO", "message": "воркер_начало_обхода_ссылки", "logger": "scraper", "trace_id": "8c1245cf8f0f", "context": {"worker": 1, "url_index": 1, "remaining_pages": 333, "url": "https://sutochno.ru/front/searchapp/search?guests_adults=2&term=%D0%A1%D0%B0%D0%..."}}
+{"timestamp": "2026-06-01T08:46:19.079932+00:00", "level": "DEBUG", "message": "навигация", "logger": "browser", "trace_id": "8c1245cf8f0f", "context": {"path": "https://sutochno.ru/front/searchapp/search?guests_adults=2&term=%D0%A1%D0%B0%D0%BD%D0%BA%D1%82-%D0%9F%D0%B5%D1%82%D0%B5%D1%80%D0%B1%D1%83%D1%80%D0%B3&id=397367&type=city&SW.lat=59.78064105467368&SW.lng=30.035056815429677&NE.lat=60.05472305920819&NE.lng=30.57476018457031&price_per=1&is_apartment=1&price=2000,3000"}}
+{"timestamp": "2026-06-01T08:46:19.184752+00:00", "level": "INFO", "message": "браузер_запущен", "logger": "browser", "trace_id": "8c1245cf8f0f", "context": {"step": "212.81.39.56:9698:MbaGHb:***"}}
+{"timestamp": "2026-06-01T08:46:19.185383+00:00", "level": "INFO", "message": "воркер_начало_обхода_ссылки", "logger": "scraper", "trace_id": "8c1245cf8f0f", "context": {"worker": 0, "url_index": 1, "remaining_pages": 333, "url": "https://sutochno.ru/front/searchapp/search?guests_adults=2&term=%D0%A1%D0%B0%D0%..."}}
+{"timestamp": "2026-06-01T08:46:19.185738+00:00", "level": "DEBUG", "message": "навигация", "logger": "browser", "trace_id": "8c1245cf8f0f", "context": {"path": "https://sutochno.ru/front/searchapp/search?guests_adults=2&term=%D0%A1%D0%B0%D0%BD%D0%BA%D1%82-%D0%9F%D0%B5%D1%82%D0%B5%D1%80%D0%B1%D1%83%D1%80%D0%B3&id=397367&type=city&SW.lat=59.78064105467368&SW.lng=30.035056815429677&NE.lat=60.05472305920819&NE.lng=30.57476018457031&price_per=1&is_apartment=1&price=,2000"}}
+{"timestamp": "2026-06-01T08:46:39.298448+00:00", "level": "INFO", "message": "парсинг_страницы", "logger": "scraper", "trace_id": "8c1245cf8f0f", "context": {"url_index": 1, "page": 1, "remaining": 333}}
+{"timestamp": "2026-06-01T08:46:39.506752+00:00", "level": "INFO", "message": "парсинг_страницы", "logger": "scraper", "trace_id": "8c1245cf8f0f", "context": {"url_index": 1, "page": 1, "remaining": 333}}
+{"timestamp": "2026-06-01T08:46:39.532595+00:00", "level": "INFO", "message": "парсинг_страницы", "logger": "scraper", "trace_id": "8c1245cf8f0f", "context": {"url_index": 1, "page": 1, "remaining": 333}}
+{"timestamp": "2026-06-01T08:47:16.515381+00:00", "level": "INFO", "message": "страница_обработана", "logger": "scraper", "trace_id": "8c1245cf8f0f", "context": {"url_index": 1, "page": 1, "found": 49, "total_so_far": 49}}
+{"timestamp": "2026-06-01T08:47:16.585078+00:00", "level": "DEBUG", "message": "dom_очищен", "logger": "scraper", "trace_id": "8c1245cf8f0f", "context": {"removed_elements": 50}}
+{"timestamp": "2026-06-01T08:47:17.904650+00:00", "level": "DEBUG", "message": "клик_далее_выполнен", "logger": "scraper", "trace_id": "8c1245cf8f0f"}
+{"timestamp": "2026-06-01T08:47:18.167287+00:00", "level": "INFO", "message": "страница_обработана", "logger": "scraper", "trace_id": "8c1245cf8f0f", "context": {"url_index": 1, "page": 1, "found": 47, "total_so_far": 47}}
+{"timestamp": "2026-06-01T08:47:18.254026+00:00", "level": "DEBUG", "message": "dom_очищен", "logger": "scraper", "trace_id": "8c1245cf8f0f", "context": {"removed_elements": 50}}
+{"timestamp": "2026-06-01T08:47:19.549928+00:00", "level": "INFO", "message": "страница_обработана", "logger": "scraper", "trace_id": "8c1245cf8f0f", "context": {"url_index": 1, "page": 1, "found": 50, "total_so_far": 50}}
+{"timestamp": "2026-06-01T08:47:19.591660+00:00", "level": "DEBUG", "message": "клик_далее_выполнен", "logger": "scraper", "trace_id": "8c1245cf8f0f"}
+{"timestamp": "2026-06-01T08:47:19.658247+00:00", "level": "DEBUG", "message": "dom_очищен", "logger": "scraper", "trace_id": "8c1245cf8f0f", "context": {"removed_elements": 50}}
+{"timestamp": "2026-06-01T08:47:20.958364+00:00", "level": "DEBUG", "message": "клик_далее_выполнен", "logger": "scraper", "trace_id": "8c1245cf8f0f"}
+{"timestamp": "2026-06-01T08:47:25.915107+00:00", "level": "INFO", "message": "переход_на_следующую_страницу_выполнен", "logger": "scraper", "trace_id": "8c1245cf8f0f"}
+{"timestamp": "2026-06-01T08:47:25.915727+00:00", "level": "INFO", "message": "парсинг_страницы", "logger": "scraper", "trace_id": "8c1245cf8f0f", "context": {"url_index": 1, "page": 2, "remaining": 332}}
+{"timestamp": "2026-06-01T08:47:53.527301+00:00", "level": "INFO", "message": "переход_на_следующую_страницу_выполнен", "logger": "scraper", "trace_id": "8c1245cf8f0f"}
+{"timestamp": "2026-06-01T08:47:53.527546+00:00", "level": "INFO", "message": "парсинг_страницы", "logger": "scraper", "trace_id": "8c1245cf8f0f", "context": {"url_index": 1, "page": 2, "remaining": 332}}
+{"timestamp": "2026-06-01T08:47:57.155492+00:00", "level": "INFO", "message": "переход_на_следующую_страницу_выполнен", "logger": "scraper", "trace_id": "8c1245cf8f0f"}
+{"timestamp": "2026-06-01T08:47:57.157694+00:00", "level": "INFO", "message": "парсинг_страницы", "logger": "scraper", "trace_id": "8c1245cf8f0f", "context": {"url_index": 1, "page": 2, "remaining": 332}}
+{"timestamp": "2026-06-01T08:48:04.037616+00:00", "level": "INFO", "message": "страница_обработана", "logger": "scraper", "trace_id": "8c1245cf8f0f", "context": {"url_index": 1, "page": 2, "found": 50, "total_so_far": 97}}
+{"timestamp": "2026-06-01T08:48:04.230309+00:00", "level": "DEBUG", "message": "dom_очищен", "logger": "scraper", "trace_id": "8c1245cf8f0f", "context": {"removed_elements": 50}}
+{"timestamp": "2026-06-01T08:48:05.529290+00:00", "level": "DEBUG", "message": "клик_далее_выполнен", "logger": "scraper", "trace_id": "8c1245cf8f0f"}
+{"timestamp": "2026-06-01T08:48:28.637315+00:00", "level": "INFO", "message": "страница_обработана", "logger": "scraper", "trace_id": "8c1245cf8f0f", "context": {"url_index": 1, "page": 2, "found": 48, "total_so_far": 97}}
+{"timestamp": "2026-06-01T08:48:28.722004+00:00", "level": "DEBUG", "message": "dom_очищен", "logger": "scraper", "trace_id": "8c1245cf8f0f", "context": {"removed_elements": 50}}
+{"timestamp": "2026-06-01T08:48:29.963103+00:00", "level": "DEBUG", "message": "клик_далее_выполнен", "logger": "scraper", "trace_id": "8c1245cf8f0f"}
+{"timestamp": "2026-06-01T08:48:35.470192+00:00", "level": "INFO", "message": "страница_обработана", "logger": "scraper", "trace_id": "8c1245cf8f0f", "context": {"url_index": 1, "page": 2, "found": 50, "total_so_far": 100}}
+{"timestamp": "2026-06-01T08:48:35.549309+00:00", "level": "DEBUG", "message": "dom_очищен", "logger": "scraper", "trace_id": "8c1245cf8f0f", "context": {"removed_elements": 50}}
+{"timestamp": "2026-06-01T08:48:36.796912+00:00", "level": "DEBUG", "message": "клик_далее_выполнен", "logger": "scraper", "trace_id": "8c1245cf8f0f"}
+{"timestamp": "2026-06-01T08:48:42.611600+00:00", "level": "INFO", "message": "переход_на_следующую_страницу_выполнен", "logger": "scraper", "trace_id": "8c1245cf8f0f"}
+{"timestamp": "2026-06-01T08:48:42.611837+00:00", "level": "INFO", "message": "парсинг_страницы", "logger": "scraper", "trace_id": "8c1245cf8f0f", "context": {"url_index": 1, "page": 3, "remaining": 331}}
+{"timestamp": "2026-06-01T08:49:06.879327+00:00", "level": "INFO", "message": "переход_на_следующую_страницу_выполнен", "logger": "scraper", "trace_id": "8c1245cf8f0f"}
+{"timestamp": "2026-06-01T08:49:06.879923+00:00", "level": "INFO", "message": "парсинг_страницы", "logger": "scraper", "trace_id": "8c1245cf8f0f", "context": {"url_index": 1, "page": 3, "remaining": 331}}
+{"timestamp": "2026-06-01T08:49:14.713525+00:00", "level": "INFO", "message": "переход_на_следующую_страницу_выполнен", "logger": "scraper", "trace_id": "8c1245cf8f0f"}
+{"timestamp": "2026-06-01T08:49:14.714040+00:00", "level": "INFO", "message": "парсинг_страницы", "logger": "scraper", "trace_id": "8c1245cf8f0f", "context": {"url_index": 1, "page": 3, "remaining": 331}}
+{"timestamp": "2026-06-01T08:49:19.147099+00:00", "level": "INFO", "message": "страница_обработана", "logger": "scraper", "trace_id": "8c1245cf8f0f", "context": {"url_index": 1, "page": 3, "found": 47, "total_so_far": 144}}
+{"timestamp": "2026-06-01T08:49:19.204642+00:00", "level": "DEBUG", "message": "dom_очищен", "logger": "scraper", "trace_id": "8c1245cf8f0f", "context": {"removed_elements": 50}}
+{"timestamp": "2026-06-01T08:49:20.412834+00:00", "level": "DEBUG", "message": "клик_далее_выполнен", "logger": "scraper", "trace_id": "8c1245cf8f0f"}
+{"timestamp": "2026-06-01T08:49:42.672630+00:00", "level": "INFO", "message": "страница_обработана", "logger": "scraper", "trace_id": "8c1245cf8f0f", "context": {"url_index": 1, "page": 3, "found": 49, "total_so_far": 146}}
+{"timestamp": "2026-06-01T08:49:42.738947+00:00", "level": "DEBUG", "message": "dom_очищен", "logger": "scraper", "trace_id": "8c1245cf8f0f", "context": {"removed_elements": 50}}
+{"timestamp": "2026-06-01T08:49:43.988692+00:00", "level": "DEBUG", "message": "клик_далее_выполнен", "logger": "scraper", "trace_id": "8c1245cf8f0f"}
+{"timestamp": "2026-06-01T08:49:48.669642+00:00", "level": "INFO", "message": "страница_обработана", "logger": "scraper", "trace_id": "8c1245cf8f0f", "context": {"url_index": 1, "page": 3, "found": 50, "total_so_far": 150}}
+{"timestamp": "2026-06-01T08:49:48.740567+00:00", "level": "DEBUG", "message": "dom_очищен", "logger": "scraper", "trace_id": "8c1245cf8f0f", "context": {"removed_elements": 50}}
+{"timestamp": "2026-06-01T08:49:49.974561+00:00", "level": "DEBUG", "message": "клик_далее_выполнен", "logger": "scraper", "trace_id": "8c1245cf8f0f"}
+{"timestamp": "2026-06-01T08:49:56.022642+00:00", "level": "INFO", "message": "переход_на_следующую_страницу_выполнен", "logger": "scraper", "trace_id": "8c1245cf8f0f"}
+{"timestamp": "2026-06-01T08:49:56.023753+00:00", "level": "INFO", "message": "парсинг_страницы", "logger": "scraper", "trace_id": "8c1245cf8f0f", "context": {"url_index": 1, "page": 4, "remaining": 330}}
+{"timestamp": "2026-06-01T08:50:19.239706+00:00", "level": "INFO", "message": "переход_на_следующую_страницу_выполнен", "logger": "scraper", "trace_id": "8c1245cf8f0f"}
+{"timestamp": "2026-06-01T08:50:19.240238+00:00", "level": "INFO", "message": "парсинг_страницы", "logger": "scraper", "trace_id": "8c1245cf8f0f", "context": {"url_index": 1, "page": 4, "remaining": 330}}
+{"timestamp": "2026-06-01T08:50:27.072719+00:00", "level": "INFO", "message": "переход_на_следующую_страницу_выполнен", "logger": "scraper", "trace_id": "8c1245cf8f0f"}
+{"timestamp": "2026-06-01T08:50:27.072989+00:00", "level": "INFO", "message": "парсинг_страницы", "logger": "scraper", "trace_id": "8c1245cf8f0f", "context": {"url_index": 1, "page": 4, "remaining": 330}}
+{"timestamp": "2026-06-01T08:50:29.706289+00:00", "level": "INFO", "message": "страница_обработана", "logger": "scraper", "trace_id": "8c1245cf8f0f", "context": {"url_index": 1, "page": 4, "found": 47, "total_so_far": 191}}
+{"timestamp": "2026-06-01T08:50:29.767316+00:00", "level": "DEBUG", "message": "dom_очищен", "logger": "scraper", "trace_id": "8c1245cf8f0f", "context": {"removed_elements": 50}}
+{"timestamp": "2026-06-01T08:50:31.041477+00:00", "level": "DEBUG", "message": "клик_далее_выполнен", "logger": "scraper", "trace_id": "8c1245cf8f0f"}
+{"timestamp": "2026-06-01T08:50:49.057024+00:00", "level": "INFO", "message": "страница_обработана", "logger": "scraper", "trace_id": "8c1245cf8f0f", "context": {"url_index": 1, "page": 4, "found": 28, "total_so_far": 178}}
+{"timestamp": "2026-06-01T08:50:49.110150+00:00", "level": "DEBUG", "message": "dom_очищен", "logger": "scraper", "trace_id": "8c1245cf8f0f", "context": {"removed_elements": 28}}
+{"timestamp": "2026-06-01T08:50:50.150369+00:00", "level": "DEBUG", "message": "кнопка_далее_не_найдена", "logger": "scraper", "trace_id": "8c1245cf8f0f"}
+{"timestamp": "2026-06-01T08:50:50.150812+00:00", "level": "INFO", "message": "последняя_страница_достигнута", "logger": "scraper", "trace_id": "8c1245cf8f0f", "context": {"url_index": 1, "page": 4}}
+{"timestamp": "2026-06-01T08:50:50.150999+00:00", "level": "INFO", "message": "воркер_ссылка_обработана", "logger": "scraper", "trace_id": "8c1245cf8f0f", "context": {"worker": 0, "url_index": 1, "pages_from_url": 4, "listings_so_far": 178}}
+{"timestamp": "2026-06-01T08:50:50.383577+00:00", "level": "INFO", "message": "браузер_остановлен", "logger": "browser", "trace_id": "8c1245cf8f0f"}
+{"timestamp": "2026-06-01T08:50:53.818973+00:00", "level": "INFO", "message": "страница_обработана", "logger": "scraper", "trace_id": "8c1245cf8f0f", "context": {"url_index": 1, "page": 4, "found": 49, "total_so_far": 195}}
+{"timestamp": "2026-06-01T08:50:53.886482+00:00", "level": "DEBUG", "message": "dom_очищен", "logger": "scraper", "trace_id": "8c1245cf8f0f", "context": {"removed_elements": 50}}
+{"timestamp": "2026-06-01T08:50:55.152365+00:00", "level": "DEBUG", "message": "клик_далее_выполнен", "logger": "scraper", "trace_id": "8c1245cf8f0f"}
+{"timestamp": "2026-06-01T08:51:08.383913+00:00", "level": "INFO", "message": "переход_на_следующую_страницу_выполнен", "logger": "scraper", "trace_id": "8c1245cf8f0f"}
+{"timestamp": "2026-06-01T08:51:08.384080+00:00", "level": "INFO", "message": "парсинг_страницы", "logger": "scraper", "trace_id": "8c1245cf8f0f", "context": {"url_index": 1, "page": 5, "remaining": 329}}
+{"timestamp": "2026-06-01T08:51:31.946251+00:00", "level": "INFO", "message": "переход_на_следующую_страницу_выполнен", "logger": "scraper", "trace_id": "8c1245cf8f0f"}
+{"timestamp": "2026-06-01T08:51:31.946451+00:00", "level": "INFO", "message": "парсинг_страницы", "logger": "scraper", "trace_id": "8c1245cf8f0f", "context": {"url_index": 1, "page": 5, "remaining": 329}}
+{"timestamp": "2026-06-01T08:51:42.479295+00:00", "level": "INFO", "message": "страница_обработана", "logger": "scraper", "trace_id": "8c1245cf8f0f", "context": {"url_index": 1, "page": 5, "found": 49, "total_so_far": 240}}
+{"timestamp": "2026-06-01T08:51:42.544021+00:00", "level": "DEBUG", "message": "dom_очищен", "logger": "scraper", "trace_id": "8c1245cf8f0f", "context": {"removed_elements": 50}}
+{"timestamp": "2026-06-01T08:51:43.755026+00:00", "level": "DEBUG", "message": "клик_далее_выполнен", "logger": "scraper", "trace_id": "8c1245cf8f0f"}
+{"timestamp": "2026-06-01T08:52:05.983302+00:00", "level": "INFO", "message": "страница_обработана", "logger": "scraper", "trace_id": "8c1245cf8f0f", "context": {"url_index": 1, "page": 5, "found": 50, "total_so_far": 245}}
+{"timestamp": "2026-06-01T08:52:06.040375+00:00", "level": "DEBUG", "message": "dom_очищен", "logger": "scraper", "trace_id": "8c1245cf8f0f", "context": {"removed_elements": 50}}
+{"timestamp": "2026-06-01T08:52:07.216264+00:00", "level": "DEBUG", "message": "клик_далее_выполнен", "logger": "scraper", "trace_id": "8c1245cf8f0f"}
+{"timestamp": "2026-06-01T08:52:20.653433+00:00", "level": "INFO", "message": "переход_на_следующую_страницу_выполнен", "logger": "scraper", "trace_id": "8c1245cf8f0f"}
+{"timestamp": "2026-06-01T08:52:20.653968+00:00", "level": "INFO", "message": "парсинг_страницы", "logger": "scraper", "trace_id": "8c1245cf8f0f", "context": {"url_index": 1, "page": 6, "remaining": 328}}
+{"timestamp": "2026-06-01T08:52:44.636716+00:00", "level": "INFO", "message": "переход_на_следующую_страницу_выполнен", "logger": "scraper", "trace_id": "8c1245cf8f0f"}
+{"timestamp": "2026-06-01T08:52:44.636903+00:00", "level": "INFO", "message": "парсинг_страницы", "logger": "scraper", "trace_id": "8c1245cf8f0f", "context": {"url_index": 1, "page": 6, "remaining": 328}}
+{"timestamp": "2026-06-01T08:52:53.323454+00:00", "level": "INFO", "message": "страница_обработана", "logger": "scraper", "trace_id": "8c1245cf8f0f", "context": {"url_index": 1, "page": 6, "found": 43, "total_so_far": 283}}
+{"timestamp": "2026-06-01T08:52:53.390599+00:00", "level": "DEBUG", "message": "dom_очищен", "logger": "scraper", "trace_id": "8c1245cf8f0f", "context": {"removed_elements": 50}}
+{"timestamp": "2026-06-01T08:52:54.585628+00:00", "level": "DEBUG", "message": "клик_далее_выполнен", "logger": "scraper", "trace_id": "8c1245cf8f0f"}
+{"timestamp": "2026-06-01T08:53:19.983655+00:00", "level": "INFO", "message": "страница_обработана", "logger": "scraper", "trace_id": "8c1245cf8f0f", "context": {"url_index": 1, "page": 6, "found": 49, "total_so_far": 294}}
+{"timestamp": "2026-06-01T08:53:20.057712+00:00", "level": "DEBUG", "message": "dom_очищен", "logger": "scraper", "trace_id": "8c1245cf8f0f", "context": {"removed_elements": 50}}
+{"timestamp": "2026-06-01T08:53:21.246631+00:00", "level": "DEBUG", "message": "клик_далее_выполнен", "logger": "scraper", "trace_id": "8c1245cf8f0f"}
+{"timestamp": "2026-06-01T08:53:31.065284+00:00", "level": "INFO", "message": "переход_на_следующую_страницу_выполнен", "logger": "scraper", "trace_id": "8c1245cf8f0f"}
+{"timestamp": "2026-06-01T08:53:31.065635+00:00", "level": "INFO", "message": "парсинг_страницы", "logger": "scraper", "trace_id": "8c1245cf8f0f", "context": {"url_index": 1, "page": 7, "remaining": 327}}
+{"timestamp": "2026-06-01T08:53:56.712133+00:00", "level": "INFO", "message": "переход_на_следующую_страницу_выполнен", "logger": "scraper", "trace_id": "8c1245cf8f0f"}
+{"timestamp": "2026-06-01T08:53:56.713085+00:00", "level": "INFO", "message": "парсинг_страницы", "logger": "scraper", "trace_id": "8c1245cf8f0f", "context": {"url_index": 1, "page": 7, "remaining": 327}}
+{"timestamp": "2026-06-01T08:54:08.521287+00:00", "level": "INFO", "message": "страница_обработана", "logger": "scraper", "trace_id": "8c1245cf8f0f", "context": {"url_index": 1, "page": 7, "found": 49, "total_so_far": 332}}
+{"timestamp": "2026-06-01T08:54:08.618560+00:00", "level": "DEBUG", "message": "dom_очищен", "logger": "scraper", "trace_id": "8c1245cf8f0f", "context": {"removed_elements": 50}}
+{"timestamp": "2026-06-01T08:54:09.843172+00:00", "level": "DEBUG", "message": "клик_далее_выполнен", "logger": "scraper", "trace_id": "8c1245cf8f0f"}
+{"timestamp": "2026-06-01T08:54:34.324306+00:00", "level": "INFO", "message": "страница_обработана", "logger": "scraper", "trace_id": "8c1245cf8f0f", "context": {"url_index": 1, "page": 7, "found": 49, "total_so_far": 343}}
+{"timestamp": "2026-06-01T08:54:34.370776+00:00", "level": "DEBUG", "message": "dom_очищен", "logger": "scraper", "trace_id": "8c1245cf8f0f", "context": {"removed_elements": 50}}
+{"timestamp": "2026-06-01T08:54:35.563782+00:00", "level": "DEBUG", "message": "клик_далее_выполнен", "logger": "scraper", "trace_id": "8c1245cf8f0f"}
+{"timestamp": "2026-06-01T08:54:46.213042+00:00", "level": "INFO", "message": "переход_на_следующую_страницу_выполнен", "logger": "scraper", "trace_id": "8c1245cf8f0f"}
+{"timestamp": "2026-06-01T08:54:46.213300+00:00", "level": "INFO", "message": "парсинг_страницы", "logger": "scraper", "trace_id": "8c1245cf8f0f", "context": {"url_index": 1, "page": 8, "remaining": 326}}
+{"timestamp": "2026-06-01T08:55:11.656755+00:00", "level": "INFO", "message": "переход_на_следующую_страницу_выполнен", "logger": "scraper", "trace_id": "8c1245cf8f0f"}
+{"timestamp": "2026-06-01T08:55:11.657042+00:00", "level": "INFO", "message": "парсинг_страницы", "logger": "scraper", "trace_id": "8c1245cf8f0f", "context": {"url_index": 1, "page": 8, "remaining": 326}}
+{"timestamp": "2026-06-01T08:55:23.087596+00:00", "level": "INFO", "message": "страница_обработана", "logger": "scraper", "trace_id": "8c1245cf8f0f", "context": {"url_index": 1, "page": 8, "found": 47, "total_so_far": 379}}
+{"timestamp": "2026-06-01T08:55:23.149759+00:00", "level": "DEBUG", "message": "dom_очищен", "logger": "scraper", "trace_id": "8c1245cf8f0f", "context": {"removed_elements": 50}}
+{"timestamp": "2026-06-01T08:55:24.336351+00:00", "level": "DEBUG", "message": "клик_далее_выполнен", "logger": "scraper", "trace_id": "8c1245cf8f0f"}
+{"timestamp": "2026-06-01T08:55:44.585153+00:00", "level": "INFO", "message": "страница_обработана", "logger": "scraper", "trace_id": "8c1245cf8f0f", "context": {"url_index": 1, "page": 8, "found": 48, "total_so_far": 391}}
+{"timestamp": "2026-06-01T08:55:44.624284+00:00", "level": "DEBUG", "message": "dom_очищен", "logger": "scraper", "trace_id": "8c1245cf8f0f", "context": {"removed_elements": 50}}
+{"timestamp": "2026-06-01T08:55:45.782513+00:00", "level": "DEBUG", "message": "клик_далее_выполнен", "logger": "scraper", "trace_id": "8c1245cf8f0f"}
+{"timestamp": "2026-06-01T08:56:02.158118+00:00", "level": "INFO", "message": "переход_на_следующую_страницу_выполнен", "logger": "scraper", "trace_id": "8c1245cf8f0f"}
+{"timestamp": "2026-06-01T08:56:02.158562+00:00", "level": "INFO", "message": "парсинг_страницы", "logger": "scraper", "trace_id": "8c1245cf8f0f", "context": {"url_index": 1, "page": 9, "remaining": 325}}
+{"timestamp": "2026-06-01T08:56:21.626612+00:00", "level": "INFO", "message": "переход_на_следующую_страницу_выполнен", "logger": "scraper", "trace_id": "8c1245cf8f0f"}
+{"timestamp": "2026-06-01T08:56:21.627310+00:00", "level": "INFO", "message": "парсинг_страницы", "logger": "scraper", "trace_id": "8c1245cf8f0f", "context": {"url_index": 1, "page": 9, "remaining": 325}}
+{"timestamp": "2026-06-01T08:56:38.126867+00:00", "level": "INFO", "message": "страница_обработана", "logger": "scraper", "trace_id": "8c1245cf8f0f", "context": {"url_index": 1, "page": 9, "found": 46, "total_so_far": 425}}
+{"timestamp": "2026-06-01T08:56:38.200287+00:00", "level": "DEBUG", "message": "dom_очищен", "logger": "scraper", "trace_id": "8c1245cf8f0f", "context": {"removed_elements": 50}}
+{"timestamp": "2026-06-01T08:56:39.394412+00:00", "level": "DEBUG", "message": "клик_далее_выполнен", "logger": "scraper", "trace_id": "8c1245cf8f0f"}
+{"timestamp": "2026-06-01T08:56:56.984209+00:00", "level": "INFO", "message": "страница_обработана", "logger": "scraper", "trace_id": "8c1245cf8f0f", "context": {"url_index": 1, "page": 9, "found": 50, "total_so_far": 441}}
+{"timestamp": "2026-06-01T08:56:57.083276+00:00", "level": "DEBUG", "message": "dom_очищен", "logger": "scraper", "trace_id": "8c1245cf8f0f", "context": {"removed_elements": 50}}
+{"timestamp": "2026-06-01T08:56:58.316978+00:00", "level": "DEBUG", "message": "клик_далее_выполнен", "logger": "scraper", "trace_id": "8c1245cf8f0f"}
+{"timestamp": "2026-06-01T08:57:16.921739+00:00", "level": "INFO", "message": "переход_на_следующую_страницу_выполнен", "logger": "scraper", "trace_id": "8c1245cf8f0f"}
+{"timestamp": "2026-06-01T08:57:16.922699+00:00", "level": "INFO", "message": "парсинг_страницы", "logger": "scraper", "trace_id": "8c1245cf8f0f", "context": {"url_index": 1, "page": 10, "remaining": 324}}
+{"timestamp": "2026-06-01T08:57:33.823612+00:00", "level": "INFO", "message": "переход_на_следующую_страницу_выполнен", "logger": "scraper", "trace_id": "8c1245cf8f0f"}
+{"timestamp": "2026-06-01T08:57:33.824077+00:00", "level": "INFO", "message": "парсинг_страницы", "logger": "scraper", "trace_id": "8c1245cf8f0f", "context": {"url_index": 1, "page": 10, "remaining": 324}}
+{"timestamp": "2026-06-01T08:57:50.612607+00:00", "level": "INFO", "message": "страница_обработана", "logger": "scraper", "trace_id": "8c1245cf8f0f", "context": {"url_index": 1, "page": 10, "found": 47, "total_so_far": 472}}
+{"timestamp": "2026-06-01T08:57:50.686652+00:00", "level": "DEBUG", "message": "dom_очищен", "logger": "scraper", "trace_id": "8c1245cf8f0f", "context": {"removed_elements": 50}}
+{"timestamp": "2026-06-01T08:57:51.900018+00:00", "level": "DEBUG", "message": "клик_далее_выполнен", "logger": "scraper", "trace_id": "8c1245cf8f0f"}
+{"timestamp": "2026-06-01T08:58:09.610796+00:00", "level": "INFO", "message": "страница_обработана", "logger": "scraper", "trace_id": "8c1245cf8f0f", "context": {"url_index": 1, "page": 10, "found": 50, "total_so_far": 491}}
+{"timestamp": "2026-06-01T08:58:09.649052+00:00", "level": "DEBUG", "message": "dom_очищен", "logger": "scraper", "trace_id": "8c1245cf8f0f", "context": {"removed_elements": 50}}
+{"timestamp": "2026-06-01T08:58:10.810937+00:00", "level": "DEBUG", "message": "клик_далее_выполнен", "logger": "scraper", "trace_id": "8c1245cf8f0f"}
+{"timestamp": "2026-06-01T08:58:28.238909+00:00", "level": "INFO", "message": "переход_на_следующую_страницу_выполнен", "logger": "scraper", "trace_id": "8c1245cf8f0f"}
+{"timestamp": "2026-06-01T08:58:28.239425+00:00", "level": "INFO", "message": "парсинг_страницы", "logger": "scraper", "trace_id": "8c1245cf8f0f", "context": {"url_index": 1, "page": 11, "remaining": 323}}
+{"timestamp": "2026-06-01T08:58:47.962455+00:00", "level": "INFO", "message": "переход_на_следующую_страницу_выполнен", "logger": "scraper", "trace_id": "8c1245cf8f0f"}
+{"timestamp": "2026-06-01T08:58:47.962868+00:00", "level": "INFO", "message": "парсинг_страницы", "logger": "scraper", "trace_id": "8c1245cf8f0f", "context": {"url_index": 1, "page": 11, "remaining": 323}}
+{"timestamp": "2026-06-01T08:58:58.925149+00:00", "level": "INFO", "message": "страница_обработана", "logger": "scraper", "trace_id": "8c1245cf8f0f", "context": {"url_index": 1, "page": 11, "found": 46, "total_so_far": 518}}
+{"timestamp": "2026-06-01T08:58:59.018190+00:00", "level": "DEBUG", "message": "dom_очищен", "logger": "scraper", "trace_id": "8c1245cf8f0f", "context": {"removed_elements": 50}}
+{"timestamp": "2026-06-01T08:59:00.318822+00:00", "level": "DEBUG", "message": "клик_далее_выполнен", "logger": "scraper", "trace_id": "8c1245cf8f0f"}
+{"timestamp": "2026-06-01T08:59:23.335362+00:00", "level": "INFO", "message": "страница_обработана", "logger": "scraper", "trace_id": "8c1245cf8f0f", "context": {"url_index": 1, "page": 11, "found": 47, "total_so_far": 538}}
+{"timestamp": "2026-06-01T08:59:23.375544+00:00", "level": "DEBUG", "message": "dom_очищен", "logger": "scraper", "trace_id": "8c1245cf8f0f", "context": {"removed_elements": 50}}
+{"timestamp": "2026-06-01T08:59:24.535719+00:00", "level": "DEBUG", "message": "клик_далее_выполнен", "logger": "scraper", "trace_id": "8c1245cf8f0f"}
+{"timestamp": "2026-06-01T08:59:36.830323+00:00", "level": "INFO", "message": "переход_на_следующую_страницу_выполнен", "logger": "scraper", "trace_id": "8c1245cf8f0f"}
+{"timestamp": "2026-06-01T08:59:36.830502+00:00", "level": "INFO", "message": "парсинг_страницы", "logger": "scraper", "trace_id": "8c1245cf8f0f", "context": {"url_index": 1, "page": 12, "remaining": 322}}
+{"timestamp": "2026-06-01T09:00:02.487786+00:00", "level": "INFO", "message": "переход_на_следующую_страницу_выполнен", "logger": "scraper", "trace_id": "8c1245cf8f0f"}
+{"timestamp": "2026-06-01T09:00:02.488110+00:00", "level": "INFO", "message": "парсинг_страницы", "logger": "scraper", "trace_id": "8c1245cf8f0f", "context": {"url_index": 1, "page": 12, "remaining": 322}}
+{"timestamp": "2026-06-01T09:00:17.387216+00:00", "level": "INFO", "message": "страница_обработана", "logger": "scraper", "trace_id": "8c1245cf8f0f", "context": {"url_index": 1, "page": 12, "found": 46, "total_so_far": 564}}
+{"timestamp": "2026-06-01T09:00:17.464244+00:00", "level": "DEBUG", "message": "dom_очищен", "logger": "scraper", "trace_id": "8c1245cf8f0f", "context": {"removed_elements": 50}}
+{"timestamp": "2026-06-01T09:00:18.695340+00:00", "level": "DEBUG", "message": "клик_далее_выполнен", "logger": "scraper", "trace_id": "8c1245cf8f0f"}
+{"timestamp": "2026-06-01T09:00:39.820710+00:00", "level": "INFO", "message": "страница_обработана", "logger": "scraper", "trace_id": "8c1245cf8f0f", "context": {"url_index": 1, "page": 12, "found": 48, "total_so_far": 586}}
+{"timestamp": "2026-06-01T09:00:39.856588+00:00", "level": "DEBUG", "message": "dom_очищен", "logger": "scraper", "trace_id": "8c1245cf8f0f", "context": {"removed_elements": 50}}
+{"timestamp": "2026-06-01T09:00:41.007133+00:00", "level": "DEBUG", "message": "клик_далее_выполнен", "logger": "scraper", "trace_id": "8c1245cf8f0f"}
+{"timestamp": "2026-06-01T09:00:55.413303+00:00", "level": "INFO", "message": "переход_на_следующую_страницу_выполнен", "logger": "scraper", "trace_id": "8c1245cf8f0f"}
+{"timestamp": "2026-06-01T09:00:55.414072+00:00", "level": "INFO", "message": "парсинг_страницы", "logger": "scraper", "trace_id": "8c1245cf8f0f", "context": {"url_index": 1, "page": 13, "remaining": 321}}
+{"timestamp": "2026-06-01T09:01:17.392224+00:00", "level": "INFO", "message": "переход_на_следующую_страницу_выполнен", "logger": "scraper", "trace_id": "8c1245cf8f0f"}
+{"timestamp": "2026-06-01T09:01:17.392948+00:00", "level": "INFO", "message": "парсинг_страницы", "logger": "scraper", "trace_id": "8c1245cf8f0f", "context": {"url_index": 1, "page": 13, "remaining": 321}}
+{"timestamp": "2026-06-01T09:01:28.768093+00:00", "level": "INFO", "message": "страница_обработана", "logger": "scraper", "trace_id": "8c1245cf8f0f", "context": {"url_index": 1, "page": 13, "found": 46, "total_so_far": 610}}
+{"timestamp": "2026-06-01T09:01:28.865727+00:00", "level": "DEBUG", "message": "dom_очищен", "logger": "scraper", "trace_id": "8c1245cf8f0f", "context": {"removed_elements": 50}}
+{"timestamp": "2026-06-01T09:01:30.117165+00:00", "level": "DEBUG", "message": "клик_далее_выполнен", "logger": "scraper", "trace_id": "8c1245cf8f0f"}
+{"timestamp": "2026-06-01T09:01:50.627175+00:00", "level": "INFO", "message": "страница_обработана", "logger": "scraper", "trace_id": "8c1245cf8f0f", "context": {"url_index": 1, "page": 13, "found": 49, "total_so_far": 635}}
+{"timestamp": "2026-06-01T09:01:50.658322+00:00", "level": "DEBUG", "message": "dom_очищен", "logger": "scraper", "trace_id": "8c1245cf8f0f", "context": {"removed_elements": 50}}
+{"timestamp": "2026-06-01T09:01:51.806953+00:00", "level": "DEBUG", "message": "клик_далее_выполнен", "logger": "scraper", "trace_id": "8c1245cf8f0f"}
+{"timestamp": "2026-06-01T09:02:07.176022+00:00", "level": "INFO", "message": "переход_на_следующую_страницу_выполнен", "logger": "scraper", "trace_id": "8c1245cf8f0f"}
+{"timestamp": "2026-06-01T09:02:07.176207+00:00", "level": "INFO", "message": "парсинг_страницы", "logger": "scraper", "trace_id": "8c1245cf8f0f", "context": {"url_index": 1, "page": 14, "remaining": 320}}
+{"timestamp": "2026-06-01T09:02:27.659675+00:00", "level": "INFO", "message": "переход_на_следующую_страницу_выполнен", "logger": "scraper", "trace_id": "8c1245cf8f0f"}
+{"timestamp": "2026-06-01T09:02:27.661249+00:00", "level": "INFO", "message": "парсинг_страницы", "logger": "scraper", "trace_id": "8c1245cf8f0f", "context": {"url_index": 1, "page": 14, "remaining": 320}}
+{"timestamp": "2026-06-01T09:02:39.529676+00:00", "level": "INFO", "message": "страница_обработана", "logger": "scraper", "trace_id": "8c1245cf8f0f", "context": {"url_index": 1, "page": 14, "found": 47, "total_so_far": 657}}
+{"timestamp": "2026-06-01T09:02:39.612711+00:00", "level": "DEBUG", "message": "dom_очищен", "logger": "scraper", "trace_id": "8c1245cf8f0f", "context": {"removed_elements": 50}}
+{"timestamp": "2026-06-01T09:02:40.806390+00:00", "level": "DEBUG", "message": "клик_далее_выполнен", "logger": "scraper", "trace_id": "8c1245cf8f0f"}
+{"timestamp": "2026-06-01T09:03:00.645311+00:00", "level": "INFO", "message": "страница_обработана", "logger": "scraper", "trace_id": "8c1245cf8f0f", "context": {"url_index": 1, "page": 14, "found": 48, "total_so_far": 683}}
+{"timestamp": "2026-06-01T09:03:00.685304+00:00", "level": "DEBUG", "message": "dom_очищен", "logger": "scraper", "trace_id": "8c1245cf8f0f", "context": {"removed_elements": 50}}
+{"timestamp": "2026-06-01T09:03:01.828210+00:00", "level": "DEBUG", "message": "клик_далее_выполнен", "logger": "scraper", "trace_id": "8c1245cf8f0f"}
+{"timestamp": "2026-06-01T09:03:18.656675+00:00", "level": "INFO", "message": "переход_на_следующую_страницу_выполнен", "logger": "scraper", "trace_id": "8c1245cf8f0f"}
+{"timestamp": "2026-06-01T09:03:18.657034+00:00", "level": "INFO", "message": "парсинг_страницы", "logger": "scraper", "trace_id": "8c1245cf8f0f", "context": {"url_index": 1, "page": 15, "remaining": 319}}
+{"timestamp": "2026-06-01T09:03:37.012674+00:00", "level": "INFO", "message": "переход_на_следующую_страницу_выполнен", "logger": "scraper", "trace_id": "8c1245cf8f0f"}
+{"timestamp": "2026-06-01T09:03:37.013058+00:00", "level": "INFO", "message": "парсинг_страницы", "logger": "scraper", "trace_id": "8c1245cf8f0f", "context": {"url_index": 1, "page": 15, "remaining": 319}}
+{"timestamp": "2026-06-01T09:03:53.435634+00:00", "level": "INFO", "message": "страница_обработана", "logger": "scraper", "trace_id": "8c1245cf8f0f", "context": {"url_index": 1, "page": 15, "found": 49, "total_so_far": 706}}
+{"timestamp": "2026-06-01T09:03:53.494312+00:00", "level": "DEBUG", "message": "dom_очищен", "logger": "scraper", "trace_id": "8c1245cf8f0f", "context": {"removed_elements": 50}}
+{"timestamp": "2026-06-01T09:03:54.707820+00:00", "level": "DEBUG", "message": "клик_далее_выполнен", "logger": "scraper", "trace_id": "8c1245cf8f0f"}
+{"timestamp": "2026-06-01T09:04:11.279138+00:00", "level": "INFO", "message": "страница_обработана", "logger": "scraper", "trace_id": "8c1245cf8f0f", "context": {"url_index": 1, "page": 15, "found": 47, "total_so_far": 730}}
+{"timestamp": "2026-06-01T09:04:11.321174+00:00", "level": "DEBUG", "message": "dom_очищен", "logger": "scraper", "trace_id": "8c1245cf8f0f", "context": {"removed_elements": 50}}
+{"timestamp": "2026-06-01T09:04:12.510160+00:00", "level": "DEBUG", "message": "клик_далее_выполнен", "logger": "scraper", "trace_id": "8c1245cf8f0f"}
+{"timestamp": "2026-06-01T09:04:30.750199+00:00", "level": "INFO", "message": "переход_на_следующую_страницу_выполнен", "logger": "scraper", "trace_id": "8c1245cf8f0f"}
+{"timestamp": "2026-06-01T09:04:30.750701+00:00", "level": "INFO", "message": "парсинг_страницы", "logger": "scraper", "trace_id": "8c1245cf8f0f", "context": {"url_index": 1, "page": 16, "remaining": 318}}
+{"timestamp": "2026-06-01T09:04:50.423825+00:00", "level": "INFO", "message": "переход_на_следующую_страницу_выполнен", "logger": "scraper", "trace_id": "8c1245cf8f0f"}
+{"timestamp": "2026-06-01T09:04:50.424035+00:00", "level": "INFO", "message": "парсинг_страницы", "logger": "scraper", "trace_id": "8c1245cf8f0f", "context": {"url_index": 1, "page": 16, "remaining": 318}}
+{"timestamp": "2026-06-01T09:05:06.825562+00:00", "level": "INFO", "message": "страница_обработана", "logger": "scraper", "trace_id": "8c1245cf8f0f", "context": {"url_index": 1, "page": 16, "found": 44, "total_so_far": 750}}
+{"timestamp": "2026-06-01T09:05:06.910483+00:00", "level": "DEBUG", "message": "dom_очищен", "logger": "scraper", "trace_id": "8c1245cf8f0f", "context": {"removed_elements": 50}}
+{"timestamp": "2026-06-01T09:05:08.131777+00:00", "level": "DEBUG", "message": "клик_далее_выполнен", "logger": "scraper", "trace_id": "8c1245cf8f0f"}
+{"timestamp": "2026-06-01T09:05:27.090768+00:00", "level": "INFO", "message": "страница_обработана", "logger": "scraper", "trace_id": "8c1245cf8f0f", "context": {"url_index": 1, "page": 16, "found": 50, "total_so_far": 780}}
+{"timestamp": "2026-06-01T09:05:27.144597+00:00", "level": "DEBUG", "message": "dom_очищен", "logger": "scraper", "trace_id": "8c1245cf8f0f", "context": {"removed_elements": 50}}
+{"timestamp": "2026-06-01T09:05:28.347969+00:00", "level": "DEBUG", "message": "клик_далее_выполнен", "logger": "scraper", "trace_id": "8c1245cf8f0f"}
+{"timestamp": "2026-06-01T09:05:44.063804+00:00", "level": "INFO", "message": "переход_на_следующую_страницу_выполнен", "logger": "scraper", "trace_id": "8c1245cf8f0f"}
+{"timestamp": "2026-06-01T09:05:44.064043+00:00", "level": "INFO", "message": "парсинг_страницы", "logger": "scraper", "trace_id": "8c1245cf8f0f", "context": {"url_index": 1, "page": 17, "remaining": 317}}
+{"timestamp": "2026-06-01T09:06:05.050431+00:00", "level": "INFO", "message": "переход_на_следующую_страницу_выполнен", "logger": "scraper", "trace_id": "8c1245cf8f0f"}
+{"timestamp": "2026-06-01T09:06:05.051351+00:00", "level": "INFO", "message": "парсинг_страницы", "logger": "scraper", "trace_id": "8c1245cf8f0f", "context": {"url_index": 1, "page": 17, "remaining": 317}}
+{"timestamp": "2026-06-01T09:06:21.436789+00:00", "level": "INFO", "message": "страница_обработана", "logger": "scraper", "trace_id": "8c1245cf8f0f", "context": {"url_index": 1, "page": 17, "found": 48, "total_so_far": 798}}
+{"timestamp": "2026-06-01T09:06:21.508602+00:00", "level": "DEBUG", "message": "dom_очищен", "logger": "scraper", "trace_id": "8c1245cf8f0f", "context": {"removed_elements": 50}}
+{"timestamp": "2026-06-01T09:06:22.740093+00:00", "level": "DEBUG", "message": "клик_далее_выполнен", "logger": "scraper", "trace_id": "8c1245cf8f0f"}
+{"timestamp": "2026-06-01T09:06:39.754082+00:00", "level": "INFO", "message": "страница_обработана", "logger": "scraper", "trace_id": "8c1245cf8f0f", "context": {"url_index": 1, "page": 17, "found": 50, "total_so_far": 830}}
+{"timestamp": "2026-06-01T09:06:39.784678+00:00", "level": "DEBUG", "message": "dom_очищен", "logger": "scraper", "trace_id": "8c1245cf8f0f", "context": {"removed_elements": 50}}
+{"timestamp": "2026-06-01T09:06:40.950368+00:00", "level": "DEBUG", "message": "клик_далее_выполнен", "logger": "scraper", "trace_id": "8c1245cf8f0f"}
+{"timestamp": "2026-06-01T09:06:59.801039+00:00", "level": "INFO", "message": "переход_на_следующую_страницу_выполнен", "logger": "scraper", "trace_id": "8c1245cf8f0f"}
+{"timestamp": "2026-06-01T09:06:59.801485+00:00", "level": "INFO", "message": "парсинг_страницы", "logger": "scraper", "trace_id": "8c1245cf8f0f", "context": {"url_index": 1, "page": 18, "remaining": 316}}
+{"timestamp": "2026-06-01T09:07:16.943466+00:00", "level": "INFO", "message": "переход_на_следующую_страницу_выполнен", "logger": "scraper", "trace_id": "8c1245cf8f0f"}
+{"timestamp": "2026-06-01T09:07:16.944660+00:00", "level": "INFO", "message": "парсинг_страницы", "logger": "scraper", "trace_id": "8c1245cf8f0f", "context": {"url_index": 1, "page": 18, "remaining": 316}}
+{"timestamp": "2026-06-01T09:07:35.549981+00:00", "level": "INFO", "message": "страница_обработана", "logger": "scraper", "trace_id": "8c1245cf8f0f", "context": {"url_index": 1, "page": 18, "found": 48, "total_so_far": 846}}
+{"timestamp": "2026-06-01T09:07:35.622823+00:00", "level": "DEBUG", "message": "dom_очищен", "logger": "scraper", "trace_id": "8c1245cf8f0f", "context": {"removed_elements": 50}}
+{"timestamp": "2026-06-01T09:07:37.204153+00:00", "level": "DEBUG", "message": "клик_далее_выполнен", "logger": "scraper", "trace_id": "8c1245cf8f0f"}
+{"timestamp": "2026-06-01T09:07:55.592248+00:00", "level": "INFO", "message": "страница_обработана", "logger": "scraper", "trace_id": "8c1245cf8f0f", "context": {"url_index": 1, "page": 18, "found": 49, "total_so_far": 879}}
+{"timestamp": "2026-06-01T09:07:55.634412+00:00", "level": "DEBUG", "message": "dom_очищен", "logger": "scraper", "trace_id": "8c1245cf8f0f", "context": {"removed_elements": 50}}
+{"timestamp": "2026-06-01T09:07:56.802685+00:00", "level": "DEBUG", "message": "клик_далее_выполнен", "logger": "scraper", "trace_id": "8c1245cf8f0f"}
+{"timestamp": "2026-06-01T09:08:14.325389+00:00", "level": "INFO", "message": "переход_на_следующую_страницу_выполнен", "logger": "scraper", "trace_id": "8c1245cf8f0f"}
+{"timestamp": "2026-06-01T09:08:14.325846+00:00", "level": "INFO", "message": "парсинг_страницы", "logger": "scraper", "trace_id": "8c1245cf8f0f", "context": {"url_index": 1, "page": 19, "remaining": 315}}
+{"timestamp": "2026-06-01T09:08:32.605754+00:00", "level": "INFO", "message": "переход_на_следующую_страницу_выполнен", "logger": "scraper", "trace_id": "8c1245cf8f0f"}
+{"timestamp": "2026-06-01T09:08:32.606007+00:00", "level": "INFO", "message": "парсинг_страницы", "logger": "scraper", "trace_id": "8c1245cf8f0f", "context": {"url_index": 1, "page": 19, "remaining": 315}}
+{"timestamp": "2026-06-01T09:08:48.494958+00:00", "level": "INFO", "message": "страница_обработана", "logger": "scraper", "trace_id": "8c1245cf8f0f", "context": {"url_index": 1, "page": 19, "found": 45, "total_so_far": 891}}
+{"timestamp": "2026-06-01T09:08:48.560730+00:00", "level": "DEBUG", "message": "dom_очищен", "logger": "scraper", "trace_id": "8c1245cf8f0f", "context": {"removed_elements": 50}}
+{"timestamp": "2026-06-01T09:08:49.740030+00:00", "level": "DEBUG", "message": "клик_далее_выполнен", "logger": "scraper", "trace_id": "8c1245cf8f0f"}
+{"timestamp": "2026-06-01T09:09:10.043672+00:00", "level": "INFO", "message": "страница_обработана", "logger": "scraper", "trace_id": "8c1245cf8f0f", "context": {"url_index": 1, "page": 19, "found": 49, "total_so_far": 928}}
+{"timestamp": "2026-06-01T09:09:10.094450+00:00", "level": "DEBUG", "message": "dom_очищен", "logger": "scraper", "trace_id": "8c1245cf8f0f", "context": {"removed_elements": 50}}
+{"timestamp": "2026-06-01T09:09:11.263018+00:00", "level": "DEBUG", "message": "клик_далее_выполнен", "logger": "scraper", "trace_id": "8c1245cf8f0f"}
+{"timestamp": "2026-06-01T09:09:27.261608+00:00", "level": "INFO", "message": "переход_на_следующую_страницу_выполнен", "logger": "scraper", "trace_id": "8c1245cf8f0f"}
+{"timestamp": "2026-06-01T09:09:27.262078+00:00", "level": "INFO", "message": "парсинг_страницы", "logger": "scraper", "trace_id": "8c1245cf8f0f", "context": {"url_index": 1, "page": 20, "remaining": 314}}
+{"timestamp": "2026-06-01T09:09:47.579344+00:00", "level": "INFO", "message": "переход_на_следующую_страницу_выполнен", "logger": "scraper", "trace_id": "8c1245cf8f0f"}
+{"timestamp": "2026-06-01T09:09:47.579478+00:00", "level": "INFO", "message": "парсинг_страницы", "logger": "scraper", "trace_id": "8c1245cf8f0f", "context": {"url_index": 1, "page": 20, "remaining": 314}}
+{"timestamp": "2026-06-01T09:10:04.535480+00:00", "level": "INFO", "message": "страница_обработана", "logger": "scraper", "trace_id": "8c1245cf8f0f", "context": {"url_index": 1, "page": 20, "found": 49, "total_so_far": 940}}
+{"timestamp": "2026-06-01T09:10:04.603560+00:00", "level": "DEBUG", "message": "dom_очищен", "logger": "scraper", "trace_id": "8c1245cf8f0f", "context": {"removed_elements": 50}}
+{"timestamp": "2026-06-01T09:10:05.837569+00:00", "level": "DEBUG", "message": "клик_далее_выполнен", "logger": "scraper", "trace_id": "8c1245cf8f0f"}
+{"timestamp": "2026-06-01T09:10:25.855929+00:00", "level": "INFO", "message": "страница_обработана", "logger": "scraper", "trace_id": "8c1245cf8f0f", "context": {"url_index": 1, "page": 20, "found": 49, "total_so_far": 977}}
+{"timestamp": "2026-06-01T09:10:25.905329+00:00", "level": "DEBUG", "message": "dom_очищен", "logger": "scraper", "trace_id": "8c1245cf8f0f", "context": {"removed_elements": 50}}
+{"timestamp": "2026-06-01T09:10:27.146779+00:00", "level": "DEBUG", "message": "клик_далее_выполнен", "logger": "scraper", "trace_id": "8c1245cf8f0f"}
+{"timestamp": "2026-06-01T09:10:43.476505+00:00", "level": "INFO", "message": "переход_на_следующую_страницу_выполнен", "logger": "scraper", "trace_id": "8c1245cf8f0f"}
+{"timestamp": "2026-06-01T09:10:43.477384+00:00", "level": "INFO", "message": "парсинг_страницы", "logger": "scraper", "trace_id": "8c1245cf8f0f", "context": {"url_index": 1, "page": 21, "remaining": 313}}
+{"timestamp": "2026-06-01T09:11:03.076375+00:00", "level": "INFO", "message": "переход_на_следующую_страницу_выполнен", "logger": "scraper", "trace_id": "8c1245cf8f0f"}
+{"timestamp": "2026-06-01T09:11:03.077208+00:00", "level": "INFO", "message": "парсинг_страницы", "logger": "scraper", "trace_id": "8c1245cf8f0f", "context": {"url_index": 1, "page": 21, "remaining": 313}}
+{"timestamp": "2026-06-01T09:11:21.454135+00:00", "level": "INFO", "message": "страница_обработана", "logger": "scraper", "trace_id": "8c1245cf8f0f", "context": {"url_index": 1, "page": 21, "found": 47, "total_so_far": 987}}
+{"timestamp": "2026-06-01T09:11:21.534145+00:00", "level": "DEBUG", "message": "dom_очищен", "logger": "scraper", "trace_id": "8c1245cf8f0f", "context": {"removed_elements": 50}}
+{"timestamp": "2026-06-01T09:11:22.743428+00:00", "level": "DEBUG", "message": "клик_далее_выполнен", "logger": "scraper", "trace_id": "8c1245cf8f0f"}
+{"timestamp": "2026-06-01T09:11:39.318204+00:00", "level": "INFO", "message": "страница_обработана", "logger": "scraper", "trace_id": "8c1245cf8f0f", "context": {"url_index": 1, "page": 21, "found": 48, "total_so_far": 1025}}
+{"timestamp": "2026-06-01T09:11:39.360240+00:00", "level": "DEBUG", "message": "dom_очищен", "logger": "scraper", "trace_id": "8c1245cf8f0f", "context": {"removed_elements": 50}}
+{"timestamp": "2026-06-01T09:11:40.560004+00:00", "level": "DEBUG", "message": "клик_далее_выполнен", "logger": "scraper", "trace_id": "8c1245cf8f0f"}
+{"timestamp": "2026-06-01T09:11:59.873845+00:00", "level": "INFO", "message": "переход_на_следующую_страницу_выполнен", "logger": "scraper", "trace_id": "8c1245cf8f0f"}
+{"timestamp": "2026-06-01T09:11:59.874242+00:00", "level": "INFO", "message": "парсинг_страницы", "logger": "scraper", "trace_id": "8c1245cf8f0f", "context": {"url_index": 1, "page": 22, "remaining": 312}}
+{"timestamp": "2026-06-01T09:12:16.343383+00:00", "level": "INFO", "message": "переход_на_следующую_страницу_выполнен", "logger": "scraper", "trace_id": "8c1245cf8f0f"}
+{"timestamp": "2026-06-01T09:12:16.343511+00:00", "level": "INFO", "message": "парсинг_страницы", "logger": "scraper", "trace_id": "8c1245cf8f0f", "context": {"url_index": 1, "page": 22, "remaining": 312}}
+{"timestamp": "2026-06-01T09:12:38.137959+00:00", "level": "INFO", "message": "страница_обработана", "logger": "scraper", "trace_id": "8c1245cf8f0f", "context": {"url_index": 1, "page": 22, "found": 48, "total_so_far": 1035}}
+{"timestamp": "2026-06-01T09:12:38.226301+00:00", "level": "DEBUG", "message": "dom_очищен", "logger": "scraper", "trace_id": "8c1245cf8f0f", "context": {"removed_elements": 50}}
+{"timestamp": "2026-06-01T09:12:39.528496+00:00", "level": "DEBUG", "message": "клик_далее_выполнен", "logger": "scraper", "trace_id": "8c1245cf8f0f"}
+{"timestamp": "2026-06-01T09:12:54.670572+00:00", "level": "INFO", "message": "страница_обработана", "logger": "scraper", "trace_id": "8c1245cf8f0f", "context": {"url_index": 1, "page": 22, "found": 47, "total_so_far": 1072}}
+{"timestamp": "2026-06-01T09:12:54.706669+00:00", "level": "DEBUG", "message": "dom_очищен", "logger": "scraper", "trace_id": "8c1245cf8f0f", "context": {"removed_elements": 50}}
+{"timestamp": "2026-06-01T09:12:55.896333+00:00", "level": "DEBUG", "message": "клик_далее_выполнен", "logger": "scraper", "trace_id": "8c1245cf8f0f"}
+{"timestamp": "2026-06-01T09:13:14.883417+00:00", "level": "INFO", "message": "переход_на_следующую_страницу_выполнен", "logger": "scraper", "trace_id": "8c1245cf8f0f"}
+{"timestamp": "2026-06-01T09:13:14.883815+00:00", "level": "INFO", "message": "парсинг_страницы", "logger": "scraper", "trace_id": "8c1245cf8f0f", "context": {"url_index": 1, "page": 23, "remaining": 311}}
+{"timestamp": "2026-06-01T09:13:31.418605+00:00", "level": "INFO", "message": "переход_на_следующую_страницу_выполнен", "logger": "scraper", "trace_id": "8c1245cf8f0f"}
+{"timestamp": "2026-06-01T09:13:31.419118+00:00", "level": "INFO", "message": "парсинг_страницы", "logger": "scraper", "trace_id": "8c1245cf8f0f", "context": {"url_index": 1, "page": 23, "remaining": 311}}
+{"timestamp": "2026-06-01T09:13:50.154741+00:00", "level": "INFO", "message": "страница_обработана", "logger": "scraper", "trace_id": "8c1245cf8f0f", "context": {"url_index": 1, "page": 23, "found": 48, "total_so_far": 1083}}
+{"timestamp": "2026-06-01T09:13:50.217307+00:00", "level": "DEBUG", "message": "dom_очищен", "logger": "scraper", "trace_id": "8c1245cf8f0f", "context": {"removed_elements": 50}}
+{"timestamp": "2026-06-01T09:13:51.470716+00:00", "level": "DEBUG", "message": "клик_далее_выполнен", "logger": "scraper", "trace_id": "8c1245cf8f0f"}
+{"timestamp": "2026-06-01T09:14:08.673501+00:00", "level": "INFO", "message": "страница_обработана", "logger": "scraper", "trace_id": "8c1245cf8f0f", "context": {"url_index": 1, "page": 23, "found": 49, "total_so_far": 1121}}
+{"timestamp": "2026-06-01T09:14:08.713178+00:00", "level": "DEBUG", "message": "dom_очищен", "logger": "scraper", "trace_id": "8c1245cf8f0f", "context": {"removed_elements": 50}}
+{"timestamp": "2026-06-01T09:14:09.895365+00:00", "level": "DEBUG", "message": "клик_далее_выполнен", "logger": "scraper", "trace_id": "8c1245cf8f0f"}
+{"timestamp": "2026-06-01T09:14:28.661953+00:00", "level": "INFO", "message": "переход_на_следующую_страницу_выполнен", "logger": "scraper", "trace_id": "8c1245cf8f0f"}
+{"timestamp": "2026-06-01T09:14:28.662458+00:00", "level": "INFO", "message": "парсинг_страницы", "logger": "scraper", "trace_id": "8c1245cf8f0f", "context": {"url_index": 1, "page": 24, "remaining": 310}}
+{"timestamp": "2026-06-01T09:14:47.376778+00:00", "level": "INFO", "message": "переход_на_следующую_страницу_выполнен", "logger": "scraper", "trace_id": "8c1245cf8f0f"}
+{"timestamp": "2026-06-01T09:14:47.376983+00:00", "level": "INFO", "message": "парсинг_страницы", "logger": "scraper", "trace_id": "8c1245cf8f0f", "context": {"url_index": 1, "page": 24, "remaining": 310}}
+{"timestamp": "2026-06-01T09:15:09.323611+00:00", "level": "INFO", "message": "страница_обработана", "logger": "scraper", "trace_id": "8c1245cf8f0f", "context": {"url_index": 1, "page": 24, "found": 45, "total_so_far": 1128}}
+{"timestamp": "2026-06-01T09:15:09.408177+00:00", "level": "DEBUG", "message": "dom_очищен", "logger": "scraper", "trace_id": "8c1245cf8f0f", "context": {"removed_elements": 50}}
+{"timestamp": "2026-06-01T09:15:10.616032+00:00", "level": "DEBUG", "message": "клик_далее_выполнен", "logger": "scraper", "trace_id": "8c1245cf8f0f"}
+{"timestamp": "2026-06-01T09:15:27.231243+00:00", "level": "INFO", "message": "страница_обработана", "logger": "scraper", "trace_id": "8c1245cf8f0f", "context": {"url_index": 1, "page": 24, "found": 49, "total_so_far": 1170}}
+{"timestamp": "2026-06-01T09:15:27.269468+00:00", "level": "DEBUG", "message": "dom_очищен", "logger": "scraper", "trace_id": "8c1245cf8f0f", "context": {"removed_elements": 50}}
+{"timestamp": "2026-06-01T09:15:28.438185+00:00", "level": "DEBUG", "message": "клик_далее_выполнен", "logger": "scraper", "trace_id": "8c1245cf8f0f"}
+{"timestamp": "2026-06-01T09:15:48.657586+00:00", "level": "INFO", "message": "переход_на_следующую_страницу_выполнен", "logger": "scraper", "trace_id": "8c1245cf8f0f"}
+{"timestamp": "2026-06-01T09:15:48.657914+00:00", "level": "INFO", "message": "парсинг_страницы", "logger": "scraper", "trace_id": "8c1245cf8f0f", "context": {"url_index": 1, "page": 25, "remaining": 309}}
+{"timestamp": "2026-06-01T09:16:05.059368+00:00", "level": "INFO", "message": "переход_на_следующую_страницу_выполнен", "logger": "scraper", "trace_id": "8c1245cf8f0f"}
+{"timestamp": "2026-06-01T09:16:05.059658+00:00", "level": "INFO", "message": "парсинг_страницы", "logger": "scraper", "trace_id": "8c1245cf8f0f", "context": {"url_index": 1, "page": 25, "remaining": 309}}
+{"timestamp": "2026-06-01T09:16:24.295539+00:00", "level": "INFO", "message": "страница_обработана", "logger": "scraper", "trace_id": "8c1245cf8f0f", "context": {"url_index": 1, "page": 25, "found": 48, "total_so_far": 1176}}
+{"timestamp": "2026-06-01T09:16:24.354617+00:00", "level": "DEBUG", "message": "dom_очищен", "logger": "scraper", "trace_id": "8c1245cf8f0f", "context": {"removed_elements": 50}}
+{"timestamp": "2026-06-01T09:16:25.526257+00:00", "level": "DEBUG", "message": "клик_далее_выполнен", "logger": "scraper", "trace_id": "8c1245cf8f0f"}
+{"timestamp": "2026-06-01T09:16:41.411509+00:00", "level": "INFO", "message": "страница_обработана", "logger": "scraper", "trace_id": "8c1245cf8f0f", "context": {"url_index": 1, "page": 25, "found": 49, "total_so_far": 1219}}
+{"timestamp": "2026-06-01T09:16:41.444864+00:00", "level": "DEBUG", "message": "dom_очищен", "logger": "scraper", "trace_id": "8c1245cf8f0f", "context": {"removed_elements": 50}}
+{"timestamp": "2026-06-01T09:16:42.601464+00:00", "level": "DEBUG", "message": "клик_далее_выполнен", "logger": "scraper", "trace_id": "8c1245cf8f0f"}
+{"timestamp": "2026-06-01T09:17:02.571230+00:00", "level": "INFO", "message": "переход_на_следующую_страницу_выполнен", "logger": "scraper", "trace_id": "8c1245cf8f0f"}
+{"timestamp": "2026-06-01T09:17:02.571651+00:00", "level": "INFO", "message": "парсинг_страницы", "logger": "scraper", "trace_id": "8c1245cf8f0f", "context": {"url_index": 1, "page": 26, "remaining": 308}}
+{"timestamp": "2026-06-01T09:17:20.069195+00:00", "level": "INFO", "message": "переход_на_следующую_страницу_выполнен", "logger": "scraper", "trace_id": "8c1245cf8f0f"}
+{"timestamp": "2026-06-01T09:17:20.069399+00:00", "level": "INFO", "message": "парсинг_страницы", "logger": "scraper", "trace_id": "8c1245cf8f0f", "context": {"url_index": 1, "page": 26, "remaining": 308}}
+{"timestamp": "2026-06-01T09:17:38.182321+00:00", "level": "INFO", "message": "страница_обработана", "logger": "scraper", "trace_id": "8c1245cf8f0f", "context": {"url_index": 1, "page": 26, "found": 48, "total_so_far": 1224}}
+{"timestamp": "2026-06-01T09:17:38.250995+00:00", "level": "DEBUG", "message": "dom_очищен", "logger": "scraper", "trace_id": "8c1245cf8f0f", "context": {"removed_elements": 50}}
+{"timestamp": "2026-06-01T09:17:39.441144+00:00", "level": "DEBUG", "message": "клик_далее_выполнен", "logger": "scraper", "trace_id": "8c1245cf8f0f"}
+{"timestamp": "2026-06-01T09:17:55.829789+00:00", "level": "INFO", "message": "страница_обработана", "logger": "scraper", "trace_id": "8c1245cf8f0f", "context": {"url_index": 1, "page": 26, "found": 49, "total_so_far": 1268}}
+{"timestamp": "2026-06-01T09:17:55.876359+00:00", "level": "DEBUG", "message": "dom_очищен", "logger": "scraper", "trace_id": "8c1245cf8f0f", "context": {"removed_elements": 50}}
+{"timestamp": "2026-06-01T09:17:57.048011+00:00", "level": "DEBUG", "message": "клик_далее_выполнен", "logger": "scraper", "trace_id": "8c1245cf8f0f"}
+{"timestamp": "2026-06-01T09:18:15.488242+00:00", "level": "INFO", "message": "переход_на_следующую_страницу_выполнен", "logger": "scraper", "trace_id": "8c1245cf8f0f"}
+{"timestamp": "2026-06-01T09:18:15.488919+00:00", "level": "INFO", "message": "парсинг_страницы", "logger": "scraper", "trace_id": "8c1245cf8f0f", "context": {"url_index": 1, "page": 27, "remaining": 307}}
+{"timestamp": "2026-06-01T09:18:34.482787+00:00", "level": "INFO", "message": "переход_на_следующую_страницу_выполнен", "logger": "scraper", "trace_id": "8c1245cf8f0f"}
+{"timestamp": "2026-06-01T09:18:34.483005+00:00", "level": "INFO", "message": "парсинг_страницы", "logger": "scraper", "trace_id": "8c1245cf8f0f", "context": {"url_index": 1, "page": 27, "remaining": 307}}
+{"timestamp": "2026-06-01T09:18:51.357609+00:00", "level": "INFO", "message": "страница_обработана", "logger": "scraper", "trace_id": "8c1245cf8f0f", "context": {"url_index": 1, "page": 27, "found": 44, "total_so_far": 1268}}
+{"timestamp": "2026-06-01T09:18:51.427491+00:00", "level": "DEBUG", "message": "dom_очищен", "logger": "scraper", "trace_id": "8c1245cf8f0f", "context": {"removed_elements": 50}}
+{"timestamp": "2026-06-01T09:18:52.618241+00:00", "level": "DEBUG", "message": "клик_далее_выполнен", "logger": "scraper", "trace_id": "8c1245cf8f0f"}
+{"timestamp": "2026-06-01T09:19:13.187193+00:00", "level": "INFO", "message": "страница_обработана", "logger": "scraper", "trace_id": "8c1245cf8f0f", "context": {"url_index": 1, "page": 27, "found": 48, "total_so_far": 1316}}
+{"timestamp": "2026-06-01T09:19:13.221363+00:00", "level": "DEBUG", "message": "dom_очищен", "logger": "scraper", "trace_id": "8c1245cf8f0f", "context": {"removed_elements": 50}}
+{"timestamp": "2026-06-01T09:19:14.367526+00:00", "level": "DEBUG", "message": "клик_далее_выполнен", "logger": "scraper", "trace_id": "8c1245cf8f0f"}
+{"timestamp": "2026-06-01T09:19:28.302285+00:00", "level": "INFO", "message": "переход_на_следующую_страницу_выполнен", "logger": "scraper", "trace_id": "8c1245cf8f0f"}
+{"timestamp": "2026-06-01T09:19:28.302435+00:00", "level": "INFO", "message": "парсинг_страницы", "logger": "scraper", "trace_id": "8c1245cf8f0f", "context": {"url_index": 1, "page": 28, "remaining": 306}}
+{"timestamp": "2026-06-01T09:19:50.268608+00:00", "level": "INFO", "message": "переход_на_следующую_страницу_выполнен", "logger": "scraper", "trace_id": "8c1245cf8f0f"}
+{"timestamp": "2026-06-01T09:19:50.268811+00:00", "level": "INFO", "message": "парсинг_страницы", "logger": "scraper", "trace_id": "8c1245cf8f0f", "context": {"url_index": 1, "page": 28, "remaining": 306}}
+{"timestamp": "2026-06-01T09:20:07.877447+00:00", "level": "INFO", "message": "страница_обработана", "logger": "scraper", "trace_id": "8c1245cf8f0f", "context": {"url_index": 1, "page": 28, "found": 48, "total_so_far": 1316}}
+{"timestamp": "2026-06-01T09:20:07.951676+00:00", "level": "DEBUG", "message": "dom_очищен", "logger": "scraper", "trace_id": "8c1245cf8f0f", "context": {"removed_elements": 50}}
+{"timestamp": "2026-06-01T09:20:09.223929+00:00", "level": "DEBUG", "message": "клик_далее_выполнен", "logger": "scraper", "trace_id": "8c1245cf8f0f"}
+{"timestamp": "2026-06-01T09:20:29.369911+00:00", "level": "INFO", "message": "страница_обработана", "logger": "scraper", "trace_id": "8c1245cf8f0f", "context": {"url_index": 1, "page": 28, "found": 46, "total_so_far": 1362}}
+{"timestamp": "2026-06-01T09:20:29.402905+00:00", "level": "DEBUG", "message": "dom_очищен", "logger": "scraper", "trace_id": "8c1245cf8f0f", "context": {"removed_elements": 50}}
+{"timestamp": "2026-06-01T09:20:30.589283+00:00", "level": "DEBUG", "message": "клик_далее_выполнен", "logger": "scraper", "trace_id": "8c1245cf8f0f"}
+{"timestamp": "2026-06-01T09:20:44.331129+00:00", "level": "INFO", "message": "переход_на_следующую_страницу_выполнен", "logger": "scraper", "trace_id": "8c1245cf8f0f"}
+{"timestamp": "2026-06-01T09:20:44.331286+00:00", "level": "INFO", "message": "парсинг_страницы", "logger": "scraper", "trace_id": "8c1245cf8f0f", "context": {"url_index": 1, "page": 29, "remaining": 305}}
+{"timestamp": "2026-06-01T09:21:07.629786+00:00", "level": "INFO", "message": "переход_на_следующую_страницу_выполнен", "logger": "scraper", "trace_id": "8c1245cf8f0f"}
+{"timestamp": "2026-06-01T09:21:07.630428+00:00", "level": "INFO", "message": "парсинг_страницы", "logger": "scraper", "trace_id": "8c1245cf8f0f", "context": {"url_index": 1, "page": 29, "remaining": 305}}
+{"timestamp": "2026-06-01T09:21:21.438408+00:00", "level": "INFO", "message": "страница_обработана", "logger": "scraper", "trace_id": "8c1245cf8f0f", "context": {"url_index": 1, "page": 29, "found": 45, "total_so_far": 1361}}
+{"timestamp": "2026-06-01T09:21:21.504265+00:00", "level": "DEBUG", "message": "dom_очищен", "logger": "scraper", "trace_id": "8c1245cf8f0f", "context": {"removed_elements": 50}}
+{"timestamp": "2026-06-01T09:21:22.684520+00:00", "level": "DEBUG", "message": "клик_далее_выполнен", "logger": "scraper", "trace_id": "8c1245cf8f0f"}
+{"timestamp": "2026-06-01T09:21:46.495425+00:00", "level": "INFO", "message": "страница_обработана", "logger": "scraper", "trace_id": "8c1245cf8f0f", "context": {"url_index": 1, "page": 29, "found": 50, "total_so_far": 1412}}
+{"timestamp": "2026-06-01T09:21:46.528250+00:00", "level": "DEBUG", "message": "dom_очищен", "logger": "scraper", "trace_id": "8c1245cf8f0f", "context": {"removed_elements": 50}}
+{"timestamp": "2026-06-01T09:21:47.687093+00:00", "level": "DEBUG", "message": "клик_далее_выполнен", "logger": "scraper", "trace_id": "8c1245cf8f0f"}
+{"timestamp": "2026-06-01T09:21:59.513685+00:00", "level": "INFO", "message": "переход_на_следующую_страницу_выполнен", "logger": "scraper", "trace_id": "8c1245cf8f0f"}
+{"timestamp": "2026-06-01T09:21:59.514343+00:00", "level": "INFO", "message": "парсинг_страницы", "logger": "scraper", "trace_id": "8c1245cf8f0f", "context": {"url_index": 1, "page": 30, "remaining": 304}}
+{"timestamp": "2026-06-01T09:22:25.091473+00:00", "level": "INFO", "message": "переход_на_следующую_страницу_выполнен", "logger": "scraper", "trace_id": "8c1245cf8f0f"}
+{"timestamp": "2026-06-01T09:22:25.091871+00:00", "level": "INFO", "message": "парсинг_страницы", "logger": "scraper", "trace_id": "8c1245cf8f0f", "context": {"url_index": 1, "page": 30, "remaining": 304}}
+{"timestamp": "2026-06-01T09:22:36.413143+00:00", "level": "INFO", "message": "страница_обработана", "logger": "scraper", "trace_id": "8c1245cf8f0f", "context": {"url_index": 1, "page": 30, "found": 47, "total_so_far": 1408}}
+{"timestamp": "2026-06-01T09:22:36.473096+00:00", "level": "DEBUG", "message": "dom_очищен", "logger": "scraper", "trace_id": "8c1245cf8f0f", "context": {"removed_elements": 50}}
+{"timestamp": "2026-06-01T09:22:37.686708+00:00", "level": "DEBUG", "message": "клик_далее_выполнен", "logger": "scraper", "trace_id": "8c1245cf8f0f"}
+{"timestamp": "2026-06-01T09:23:06.091973+00:00", "level": "INFO", "message": "страница_обработана", "logger": "scraper", "trace_id": "8c1245cf8f0f", "context": {"url_index": 1, "page": 30, "found": 50, "total_so_far": 1462}}
+{"timestamp": "2026-06-01T09:23:06.125576+00:00", "level": "DEBUG", "message": "dom_очищен", "logger": "scraper", "trace_id": "8c1245cf8f0f", "context": {"removed_elements": 50}}
+{"timestamp": "2026-06-01T09:23:07.277034+00:00", "level": "DEBUG", "message": "клик_далее_выполнен", "logger": "scraper", "trace_id": "8c1245cf8f0f"}
+{"timestamp": "2026-06-01T09:23:13.242272+00:00", "level": "INFO", "message": "переход_на_следующую_страницу_выполнен", "logger": "scraper", "trace_id": "8c1245cf8f0f"}
+{"timestamp": "2026-06-01T09:23:13.242807+00:00", "level": "INFO", "message": "парсинг_страницы", "logger": "scraper", "trace_id": "8c1245cf8f0f", "context": {"url_index": 1, "page": 31, "remaining": 303}}
+{"timestamp": "2026-06-01T09:23:44.567283+00:00", "level": "INFO", "message": "переход_на_следующую_страницу_выполнен", "logger": "scraper", "trace_id": "8c1245cf8f0f"}
+{"timestamp": "2026-06-01T09:23:44.567492+00:00", "level": "INFO", "message": "парсинг_страницы", "logger": "scraper", "trace_id": "8c1245cf8f0f", "context": {"url_index": 1, "page": 31, "remaining": 303}}
+{"timestamp": "2026-06-01T09:23:51.731364+00:00", "level": "INFO", "message": "страница_обработана", "logger": "scraper", "trace_id": "8c1245cf8f0f", "context": {"url_index": 1, "page": 31, "found": 47, "total_so_far": 1455}}
+{"timestamp": "2026-06-01T09:23:51.798716+00:00", "level": "DEBUG", "message": "dom_очищен", "logger": "scraper", "trace_id": "8c1245cf8f0f", "context": {"removed_elements": 50}}
+{"timestamp": "2026-06-01T09:23:53.036609+00:00", "level": "DEBUG", "message": "клик_далее_выполнен", "logger": "scraper", "trace_id": "8c1245cf8f0f"}
+{"timestamp": "2026-06-01T09:24:20.351309+00:00", "level": "INFO", "message": "страница_обработана", "logger": "scraper", "trace_id": "8c1245cf8f0f", "context": {"url_index": 1, "page": 31, "found": 49, "total_so_far": 1511}}
+{"timestamp": "2026-06-01T09:24:20.391055+00:00", "level": "DEBUG", "message": "dom_очищен", "logger": "scraper", "trace_id": "8c1245cf8f0f", "context": {"removed_elements": 50}}
+{"timestamp": "2026-06-01T09:24:21.543325+00:00", "level": "DEBUG", "message": "клик_далее_выполнен", "logger": "scraper", "trace_id": "8c1245cf8f0f"}
+{"timestamp": "2026-06-01T09:24:30.372967+00:00", "level": "INFO", "message": "переход_на_следующую_страницу_выполнен", "logger": "scraper", "trace_id": "8c1245cf8f0f"}
+{"timestamp": "2026-06-01T09:24:30.373977+00:00", "level": "INFO", "message": "парсинг_страницы", "logger": "scraper", "trace_id": "8c1245cf8f0f", "context": {"url_index": 1, "page": 32, "remaining": 302}}
+{"timestamp": "2026-06-01T09:24:57.574479+00:00", "level": "INFO", "message": "переход_на_следующую_страницу_выполнен", "logger": "scraper", "trace_id": "8c1245cf8f0f"}
+{"timestamp": "2026-06-01T09:24:57.574689+00:00", "level": "INFO", "message": "парсинг_страницы", "logger": "scraper", "trace_id": "8c1245cf8f0f", "context": {"url_index": 1, "page": 32, "remaining": 302}}
+{"timestamp": "2026-06-01T09:25:11.072485+00:00", "level": "INFO", "message": "страница_обработана", "logger": "scraper", "trace_id": "8c1245cf8f0f", "context": {"url_index": 1, "page": 32, "found": 45, "total_so_far": 1500}}
+{"timestamp": "2026-06-01T09:25:11.143687+00:00", "level": "DEBUG", "message": "dom_очищен", "logger": "scraper", "trace_id": "8c1245cf8f0f", "context": {"removed_elements": 50}}
+{"timestamp": "2026-06-01T09:25:12.362783+00:00", "level": "DEBUG", "message": "клик_далее_выполнен", "logger": "scraper", "trace_id": "8c1245cf8f0f"}
+{"timestamp": "2026-06-01T09:25:37.295571+00:00", "level": "INFO", "message": "страница_обработана", "logger": "scraper", "trace_id": "8c1245cf8f0f", "context": {"url_index": 1, "page": 32, "found": 46, "total_so_far": 1557}}
+{"timestamp": "2026-06-01T09:25:37.325497+00:00", "level": "DEBUG", "message": "dom_очищен", "logger": "scraper", "trace_id": "8c1245cf8f0f", "context": {"removed_elements": 50}}
+{"timestamp": "2026-06-01T09:25:38.464095+00:00", "level": "DEBUG", "message": "клик_далее_выполнен", "logger": "scraper", "trace_id": "8c1245cf8f0f"}
+{"timestamp": "2026-06-01T09:25:47.848301+00:00", "level": "INFO", "message": "переход_на_следующую_страницу_выполнен", "logger": "scraper", "trace_id": "8c1245cf8f0f"}
+{"timestamp": "2026-06-01T09:25:47.849354+00:00", "level": "INFO", "message": "парсинг_страницы", "logger": "scraper", "trace_id": "8c1245cf8f0f", "context": {"url_index": 1, "page": 33, "remaining": 301}}
+{"timestamp": "2026-06-01T09:26:15.672133+00:00", "level": "INFO", "message": "переход_на_следующую_страницу_выполнен", "logger": "scraper", "trace_id": "8c1245cf8f0f"}
+{"timestamp": "2026-06-01T09:26:15.672467+00:00", "level": "INFO", "message": "парсинг_страницы", "logger": "scraper", "trace_id": "8c1245cf8f0f", "context": {"url_index": 1, "page": 33, "remaining": 301}}
+{"timestamp": "2026-06-01T09:26:26.654704+00:00", "level": "INFO", "message": "страница_обработана", "logger": "scraper", "trace_id": "8c1245cf8f0f", "context": {"url_index": 1, "page": 33, "found": 46, "total_so_far": 1546}}
+{"timestamp": "2026-06-01T09:26:26.728569+00:00", "level": "DEBUG", "message": "dom_очищен", "logger": "scraper", "trace_id": "8c1245cf8f0f", "context": {"removed_elements": 50}}
+{"timestamp": "2026-06-01T09:26:27.918160+00:00", "level": "DEBUG", "message": "клик_далее_выполнен", "logger": "scraper", "trace_id": "8c1245cf8f0f"}
+{"timestamp": "2026-06-01T09:26:51.212572+00:00", "level": "INFO", "message": "страница_обработана", "logger": "scraper", "trace_id": "8c1245cf8f0f", "context": {"url_index": 1, "page": 33, "found": 47, "total_so_far": 1604}}
+{"timestamp": "2026-06-01T09:26:51.249709+00:00", "level": "DEBUG", "message": "dom_очищен", "logger": "scraper", "trace_id": "8c1245cf8f0f", "context": {"removed_elements": 50}}
+{"timestamp": "2026-06-01T09:26:52.398845+00:00", "level": "DEBUG", "message": "клик_далее_выполнен", "logger": "scraper", "trace_id": "8c1245cf8f0f"}
+{"timestamp": "2026-06-01T09:27:04.714000+00:00", "level": "INFO", "message": "переход_на_следующую_страницу_выполнен", "logger": "scraper", "trace_id": "8c1245cf8f0f"}
+{"timestamp": "2026-06-01T09:27:04.714334+00:00", "level": "INFO", "message": "парсинг_страницы", "logger": "scraper", "trace_id": "8c1245cf8f0f", "context": {"url_index": 1, "page": 34, "remaining": 300}}
+{"timestamp": "2026-06-01T09:27:29.535229+00:00", "level": "INFO", "message": "переход_на_следующую_страницу_выполнен", "logger": "scraper", "trace_id": "8c1245cf8f0f"}
+{"timestamp": "2026-06-01T09:27:29.535561+00:00", "level": "INFO", "message": "парсинг_страницы", "logger": "scraper", "trace_id": "8c1245cf8f0f", "context": {"url_index": 1, "page": 34, "remaining": 300}}
+{"timestamp": "2026-06-01T09:27:46.946812+00:00", "level": "INFO", "message": "страница_обработана", "logger": "scraper", "trace_id": "8c1245cf8f0f", "context": {"url_index": 1, "page": 34, "found": 47, "total_so_far": 1593}}
+{"timestamp": "2026-06-01T09:27:47.037221+00:00", "level": "DEBUG", "message": "dom_очищен", "logger": "scraper", "trace_id": "8c1245cf8f0f", "context": {"removed_elements": 50}}
+{"timestamp": "2026-06-01T09:27:48.240178+00:00", "level": "DEBUG", "message": "клик_далее_выполнен", "logger": "scraper", "trace_id": "8c1245cf8f0f"}
+{"timestamp": "2026-06-01T09:28:09.735633+00:00", "level": "INFO", "message": "страница_обработана", "logger": "scraper", "trace_id": "8c1245cf8f0f", "context": {"url_index": 1, "page": 34, "found": 49, "total_so_far": 1653}}
+{"timestamp": "2026-06-01T09:28:09.765969+00:00", "level": "DEBUG", "message": "dom_очищен", "logger": "scraper", "trace_id": "8c1245cf8f0f", "context": {"removed_elements": 50}}
+{"timestamp": "2026-06-01T09:28:10.931308+00:00", "level": "DEBUG", "message": "клик_далее_выполнен", "logger": "scraper", "trace_id": "8c1245cf8f0f"}
+{"timestamp": "2026-06-01T09:28:24.959364+00:00", "level": "INFO", "message": "переход_на_следующую_страницу_выполнен", "logger": "scraper", "trace_id": "8c1245cf8f0f"}
+{"timestamp": "2026-06-01T09:28:24.959517+00:00", "level": "INFO", "message": "парсинг_страницы", "logger": "scraper", "trace_id": "8c1245cf8f0f", "context": {"url_index": 1, "page": 35, "remaining": 299}}
+{"timestamp": "2026-06-01T09:28:47.359838+00:00", "level": "INFO", "message": "переход_на_следующую_страницу_выполнен", "logger": "scraper", "trace_id": "8c1245cf8f0f"}
+{"timestamp": "2026-06-01T09:28:47.360310+00:00", "level": "INFO", "message": "парсинг_страницы", "logger": "scraper", "trace_id": "8c1245cf8f0f", "context": {"url_index": 1, "page": 35, "remaining": 299}}
+{"timestamp": "2026-06-01T09:29:03.512286+00:00", "level": "INFO", "message": "страница_обработана", "logger": "scraper", "trace_id": "8c1245cf8f0f", "context": {"url_index": 1, "page": 35, "found": 45, "total_so_far": 1638}}
+{"timestamp": "2026-06-01T09:29:03.605083+00:00", "level": "DEBUG", "message": "dom_очищен", "logger": "scraper", "trace_id": "8c1245cf8f0f", "context": {"removed_elements": 50}}
+{"timestamp": "2026-06-01T09:29:04.801695+00:00", "level": "DEBUG", "message": "клик_далее_выполнен", "logger": "scraper", "trace_id": "8c1245cf8f0f"}
+{"timestamp": "2026-06-01T09:29:26.684792+00:00", "level": "INFO", "message": "страница_обработана", "logger": "scraper", "trace_id": "8c1245cf8f0f", "context": {"url_index": 1, "page": 35, "found": 47, "total_so_far": 1700}}
+{"timestamp": "2026-06-01T09:29:26.722577+00:00", "level": "DEBUG", "message": "dom_очищен", "logger": "scraper", "trace_id": "8c1245cf8f0f", "context": {"removed_elements": 50}}
+{"timestamp": "2026-06-01T09:29:27.874978+00:00", "level": "DEBUG", "message": "клик_далее_выполнен", "logger": "scraper", "trace_id": "8c1245cf8f0f"}
+{"timestamp": "2026-06-01T09:29:42.163899+00:00", "level": "INFO", "message": "переход_на_следующую_страницу_выполнен", "logger": "scraper", "trace_id": "8c1245cf8f0f"}
+{"timestamp": "2026-06-01T09:29:42.164400+00:00", "level": "INFO", "message": "парсинг_страницы", "logger": "scraper", "trace_id": "8c1245cf8f0f", "context": {"url_index": 1, "page": 36, "remaining": 298}}
+{"timestamp": "2026-06-01T09:30:02.974927+00:00", "level": "INFO", "message": "переход_на_следующую_страницу_выполнен", "logger": "scraper", "trace_id": "8c1245cf8f0f"}
+{"timestamp": "2026-06-01T09:30:02.975757+00:00", "level": "INFO", "message": "парсинг_страницы", "logger": "scraper", "trace_id": "8c1245cf8f0f", "context": {"url_index": 1, "page": 36, "remaining": 298}}
+{"timestamp": "2026-06-01T09:30:23.756052+00:00", "level": "INFO", "message": "страница_обработана", "logger": "scraper", "trace_id": "8c1245cf8f0f", "context": {"url_index": 1, "page": 36, "found": 46, "total_so_far": 1684}}
+{"timestamp": "2026-06-01T09:30:23.841027+00:00", "level": "DEBUG", "message": "dom_очищен", "logger": "scraper", "trace_id": "8c1245cf8f0f", "context": {"removed_elements": 50}}
+{"timestamp": "2026-06-01T09:30:25.078386+00:00", "level": "DEBUG", "message": "клик_далее_выполнен", "logger": "scraper", "trace_id": "8c1245cf8f0f"}
+{"timestamp": "2026-06-01T09:30:42.789863+00:00", "level": "INFO", "message": "страница_обработана", "logger": "scraper", "trace_id": "8c1245cf8f0f", "context": {"url_index": 1, "page": 36, "found": 48, "total_so_far": 1748}}
+{"timestamp": "2026-06-01T09:30:42.822570+00:00", "level": "DEBUG", "message": "dom_очищен", "logger": "scraper", "trace_id": "8c1245cf8f0f", "context": {"removed_elements": 50}}
+{"timestamp": "2026-06-01T09:30:44.030731+00:00", "level": "DEBUG", "message": "клик_далее_выполнен", "logger": "scraper", "trace_id": "8c1245cf8f0f"}
+{"timestamp": "2026-06-01T09:31:01.326715+00:00", "level": "INFO", "message": "переход_на_следующую_страницу_выполнен", "logger": "scraper", "trace_id": "8c1245cf8f0f"}
+{"timestamp": "2026-06-01T09:31:01.326954+00:00", "level": "INFO", "message": "парсинг_страницы", "logger": "scraper", "trace_id": "8c1245cf8f0f", "context": {"url_index": 1, "page": 37, "remaining": 297}}
+{"timestamp": "2026-06-01T09:31:21.574960+00:00", "level": "INFO", "message": "переход_на_следующую_страницу_выполнен", "logger": "scraper", "trace_id": "8c1245cf8f0f"}
+{"timestamp": "2026-06-01T09:31:21.575209+00:00", "level": "INFO", "message": "парсинг_страницы", "logger": "scraper", "trace_id": "8c1245cf8f0f", "context": {"url_index": 1, "page": 37, "remaining": 297}}
+{"timestamp": "2026-06-01T09:31:41.407663+00:00", "level": "INFO", "message": "страница_обработана", "logger": "scraper", "trace_id": "8c1245cf8f0f", "context": {"url_index": 1, "page": 37, "found": 46, "total_so_far": 1730}}
+{"timestamp": "2026-06-01T09:31:41.471110+00:00", "level": "DEBUG", "message": "dom_очищен", "logger": "scraper", "trace_id": "8c1245cf8f0f", "context": {"removed_elements": 50}}
+{"timestamp": "2026-06-01T09:31:42.682205+00:00", "level": "DEBUG", "message": "клик_далее_выполнен", "logger": "scraper", "trace_id": "8c1245cf8f0f"}
+{"timestamp": "2026-06-01T09:32:01.521621+00:00", "level": "INFO", "message": "страница_обработана", "logger": "scraper", "trace_id": "8c1245cf8f0f", "context": {"url_index": 1, "page": 37, "found": 48, "total_so_far": 1796}}
+{"timestamp": "2026-06-01T09:32:01.565738+00:00", "level": "DEBUG", "message": "dom_очищен", "logger": "scraper", "trace_id": "8c1245cf8f0f", "context": {"removed_elements": 50}}
+{"timestamp": "2026-06-01T09:32:02.735803+00:00", "level": "DEBUG", "message": "клик_далее_выполнен", "logger": "scraper", "trace_id": "8c1245cf8f0f"}
+{"timestamp": "2026-06-01T09:32:18.523530+00:00", "level": "INFO", "message": "переход_на_следующую_страницу_выполнен", "logger": "scraper", "trace_id": "8c1245cf8f0f"}
+{"timestamp": "2026-06-01T09:32:18.523833+00:00", "level": "INFO", "message": "парсинг_страницы", "logger": "scraper", "trace_id": "8c1245cf8f0f", "context": {"url_index": 1, "page": 38, "remaining": 296}}
+{"timestamp": "2026-06-01T09:32:40.232703+00:00", "level": "INFO", "message": "переход_на_следующую_страницу_выполнен", "logger": "scraper", "trace_id": "8c1245cf8f0f"}
+{"timestamp": "2026-06-01T09:32:40.232853+00:00", "level": "INFO", "message": "парсинг_страницы", "logger": "scraper", "trace_id": "8c1245cf8f0f", "context": {"url_index": 1, "page": 38, "remaining": 296}}
+{"timestamp": "2026-06-01T09:32:56.362041+00:00", "level": "INFO", "message": "страница_обработана", "logger": "scraper", "trace_id": "8c1245cf8f0f", "context": {"url_index": 1, "page": 38, "found": 44, "total_so_far": 1774}}
+{"timestamp": "2026-06-01T09:32:56.453703+00:00", "level": "DEBUG", "message": "dom_очищен", "logger": "scraper", "trace_id": "8c1245cf8f0f", "context": {"removed_elements": 50}}
+{"timestamp": "2026-06-01T09:32:57.655045+00:00", "level": "DEBUG", "message": "клик_далее_выполнен", "logger": "scraper", "trace_id": "8c1245cf8f0f"}
+{"timestamp": "2026-06-01T09:33:19.338824+00:00", "level": "INFO", "message": "страница_обработана", "logger": "scraper", "trace_id": "8c1245cf8f0f", "context": {"url_index": 1, "page": 38, "found": 48, "total_so_far": 1844}}
+{"timestamp": "2026-06-01T09:33:19.377956+00:00", "level": "DEBUG", "message": "dom_очищен", "logger": "scraper", "trace_id": "8c1245cf8f0f", "context": {"removed_elements": 50}}
+{"timestamp": "2026-06-01T09:33:20.532998+00:00", "level": "DEBUG", "message": "клик_далее_выполнен", "logger": "scraper", "trace_id": "8c1245cf8f0f"}
+{"timestamp": "2026-06-01T09:33:33.620728+00:00", "level": "INFO", "message": "переход_на_следующую_страницу_выполнен", "logger": "scraper", "trace_id": "8c1245cf8f0f"}
+{"timestamp": "2026-06-01T09:33:33.622023+00:00", "level": "INFO", "message": "парсинг_страницы", "logger": "scraper", "trace_id": "8c1245cf8f0f", "context": {"url_index": 1, "page": 39, "remaining": 295}}
+{"timestamp": "2026-06-01T09:33:57.767596+00:00", "level": "INFO", "message": "переход_на_следующую_страницу_выполнен", "logger": "scraper", "trace_id": "8c1245cf8f0f"}
+{"timestamp": "2026-06-01T09:33:57.767821+00:00", "level": "INFO", "message": "парсинг_страницы", "logger": "scraper", "trace_id": "8c1245cf8f0f", "context": {"url_index": 1, "page": 39, "remaining": 295}}
+{"timestamp": "2026-06-01T09:34:14.501874+00:00", "level": "INFO", "message": "страница_обработана", "logger": "scraper", "trace_id": "8c1245cf8f0f", "context": {"url_index": 1, "page": 39, "found": 49, "total_so_far": 1823}}
+{"timestamp": "2026-06-01T09:34:14.571072+00:00", "level": "DEBUG", "message": "dom_очищен", "logger": "scraper", "trace_id": "8c1245cf8f0f", "context": {"removed_elements": 50}}
+{"timestamp": "2026-06-01T09:34:15.778929+00:00", "level": "DEBUG", "message": "клик_далее_выполнен", "logger": "scraper", "trace_id": "8c1245cf8f0f"}
+{"timestamp": "2026-06-01T09:34:36.019689+00:00", "level": "INFO", "message": "страница_обработана", "logger": "scraper", "trace_id": "8c1245cf8f0f", "context": {"url_index": 1, "page": 39, "found": 49, "total_so_far": 1893}}
+{"timestamp": "2026-06-01T09:34:36.064208+00:00", "level": "DEBUG", "message": "dom_очищен", "logger": "scraper", "trace_id": "8c1245cf8f0f", "context": {"removed_elements": 50}}
+{"timestamp": "2026-06-01T09:34:37.227131+00:00", "level": "DEBUG", "message": "клик_далее_выполнен", "logger": "scraper", "trace_id": "8c1245cf8f0f"}
+{"timestamp": "2026-06-01T09:34:53.062428+00:00", "level": "INFO", "message": "переход_на_следующую_страницу_выполнен", "logger": "scraper", "trace_id": "8c1245cf8f0f"}
+{"timestamp": "2026-06-01T09:34:53.062941+00:00", "level": "INFO", "message": "парсинг_страницы", "logger": "scraper", "trace_id": "8c1245cf8f0f", "context": {"url_index": 1, "page": 40, "remaining": 294}}
+{"timestamp": "2026-06-01T09:35:14.917128+00:00", "level": "INFO", "message": "переход_на_следующую_страницу_выполнен", "logger": "scraper", "trace_id": "8c1245cf8f0f"}
+{"timestamp": "2026-06-01T09:35:14.917739+00:00", "level": "INFO", "message": "парсинг_страницы", "logger": "scraper", "trace_id": "8c1245cf8f0f", "context": {"url_index": 1, "page": 40, "remaining": 294}}
+{"timestamp": "2026-06-01T09:35:35.528586+00:00", "level": "INFO", "message": "страница_обработана", "logger": "scraper", "trace_id": "8c1245cf8f0f", "context": {"url_index": 1, "page": 40, "found": 48, "total_so_far": 1871}}
+{"timestamp": "2026-06-01T09:35:35.606305+00:00", "level": "DEBUG", "message": "dom_очищен", "logger": "scraper", "trace_id": "8c1245cf8f0f", "context": {"removed_elements": 50}}
+{"timestamp": "2026-06-01T09:35:36.831608+00:00", "level": "DEBUG", "message": "клик_далее_выполнен", "logger": "scraper", "trace_id": "8c1245cf8f0f"}
+{"timestamp": "2026-06-01T09:35:47.329462+00:00", "level": "INFO", "message": "страница_обработана", "logger": "scraper", "trace_id": "8c1245cf8f0f", "context": {"url_index": 1, "page": 40, "found": 40, "total_so_far": 1933}}
+{"timestamp": "2026-06-01T09:35:47.361135+00:00", "level": "DEBUG", "message": "dom_очищен", "logger": "scraper", "trace_id": "8c1245cf8f0f", "context": {"removed_elements": 43}}
+{"timestamp": "2026-06-01T09:35:48.398526+00:00", "level": "DEBUG", "message": "кнопка_далее_не_найдена", "logger": "scraper", "trace_id": "8c1245cf8f0f"}
+{"timestamp": "2026-06-01T09:35:48.399119+00:00", "level": "INFO", "message": "последняя_страница_достигнута", "logger": "scraper", "trace_id": "8c1245cf8f0f", "context": {"url_index": 1, "page": 40}}
+{"timestamp": "2026-06-01T09:35:48.399527+00:00", "level": "INFO", "message": "воркер_ссылка_обработана", "logger": "scraper", "trace_id": "8c1245cf8f0f", "context": {"worker": 1, "url_index": 1, "pages_from_url": 40, "listings_so_far": 1933}}
+{"timestamp": "2026-06-01T09:35:48.840063+00:00", "level": "INFO", "message": "браузер_остановлен", "logger": "browser", "trace_id": "8c1245cf8f0f"}
+{"timestamp": "2026-06-01T09:36:14.654955+00:00", "level": "INFO", "message": "переход_на_следующую_страницу_выполнен", "logger": "scraper", "trace_id": "8c1245cf8f0f"}
+{"timestamp": "2026-06-01T09:36:14.655221+00:00", "level": "INFO", "message": "парсинг_страницы", "logger": "scraper", "trace_id": "8c1245cf8f0f", "context": {"url_index": 1, "page": 41, "remaining": 293}}
+{"timestamp": "2026-06-01T09:36:49.827888+00:00", "level": "INFO", "message": "страница_обработана", "logger": "scraper", "trace_id": "8c1245cf8f0f", "context": {"url_index": 1, "page": 41, "found": 43, "total_so_far": 1914}}
+{"timestamp": "2026-06-01T09:36:49.899477+00:00", "level": "DEBUG", "message": "dom_очищен", "logger": "scraper", "trace_id": "8c1245cf8f0f", "context": {"removed_elements": 50}}
+{"timestamp": "2026-06-01T09:36:51.758689+00:00", "level": "DEBUG", "message": "клик_далее_выполнен", "logger": "scraper", "trace_id": "8c1245cf8f0f"}
+{"timestamp": "2026-06-01T09:37:28.345732+00:00", "level": "INFO", "message": "переход_на_следующую_страницу_выполнен", "logger": "scraper", "trace_id": "8c1245cf8f0f"}
+{"timestamp": "2026-06-01T09:37:28.346554+00:00", "level": "INFO", "message": "парсинг_страницы", "logger": "scraper", "trace_id": "8c1245cf8f0f", "context": {"url_index": 1, "page": 42, "remaining": 292}}
+{"timestamp": "2026-06-01T09:38:06.942314+00:00", "level": "INFO", "message": "страница_обработана", "logger": "scraper", "trace_id": "8c1245cf8f0f", "context": {"url_index": 1, "page": 42, "found": 48, "total_so_far": 1962}}
+{"timestamp": "2026-06-01T09:38:07.033987+00:00", "level": "DEBUG", "message": "dom_очищен", "logger": "scraper", "trace_id": "8c1245cf8f0f", "context": {"removed_elements": 50}}
+{"timestamp": "2026-06-01T09:38:08.233336+00:00", "level": "DEBUG", "message": "клик_далее_выполнен", "logger": "scraper", "trace_id": "8c1245cf8f0f"}
+{"timestamp": "2026-06-01T09:38:44.642120+00:00", "level": "INFO", "message": "переход_на_следующую_страницу_выполнен", "logger": "scraper", "trace_id": "8c1245cf8f0f"}
+{"timestamp": "2026-06-01T09:38:44.642546+00:00", "level": "INFO", "message": "парсинг_страницы", "logger": "scraper", "trace_id": "8c1245cf8f0f", "context": {"url_index": 1, "page": 43, "remaining": 291}}
+{"timestamp": "2026-06-01T09:39:27.064816+00:00", "level": "INFO", "message": "страница_обработана", "logger": "scraper", "trace_id": "8c1245cf8f0f", "context": {"url_index": 1, "page": 43, "found": 47, "total_so_far": 2009}}
+{"timestamp": "2026-06-01T09:39:27.131246+00:00", "level": "DEBUG", "message": "dom_очищен", "logger": "scraper", "trace_id": "8c1245cf8f0f", "context": {"removed_elements": 50}}
+{"timestamp": "2026-06-01T09:39:28.304960+00:00", "level": "DEBUG", "message": "клик_далее_выполнен", "logger": "scraper", "trace_id": "8c1245cf8f0f"}
+{"timestamp": "2026-06-01T09:40:03.650258+00:00", "level": "INFO", "message": "переход_на_следующую_страницу_выполнен", "logger": "scraper", "trace_id": "8c1245cf8f0f"}
+{"timestamp": "2026-06-01T09:40:03.650495+00:00", "level": "INFO", "message": "парсинг_страницы", "logger": "scraper", "trace_id": "8c1245cf8f0f", "context": {"url_index": 1, "page": 44, "remaining": 290}}
+{"timestamp": "2026-06-01T09:40:43.455396+00:00", "level": "INFO", "message": "страница_обработана", "logger": "scraper", "trace_id": "8c1245cf8f0f", "context": {"url_index": 1, "page": 44, "found": 45, "total_so_far": 2054}}
+{"timestamp": "2026-06-01T09:40:43.532753+00:00", "level": "DEBUG", "message": "dom_очищен", "logger": "scraper", "trace_id": "8c1245cf8f0f", "context": {"removed_elements": 50}}
+{"timestamp": "2026-06-01T09:40:44.705189+00:00", "level": "DEBUG", "message": "клик_далее_выполнен", "logger": "scraper", "trace_id": "8c1245cf8f0f"}
+{"timestamp": "2026-06-01T09:41:22.450413+00:00", "level": "INFO", "message": "переход_на_следующую_страницу_выполнен", "logger": "scraper", "trace_id": "8c1245cf8f0f"}
+{"timestamp": "2026-06-01T09:41:22.450624+00:00", "level": "INFO", "message": "парсинг_страницы", "logger": "scraper", "trace_id": "8c1245cf8f0f", "context": {"url_index": 1, "page": 45, "remaining": 289}}
+{"timestamp": "2026-06-01T09:42:03.957510+00:00", "level": "INFO", "message": "страница_обработана", "logger": "scraper", "trace_id": "8c1245cf8f0f", "context": {"url_index": 1, "page": 45, "found": 47, "total_so_far": 2101}}
+{"timestamp": "2026-06-01T09:42:04.049031+00:00", "level": "DEBUG", "message": "dom_очищен", "logger": "scraper", "trace_id": "8c1245cf8f0f", "context": {"removed_elements": 50}}
+{"timestamp": "2026-06-01T09:42:05.265897+00:00", "level": "DEBUG", "message": "клик_далее_выполнен", "logger": "scraper", "trace_id": "8c1245cf8f0f"}
+{"timestamp": "2026-06-01T09:42:40.616816+00:00", "level": "INFO", "message": "переход_на_следующую_страницу_выполнен", "logger": "scraper", "trace_id": "8c1245cf8f0f"}
+{"timestamp": "2026-06-01T09:42:40.617312+00:00", "level": "INFO", "message": "парсинг_страницы", "logger": "scraper", "trace_id": "8c1245cf8f0f", "context": {"url_index": 1, "page": 46, "remaining": 288}}
+{"timestamp": "2026-06-01T09:43:21.658906+00:00", "level": "INFO", "message": "страница_обработана", "logger": "scraper", "trace_id": "8c1245cf8f0f", "context": {"url_index": 1, "page": 46, "found": 47, "total_so_far": 2148}}
+{"timestamp": "2026-06-01T09:43:21.725960+00:00", "level": "DEBUG", "message": "dom_очищен", "logger": "scraper", "trace_id": "8c1245cf8f0f", "context": {"removed_elements": 50}}
+{"timestamp": "2026-06-01T09:43:22.914341+00:00", "level": "DEBUG", "message": "клик_далее_выполнен", "logger": "scraper", "trace_id": "8c1245cf8f0f"}
+{"timestamp": "2026-06-01T09:43:59.656515+00:00", "level": "INFO", "message": "переход_на_следующую_страницу_выполнен", "logger": "scraper", "trace_id": "8c1245cf8f0f"}
+{"timestamp": "2026-06-01T09:43:59.656770+00:00", "level": "INFO", "message": "парсинг_страницы", "logger": "scraper", "trace_id": "8c1245cf8f0f", "context": {"url_index": 1, "page": 47, "remaining": 287}}
+{"timestamp": "2026-06-01T09:44:39.589933+00:00", "level": "INFO", "message": "страница_обработана", "logger": "scraper", "trace_id": "8c1245cf8f0f", "context": {"url_index": 1, "page": 47, "found": 45, "total_so_far": 2193}}
+{"timestamp": "2026-06-01T09:44:39.650056+00:00", "level": "DEBUG", "message": "dom_очищен", "logger": "scraper", "trace_id": "8c1245cf8f0f", "context": {"removed_elements": 50}}
+{"timestamp": "2026-06-01T09:44:40.812202+00:00", "level": "DEBUG", "message": "клик_далее_выполнен", "logger": "scraper", "trace_id": "8c1245cf8f0f"}
+{"timestamp": "2026-06-01T09:45:18.440597+00:00", "level": "INFO", "message": "переход_на_следующую_страницу_выполнен", "logger": "scraper", "trace_id": "8c1245cf8f0f"}
+{"timestamp": "2026-06-01T09:45:18.440999+00:00", "level": "INFO", "message": "парсинг_страницы", "logger": "scraper", "trace_id": "8c1245cf8f0f", "context": {"url_index": 1, "page": 48, "remaining": 286}}
+{"timestamp": "2026-06-01T09:45:58.836476+00:00", "level": "INFO", "message": "страница_обработана", "logger": "scraper", "trace_id": "8c1245cf8f0f", "context": {"url_index": 1, "page": 48, "found": 41, "total_so_far": 2234}}
+{"timestamp": "2026-06-01T09:45:58.907457+00:00", "level": "DEBUG", "message": "dom_очищен", "logger": "scraper", "trace_id": "8c1245cf8f0f", "context": {"removed_elements": 50}}
+{"timestamp": "2026-06-01T09:46:00.165926+00:00", "level": "DEBUG", "message": "клик_далее_выполнен", "logger": "scraper", "trace_id": "8c1245cf8f0f"}
+{"timestamp": "2026-06-01T09:46:37.786538+00:00", "level": "INFO", "message": "переход_на_следующую_страницу_выполнен", "logger": "scraper", "trace_id": "8c1245cf8f0f"}
+{"timestamp": "2026-06-01T09:46:37.786983+00:00", "level": "INFO", "message": "парсинг_страницы", "logger": "scraper", "trace_id": "8c1245cf8f0f", "context": {"url_index": 1, "page": 49, "remaining": 285}}
+{"timestamp": "2026-06-01T09:47:17.381583+00:00", "level": "INFO", "message": "страница_обработана", "logger": "scraper", "trace_id": "8c1245cf8f0f", "context": {"url_index": 1, "page": 49, "found": 43, "total_so_far": 2277}}
+{"timestamp": "2026-06-01T09:47:17.447743+00:00", "level": "DEBUG", "message": "dom_очищен", "logger": "scraper", "trace_id": "8c1245cf8f0f", "context": {"removed_elements": 50}}
+{"timestamp": "2026-06-01T09:47:19.353353+00:00", "level": "DEBUG", "message": "клик_далее_выполнен", "logger": "scraper", "trace_id": "8c1245cf8f0f"}
+{"timestamp": "2026-06-01T09:47:56.159374+00:00", "level": "INFO", "message": "переход_на_следующую_страницу_выполнен", "logger": "scraper", "trace_id": "8c1245cf8f0f"}
+{"timestamp": "2026-06-01T09:47:56.159929+00:00", "level": "INFO", "message": "парсинг_страницы", "logger": "scraper", "trace_id": "8c1245cf8f0f", "context": {"url_index": 1, "page": 50, "remaining": 284}}
+{"timestamp": "2026-06-01T09:48:37.607485+00:00", "level": "INFO", "message": "страница_обработана", "logger": "scraper", "trace_id": "8c1245cf8f0f", "context": {"url_index": 1, "page": 50, "found": 47, "total_so_far": 2324}}
+{"timestamp": "2026-06-01T09:48:37.744324+00:00", "level": "DEBUG", "message": "dom_очищен", "logger": "scraper", "trace_id": "8c1245cf8f0f", "context": {"removed_elements": 50}}
+{"timestamp": "2026-06-01T09:48:38.969403+00:00", "level": "DEBUG", "message": "клик_далее_выполнен", "logger": "scraper", "trace_id": "8c1245cf8f0f"}
+{"timestamp": "2026-06-01T09:49:16.300183+00:00", "level": "INFO", "message": "переход_на_следующую_страницу_выполнен", "logger": "scraper", "trace_id": "8c1245cf8f0f"}
+{"timestamp": "2026-06-01T09:49:16.300375+00:00", "level": "INFO", "message": "парсинг_страницы", "logger": "scraper", "trace_id": "8c1245cf8f0f", "context": {"url_index": 1, "page": 51, "remaining": 283}}
+{"timestamp": "2026-06-01T09:50:01.636383+00:00", "level": "INFO", "message": "страница_обработана", "logger": "scraper", "trace_id": "8c1245cf8f0f", "context": {"url_index": 1, "page": 51, "found": 45, "total_so_far": 2369}}
+{"timestamp": "2026-06-01T09:50:01.839062+00:00", "level": "DEBUG", "message": "dom_очищен", "logger": "scraper", "trace_id": "8c1245cf8f0f", "context": {"removed_elements": 50}}
+{"timestamp": "2026-06-01T09:50:03.890578+00:00", "level": "DEBUG", "message": "клик_далее_выполнен", "logger": "scraper", "trace_id": "8c1245cf8f0f"}
+{"timestamp": "2026-06-01T09:50:40.743659+00:00", "level": "INFO", "message": "переход_на_следующую_страницу_выполнен", "logger": "scraper", "trace_id": "8c1245cf8f0f"}
+{"timestamp": "2026-06-01T09:50:40.744057+00:00", "level": "INFO", "message": "парсинг_страницы", "logger": "scraper", "trace_id": "8c1245cf8f0f", "context": {"url_index": 1, "page": 52, "remaining": 282}}
+{"timestamp": "2026-06-01T09:51:21.950620+00:00", "level": "INFO", "message": "страница_обработана", "logger": "scraper", "trace_id": "8c1245cf8f0f", "context": {"url_index": 1, "page": 52, "found": 41, "total_so_far": 2410}}
+{"timestamp": "2026-06-01T09:51:22.029682+00:00", "level": "DEBUG", "message": "dom_очищен", "logger": "scraper", "trace_id": "8c1245cf8f0f", "context": {"removed_elements": 50}}
+{"timestamp": "2026-06-01T09:51:23.207751+00:00", "level": "DEBUG", "message": "клик_далее_выполнен", "logger": "scraper", "trace_id": "8c1245cf8f0f"}
+{"timestamp": "2026-06-01T09:52:00.260300+00:00", "level": "INFO", "message": "переход_на_следующую_страницу_выполнен", "logger": "scraper", "trace_id": "8c1245cf8f0f"}
+{"timestamp": "2026-06-01T09:52:00.260634+00:00", "level": "INFO", "message": "парсинг_страницы", "logger": "scraper", "trace_id": "8c1245cf8f0f", "context": {"url_index": 1, "page": 53, "remaining": 281}}
+{"timestamp": "2026-06-01T09:52:40.449345+00:00", "level": "INFO", "message": "страница_обработана", "logger": "scraper", "trace_id": "8c1245cf8f0f", "context": {"url_index": 1, "page": 53, "found": 40, "total_so_far": 2450}}
+{"timestamp": "2026-06-01T09:52:40.524950+00:00", "level": "DEBUG", "message": "dom_очищен", "logger": "scraper", "trace_id": "8c1245cf8f0f", "context": {"removed_elements": 50}}
+{"timestamp": "2026-06-01T09:52:41.709734+00:00", "level": "DEBUG", "message": "клик_далее_выполнен", "logger": "scraper", "trace_id": "8c1245cf8f0f"}
+{"timestamp": "2026-06-01T09:53:19.039943+00:00", "level": "INFO", "message": "переход_на_следующую_страницу_выполнен", "logger": "scraper", "trace_id": "8c1245cf8f0f"}
+{"timestamp": "2026-06-01T09:53:19.040354+00:00", "level": "INFO", "message": "парсинг_страницы", "logger": "scraper", "trace_id": "8c1245cf8f0f", "context": {"url_index": 1, "page": 54, "remaining": 280}}
+{"timestamp": "2026-06-01T09:53:59.627373+00:00", "level": "INFO", "message": "страница_обработана", "logger": "scraper", "trace_id": "8c1245cf8f0f", "context": {"url_index": 1, "page": 54, "found": 44, "total_so_far": 2494}}
+{"timestamp": "2026-06-01T09:53:59.713430+00:00", "level": "DEBUG", "message": "dom_очищен", "logger": "scraper", "trace_id": "8c1245cf8f0f", "context": {"removed_elements": 50}}
+{"timestamp": "2026-06-01T09:54:00.963821+00:00", "level": "DEBUG", "message": "клик_далее_выполнен", "logger": "scraper", "trace_id": "8c1245cf8f0f"}
+{"timestamp": "2026-06-01T09:54:38.968376+00:00", "level": "INFO", "message": "переход_на_следующую_страницу_выполнен", "logger": "scraper", "trace_id": "8c1245cf8f0f"}
+{"timestamp": "2026-06-01T09:54:38.968606+00:00", "level": "INFO", "message": "парсинг_страницы", "logger": "scraper", "trace_id": "8c1245cf8f0f", "context": {"url_index": 1, "page": 55, "remaining": 279}}
+{"timestamp": "2026-06-01T09:55:23.267135+00:00", "level": "INFO", "message": "страница_обработана", "logger": "scraper", "trace_id": "8c1245cf8f0f", "context": {"url_index": 1, "page": 55, "found": 46, "total_so_far": 2540}}
+{"timestamp": "2026-06-01T09:55:23.338147+00:00", "level": "DEBUG", "message": "dom_очищен", "logger": "scraper", "trace_id": "8c1245cf8f0f", "context": {"removed_elements": 50}}
+{"timestamp": "2026-06-01T09:55:24.603574+00:00", "level": "DEBUG", "message": "клик_далее_выполнен", "logger": "scraper", "trace_id": "8c1245cf8f0f"}
+{"timestamp": "2026-06-01T09:56:02.527366+00:00", "level": "INFO", "message": "переход_на_следующую_страницу_выполнен", "logger": "scraper", "trace_id": "8c1245cf8f0f"}
+{"timestamp": "2026-06-01T09:56:02.527522+00:00", "level": "INFO", "message": "парсинг_страницы", "logger": "scraper", "trace_id": "8c1245cf8f0f", "context": {"url_index": 1, "page": 56, "remaining": 278}}
+{"timestamp": "2026-06-01T09:56:49.316855+00:00", "level": "INFO", "message": "страница_обработана", "logger": "scraper", "trace_id": "8c1245cf8f0f", "context": {"url_index": 1, "page": 56, "found": 44, "total_so_far": 2584}}
+{"timestamp": "2026-06-01T09:56:49.401003+00:00", "level": "DEBUG", "message": "dom_очищен", "logger": "scraper", "trace_id": "8c1245cf8f0f", "context": {"removed_elements": 50}}
+{"timestamp": "2026-06-01T09:56:50.628737+00:00", "level": "DEBUG", "message": "клик_далее_выполнен", "logger": "scraper", "trace_id": "8c1245cf8f0f"}
+{"timestamp": "2026-06-01T09:57:27.524271+00:00", "level": "INFO", "message": "переход_на_следующую_страницу_выполнен", "logger": "scraper", "trace_id": "8c1245cf8f0f"}
+{"timestamp": "2026-06-01T09:57:27.524699+00:00", "level": "INFO", "message": "парсинг_страницы", "logger": "scraper", "trace_id": "8c1245cf8f0f", "context": {"url_index": 1, "page": 57, "remaining": 277}}
+{"timestamp": "2026-06-01T09:58:12.273239+00:00", "level": "INFO", "message": "страница_обработана", "logger": "scraper", "trace_id": "8c1245cf8f0f", "context": {"url_index": 1, "page": 57, "found": 48, "total_so_far": 2632}}
+{"timestamp": "2026-06-01T09:58:12.646517+00:00", "level": "DEBUG", "message": "dom_очищен", "logger": "scraper", "trace_id": "8c1245cf8f0f", "context": {"removed_elements": 50}}
+{"timestamp": "2026-06-01T09:58:13.834388+00:00", "level": "DEBUG", "message": "клик_далее_выполнен", "logger": "scraper", "trace_id": "8c1245cf8f0f"}
+{"timestamp": "2026-06-01T09:58:51.043903+00:00", "level": "INFO", "message": "переход_на_следующую_страницу_выполнен", "logger": "scraper", "trace_id": "8c1245cf8f0f"}
+{"timestamp": "2026-06-01T09:58:51.044638+00:00", "level": "INFO", "message": "парсинг_страницы", "logger": "scraper", "trace_id": "8c1245cf8f0f", "context": {"url_index": 1, "page": 58, "remaining": 276}}
+{"timestamp": "2026-06-01T09:59:33.841861+00:00", "level": "INFO", "message": "страница_обработана", "logger": "scraper", "trace_id": "8c1245cf8f0f", "context": {"url_index": 1, "page": 58, "found": 47, "total_so_far": 2679}}
+{"timestamp": "2026-06-01T09:59:33.910862+00:00", "level": "DEBUG", "message": "dom_очищен", "logger": "scraper", "trace_id": "8c1245cf8f0f", "context": {"removed_elements": 50}}
+{"timestamp": "2026-06-01T09:59:35.131795+00:00", "level": "DEBUG", "message": "клик_далее_выполнен", "logger": "scraper", "trace_id": "8c1245cf8f0f"}
+{"timestamp": "2026-06-01T10:00:11.187732+00:00", "level": "INFO", "message": "переход_на_следующую_страницу_выполнен", "logger": "scraper", "trace_id": "8c1245cf8f0f"}
+{"timestamp": "2026-06-01T10:00:11.188037+00:00", "level": "INFO", "message": "парсинг_страницы", "logger": "scraper", "trace_id": "8c1245cf8f0f", "context": {"url_index": 1, "page": 59, "remaining": 275}}
+{"timestamp": "2026-06-01T10:00:55.927823+00:00", "level": "INFO", "message": "страница_обработана", "logger": "scraper", "trace_id": "8c1245cf8f0f", "context": {"url_index": 1, "page": 59, "found": 43, "total_so_far": 2722}}
+{"timestamp": "2026-06-01T10:00:55.995314+00:00", "level": "DEBUG", "message": "dom_очищен", "logger": "scraper", "trace_id": "8c1245cf8f0f", "context": {"removed_elements": 50}}
+{"timestamp": "2026-06-01T10:00:57.196998+00:00", "level": "DEBUG", "message": "клик_далее_выполнен", "logger": "scraper", "trace_id": "8c1245cf8f0f"}
+{"timestamp": "2026-06-01T10:01:33.731916+00:00", "level": "INFO", "message": "переход_на_следующую_страницу_выполнен", "logger": "scraper", "trace_id": "8c1245cf8f0f"}
+{"timestamp": "2026-06-01T10:01:33.732345+00:00", "level": "INFO", "message": "парсинг_страницы", "logger": "scraper", "trace_id": "8c1245cf8f0f", "context": {"url_index": 1, "page": 60, "remaining": 274}}
+{"timestamp": "2026-06-01T10:02:19.220862+00:00", "level": "INFO", "message": "страница_обработана", "logger": "scraper", "trace_id": "8c1245cf8f0f", "context": {"url_index": 1, "page": 60, "found": 47, "total_so_far": 2769}}
+{"timestamp": "2026-06-01T10:02:19.291072+00:00", "level": "DEBUG", "message": "dom_очищен", "logger": "scraper", "trace_id": "8c1245cf8f0f", "context": {"removed_elements": 50}}
+{"timestamp": "2026-06-01T10:02:20.483496+00:00", "level": "DEBUG", "message": "клик_далее_выполнен", "logger": "scraper", "trace_id": "8c1245cf8f0f"}
+{"timestamp": "2026-06-01T10:02:56.871713+00:00", "level": "INFO", "message": "переход_на_следующую_страницу_выполнен", "logger": "scraper", "trace_id": "8c1245cf8f0f"}
+{"timestamp": "2026-06-01T10:02:56.871988+00:00", "level": "INFO", "message": "парсинг_страницы", "logger": "scraper", "trace_id": "8c1245cf8f0f", "context": {"url_index": 1, "page": 61, "remaining": 273}}
+{"timestamp": "2026-06-01T10:03:48.137462+00:00", "level": "INFO", "message": "страница_обработана", "logger": "scraper", "trace_id": "8c1245cf8f0f", "context": {"url_index": 1, "page": 61, "found": 48, "total_so_far": 2817}}
+{"timestamp": "2026-06-01T10:03:48.214158+00:00", "level": "DEBUG", "message": "dom_очищен", "logger": "scraper", "trace_id": "8c1245cf8f0f", "context": {"removed_elements": 50}}
+{"timestamp": "2026-06-01T10:03:49.437701+00:00", "level": "DEBUG", "message": "клик_далее_выполнен", "logger": "scraper", "trace_id": "8c1245cf8f0f"}
+{"timestamp": "2026-06-01T10:04:24.663477+00:00", "level": "INFO", "message": "переход_на_следующую_страницу_выполнен", "logger": "scraper", "trace_id": "8c1245cf8f0f"}
+{"timestamp": "2026-06-01T10:04:24.664230+00:00", "level": "INFO", "message": "парсинг_страницы", "logger": "scraper", "trace_id": "8c1245cf8f0f", "context": {"url_index": 1, "page": 62, "remaining": 272}}
+{"timestamp": "2026-06-01T10:05:12.601866+00:00", "level": "INFO", "message": "страница_обработана", "logger": "scraper", "trace_id": "8c1245cf8f0f", "context": {"url_index": 1, "page": 62, "found": 45, "total_so_far": 2862}}
+{"timestamp": "2026-06-01T10:05:13.021616+00:00", "level": "DEBUG", "message": "dom_очищен", "logger": "scraper", "trace_id": "8c1245cf8f0f", "context": {"removed_elements": 50}}
+{"timestamp": "2026-06-01T10:05:14.187893+00:00", "level": "DEBUG", "message": "клик_далее_выполнен", "logger": "scraper", "trace_id": "8c1245cf8f0f"}
+{"timestamp": "2026-06-01T10:05:50.256971+00:00", "level": "INFO", "message": "переход_на_следующую_страницу_выполнен", "logger": "scraper", "trace_id": "8c1245cf8f0f"}
+{"timestamp": "2026-06-01T10:05:50.257326+00:00", "level": "INFO", "message": "парсинг_страницы", "logger": "scraper", "trace_id": "8c1245cf8f0f", "context": {"url_index": 1, "page": 63, "remaining": 271}}
+{"timestamp": "2026-06-01T10:06:40.882237+00:00", "level": "INFO", "message": "страница_обработана", "logger": "scraper", "trace_id": "8c1245cf8f0f", "context": {"url_index": 1, "page": 63, "found": 45, "total_so_far": 2907}}
+{"timestamp": "2026-06-01T10:06:40.960640+00:00", "level": "DEBUG", "message": "dom_очищен", "logger": "scraper", "trace_id": "8c1245cf8f0f", "context": {"removed_elements": 50}}
+{"timestamp": "2026-06-01T10:06:42.278263+00:00", "level": "DEBUG", "message": "клик_далее_выполнен", "logger": "scraper", "trace_id": "8c1245cf8f0f"}
+{"timestamp": "2026-06-01T10:07:18.378780+00:00", "level": "INFO", "message": "переход_на_следующую_страницу_выполнен", "logger": "scraper", "trace_id": "8c1245cf8f0f"}
+{"timestamp": "2026-06-01T10:07:18.379651+00:00", "level": "INFO", "message": "парсинг_страницы", "logger": "scraper", "trace_id": "8c1245cf8f0f", "context": {"url_index": 1, "page": 64, "remaining": 270}}
+{"timestamp": "2026-06-01T10:08:09.908316+00:00", "level": "INFO", "message": "страница_обработана", "logger": "scraper", "trace_id": "8c1245cf8f0f", "context": {"url_index": 1, "page": 64, "found": 48, "total_so_far": 2955}}
+{"timestamp": "2026-06-01T10:08:09.970044+00:00", "level": "DEBUG", "message": "dom_очищен", "logger": "scraper", "trace_id": "8c1245cf8f0f", "context": {"removed_elements": 50}}
+{"timestamp": "2026-06-01T10:08:11.196043+00:00", "level": "DEBUG", "message": "клик_далее_выполнен", "logger": "scraper", "trace_id": "8c1245cf8f0f"}
+{"timestamp": "2026-06-01T10:08:48.697697+00:00", "level": "INFO", "message": "переход_на_следующую_страницу_выполнен", "logger": "scraper", "trace_id": "8c1245cf8f0f"}
+{"timestamp": "2026-06-01T10:08:48.698014+00:00", "level": "INFO", "message": "парсинг_страницы", "logger": "scraper", "trace_id": "8c1245cf8f0f", "context": {"url_index": 1, "page": 65, "remaining": 269}}
+{"timestamp": "2026-06-01T10:09:34.710378+00:00", "level": "INFO", "message": "страница_обработана", "logger": "scraper", "trace_id": "8c1245cf8f0f", "context": {"url_index": 1, "page": 65, "found": 47, "total_so_far": 3002}}
+{"timestamp": "2026-06-01T10:09:35.181158+00:00", "level": "DEBUG", "message": "dom_очищен", "logger": "scraper", "trace_id": "8c1245cf8f0f", "context": {"removed_elements": 50}}
+{"timestamp": "2026-06-01T10:09:36.428346+00:00", "level": "DEBUG", "message": "клик_далее_выполнен", "logger": "scraper", "trace_id": "8c1245cf8f0f"}
+{"timestamp": "2026-06-01T10:10:12.664994+00:00", "level": "INFO", "message": "переход_на_следующую_страницу_выполнен", "logger": "scraper", "trace_id": "8c1245cf8f0f"}
+{"timestamp": "2026-06-01T10:10:12.665240+00:00", "level": "INFO", "message": "парсинг_страницы", "logger": "scraper", "trace_id": "8c1245cf8f0f", "context": {"url_index": 1, "page": 66, "remaining": 268}}
+{"timestamp": "2026-06-01T10:10:58.510531+00:00", "level": "INFO", "message": "страница_обработана", "logger": "scraper", "trace_id": "8c1245cf8f0f", "context": {"url_index": 1, "page": 66, "found": 45, "total_so_far": 3047}}
+{"timestamp": "2026-06-01T10:10:58.565815+00:00", "level": "DEBUG", "message": "dom_очищен", "logger": "scraper", "trace_id": "8c1245cf8f0f", "context": {"removed_elements": 50}}
+{"timestamp": "2026-06-01T10:10:59.747618+00:00", "level": "DEBUG", "message": "клик_далее_выполнен", "logger": "scraper", "trace_id": "8c1245cf8f0f"}
+{"timestamp": "2026-06-01T10:11:34.878103+00:00", "level": "INFO", "message": "переход_на_следующую_страницу_выполнен", "logger": "scraper", "trace_id": "8c1245cf8f0f"}
+{"timestamp": "2026-06-01T10:11:34.878263+00:00", "level": "INFO", "message": "парсинг_страницы", "logger": "scraper", "trace_id": "8c1245cf8f0f", "context": {"url_index": 1, "page": 67, "remaining": 267}}
+{"timestamp": "2026-06-01T10:12:21.127376+00:00", "level": "INFO", "message": "страница_обработана", "logger": "scraper", "trace_id": "8c1245cf8f0f", "context": {"url_index": 1, "page": 67, "found": 47, "total_so_far": 3094}}
+{"timestamp": "2026-06-01T10:12:21.200011+00:00", "level": "DEBUG", "message": "dom_очищен", "logger": "scraper", "trace_id": "8c1245cf8f0f", "context": {"removed_elements": 50}}
+{"timestamp": "2026-06-01T10:12:22.413220+00:00", "level": "DEBUG", "message": "клик_далее_выполнен", "logger": "scraper", "trace_id": "8c1245cf8f0f"}
+{"timestamp": "2026-06-01T10:13:00.077839+00:00", "level": "INFO", "message": "переход_на_следующую_страницу_выполнен", "logger": "scraper", "trace_id": "8c1245cf8f0f"}
+{"timestamp": "2026-06-01T10:13:00.078383+00:00", "level": "INFO", "message": "парсинг_страницы", "logger": "scraper", "trace_id": "8c1245cf8f0f", "context": {"url_index": 1, "page": 68, "remaining": 266}}
+{"timestamp": "2026-06-01T10:13:50.567352+00:00", "level": "INFO", "message": "страница_обработана", "logger": "scraper", "trace_id": "8c1245cf8f0f", "context": {"url_index": 1, "page": 68, "found": 48, "total_so_far": 3142}}
+{"timestamp": "2026-06-01T10:13:50.634376+00:00", "level": "DEBUG", "message": "dom_очищен", "logger": "scraper", "trace_id": "8c1245cf8f0f", "context": {"removed_elements": 50}}
+{"timestamp": "2026-06-01T10:13:51.805137+00:00", "level": "DEBUG", "message": "клик_далее_выполнен", "logger": "scraper", "trace_id": "8c1245cf8f0f"}
+{"timestamp": "2026-06-01T10:14:28.734173+00:00", "level": "INFO", "message": "переход_на_следующую_страницу_выполнен", "logger": "scraper", "trace_id": "8c1245cf8f0f"}
+{"timestamp": "2026-06-01T10:14:28.734356+00:00", "level": "INFO", "message": "парсинг_страницы", "logger": "scraper", "trace_id": "8c1245cf8f0f", "context": {"url_index": 1, "page": 69, "remaining": 265}}
+{"timestamp": "2026-06-01T10:15:18.022527+00:00", "level": "INFO", "message": "страница_обработана", "logger": "scraper", "trace_id": "8c1245cf8f0f", "context": {"url_index": 1, "page": 69, "found": 49, "total_so_far": 3191}}
+{"timestamp": "2026-06-01T10:15:18.452550+00:00", "level": "DEBUG", "message": "dom_очищен", "logger": "scraper", "trace_id": "8c1245cf8f0f", "context": {"removed_elements": 50}}
+{"timestamp": "2026-06-01T10:15:19.637751+00:00", "level": "DEBUG", "message": "клик_далее_выполнен", "logger": "scraper", "trace_id": "8c1245cf8f0f"}
+{"timestamp": "2026-06-01T10:15:57.615932+00:00", "level": "INFO", "message": "переход_на_следующую_страницу_выполнен", "logger": "scraper", "trace_id": "8c1245cf8f0f"}
+{"timestamp": "2026-06-01T10:15:57.616165+00:00", "level": "INFO", "message": "парсинг_страницы", "logger": "scraper", "trace_id": "8c1245cf8f0f", "context": {"url_index": 1, "page": 70, "remaining": 264}}
+{"timestamp": "2026-06-01T10:16:45.907775+00:00", "level": "INFO", "message": "страница_обработана", "logger": "scraper", "trace_id": "8c1245cf8f0f", "context": {"url_index": 1, "page": 70, "found": 46, "total_so_far": 3237}}
+{"timestamp": "2026-06-01T10:16:45.984072+00:00", "level": "DEBUG", "message": "dom_очищен", "logger": "scraper", "trace_id": "8c1245cf8f0f", "context": {"removed_elements": 50}}
+{"timestamp": "2026-06-01T10:16:47.278227+00:00", "level": "DEBUG", "message": "клик_далее_выполнен", "logger": "scraper", "trace_id": "8c1245cf8f0f"}
+{"timestamp": "2026-06-01T10:17:24.854191+00:00", "level": "INFO", "message": "переход_на_следующую_страницу_выполнен", "logger": "scraper", "trace_id": "8c1245cf8f0f"}
+{"timestamp": "2026-06-01T10:17:24.854378+00:00", "level": "INFO", "message": "парсинг_страницы", "logger": "scraper", "trace_id": "8c1245cf8f0f", "context": {"url_index": 1, "page": 71, "remaining": 263}}
+{"timestamp": "2026-06-01T10:18:15.647454+00:00", "level": "INFO", "message": "страница_обработана", "logger": "scraper", "trace_id": "8c1245cf8f0f", "context": {"url_index": 1, "page": 71, "found": 46, "total_so_far": 3283}}
+{"timestamp": "2026-06-01T10:18:15.726571+00:00", "level": "DEBUG", "message": "dom_очищен", "logger": "scraper", "trace_id": "8c1245cf8f0f", "context": {"removed_elements": 50}}
+{"timestamp": "2026-06-01T10:18:16.901991+00:00", "level": "DEBUG", "message": "клик_далее_выполнен", "logger": "scraper", "trace_id": "8c1245cf8f0f"}
+{"timestamp": "2026-06-01T10:18:52.460835+00:00", "level": "INFO", "message": "переход_на_следующую_страницу_выполнен", "logger": "scraper", "trace_id": "8c1245cf8f0f"}
+{"timestamp": "2026-06-01T10:18:52.460970+00:00", "level": "INFO", "message": "парсинг_страницы", "logger": "scraper", "trace_id": "8c1245cf8f0f", "context": {"url_index": 1, "page": 72, "remaining": 262}}
+{"timestamp": "2026-06-01T10:19:42.969266+00:00", "level": "INFO", "message": "страница_обработана", "logger": "scraper", "trace_id": "8c1245cf8f0f", "context": {"url_index": 1, "page": 72, "found": 45, "total_so_far": 3328}}
+{"timestamp": "2026-06-01T10:19:43.065380+00:00", "level": "DEBUG", "message": "dom_очищен", "logger": "scraper", "trace_id": "8c1245cf8f0f", "context": {"removed_elements": 50}}
+{"timestamp": "2026-06-01T10:19:44.281376+00:00", "level": "DEBUG", "message": "клик_далее_выполнен", "logger": "scraper", "trace_id": "8c1245cf8f0f"}
+{"timestamp": "2026-06-01T10:20:21.341950+00:00", "level": "INFO", "message": "переход_на_следующую_страницу_выполнен", "logger": "scraper", "trace_id": "8c1245cf8f0f"}
+{"timestamp": "2026-06-01T10:20:21.342385+00:00", "level": "INFO", "message": "парсинг_страницы", "logger": "scraper", "trace_id": "8c1245cf8f0f", "context": {"url_index": 1, "page": 73, "remaining": 261}}
+{"timestamp": "2026-06-01T10:21:06.314217+00:00", "level": "INFO", "message": "страница_обработана", "logger": "scraper", "trace_id": "8c1245cf8f0f", "context": {"url_index": 1, "page": 73, "found": 43, "total_so_far": 3371}}
+{"timestamp": "2026-06-01T10:21:06.385702+00:00", "level": "DEBUG", "message": "dom_очищен", "logger": "scraper", "trace_id": "8c1245cf8f0f", "context": {"removed_elements": 50}}
+{"timestamp": "2026-06-01T10:21:07.620716+00:00", "level": "DEBUG", "message": "клик_далее_выполнен", "logger": "scraper", "trace_id": "8c1245cf8f0f"}
+{"timestamp": "2026-06-01T10:21:44.584250+00:00", "level": "INFO", "message": "переход_на_следующую_страницу_выполнен", "logger": "scraper", "trace_id": "8c1245cf8f0f"}
+{"timestamp": "2026-06-01T10:21:44.584492+00:00", "level": "INFO", "message": "парсинг_страницы", "logger": "scraper", "trace_id": "8c1245cf8f0f", "context": {"url_index": 1, "page": 74, "remaining": 260}}
+{"timestamp": "2026-06-01T10:22:33.378227+00:00", "level": "INFO", "message": "страница_обработана", "logger": "scraper", "trace_id": "8c1245cf8f0f", "context": {"url_index": 1, "page": 74, "found": 48, "total_so_far": 3419}}
+{"timestamp": "2026-06-01T10:22:33.461382+00:00", "level": "DEBUG", "message": "dom_очищен", "logger": "scraper", "trace_id": "8c1245cf8f0f", "context": {"removed_elements": 50}}
+{"timestamp": "2026-06-01T10:22:34.650616+00:00", "level": "DEBUG", "message": "клик_далее_выполнен", "logger": "scraper", "trace_id": "8c1245cf8f0f"}
+{"timestamp": "2026-06-01T10:23:12.395796+00:00", "level": "INFO", "message": "переход_на_следующую_страницу_выполнен", "logger": "scraper", "trace_id": "8c1245cf8f0f"}
+{"timestamp": "2026-06-01T10:23:12.396103+00:00", "level": "INFO", "message": "парсинг_страницы", "logger": "scraper", "trace_id": "8c1245cf8f0f", "context": {"url_index": 1, "page": 75, "remaining": 259}}
+{"timestamp": "2026-06-01T10:24:08.704709+00:00", "level": "INFO", "message": "страница_обработана", "logger": "scraper", "trace_id": "8c1245cf8f0f", "context": {"url_index": 1, "page": 75, "found": 43, "total_so_far": 3462}}
+{"timestamp": "2026-06-01T10:24:08.767002+00:00", "level": "DEBUG", "message": "dom_очищен", "logger": "scraper", "trace_id": "8c1245cf8f0f", "context": {"removed_elements": 50}}
+{"timestamp": "2026-06-01T10:24:09.966096+00:00", "level": "DEBUG", "message": "клик_далее_выполнен", "logger": "scraper", "trace_id": "8c1245cf8f0f"}
+{"timestamp": "2026-06-01T10:24:45.972265+00:00", "level": "INFO", "message": "переход_на_следующую_страницу_выполнен", "logger": "scraper", "trace_id": "8c1245cf8f0f"}
+{"timestamp": "2026-06-01T10:24:45.972491+00:00", "level": "INFO", "message": "парсинг_страницы", "logger": "scraper", "trace_id": "8c1245cf8f0f", "context": {"url_index": 1, "page": 76, "remaining": 258}}
+{"timestamp": "2026-06-01T10:25:39.874979+00:00", "level": "INFO", "message": "страница_обработана", "logger": "scraper", "trace_id": "8c1245cf8f0f", "context": {"url_index": 1, "page": 76, "found": 44, "total_so_far": 3506}}
+{"timestamp": "2026-06-01T10:25:39.944160+00:00", "level": "DEBUG", "message": "dom_очищен", "logger": "scraper", "trace_id": "8c1245cf8f0f", "context": {"removed_elements": 50}}
+{"timestamp": "2026-06-01T10:25:41.192557+00:00", "level": "DEBUG", "message": "клик_далее_выполнен", "logger": "scraper", "trace_id": "8c1245cf8f0f"}
+{"timestamp": "2026-06-01T10:26:17.375975+00:00", "level": "INFO", "message": "переход_на_следующую_страницу_выполнен", "logger": "scraper", "trace_id": "8c1245cf8f0f"}
+{"timestamp": "2026-06-01T10:26:17.376255+00:00", "level": "INFO", "message": "парсинг_страницы", "logger": "scraper", "trace_id": "8c1245cf8f0f", "context": {"url_index": 1, "page": 77, "remaining": 257}}
+{"timestamp": "2026-06-01T10:27:11.944793+00:00", "level": "INFO", "message": "страница_обработана", "logger": "scraper", "trace_id": "8c1245cf8f0f", "context": {"url_index": 1, "page": 77, "found": 43, "total_so_far": 3549}}
+{"timestamp": "2026-06-01T10:27:12.046752+00:00", "level": "DEBUG", "message": "dom_очищен", "logger": "scraper", "trace_id": "8c1245cf8f0f", "context": {"removed_elements": 50}}
+{"timestamp": "2026-06-01T10:27:14.009414+00:00", "level": "DEBUG", "message": "клик_далее_выполнен", "logger": "scraper", "trace_id": "8c1245cf8f0f"}
+{"timestamp": "2026-06-01T10:27:52.069067+00:00", "level": "INFO", "message": "переход_на_следующую_страницу_выполнен", "logger": "scraper", "trace_id": "8c1245cf8f0f"}
+{"timestamp": "2026-06-01T10:27:52.069540+00:00", "level": "INFO", "message": "парсинг_страницы", "logger": "scraper", "trace_id": "8c1245cf8f0f", "context": {"url_index": 1, "page": 78, "remaining": 256}}
+{"timestamp": "2026-06-01T10:28:49.724825+00:00", "level": "INFO", "message": "страница_обработана", "logger": "scraper", "trace_id": "8c1245cf8f0f", "context": {"url_index": 1, "page": 78, "found": 46, "total_so_far": 3595}}
+{"timestamp": "2026-06-01T10:28:49.809785+00:00", "level": "DEBUG", "message": "dom_очищен", "logger": "scraper", "trace_id": "8c1245cf8f0f", "context": {"removed_elements": 50}}
+{"timestamp": "2026-06-01T10:28:51.025570+00:00", "level": "DEBUG", "message": "клик_далее_выполнен", "logger": "scraper", "trace_id": "8c1245cf8f0f"}
+{"timestamp": "2026-06-01T10:29:28.830668+00:00", "level": "INFO", "message": "переход_на_следующую_страницу_выполнен", "logger": "scraper", "trace_id": "8c1245cf8f0f"}
+{"timestamp": "2026-06-01T10:29:28.830992+00:00", "level": "INFO", "message": "парсинг_страницы", "logger": "scraper", "trace_id": "8c1245cf8f0f", "context": {"url_index": 1, "page": 79, "remaining": 255}}
+{"timestamp": "2026-06-01T10:30:21.931447+00:00", "level": "INFO", "message": "страница_обработана", "logger": "scraper", "trace_id": "8c1245cf8f0f", "context": {"url_index": 1, "page": 79, "found": 43, "total_so_far": 3638}}
+{"timestamp": "2026-06-01T10:30:22.013822+00:00", "level": "DEBUG", "message": "dom_очищен", "logger": "scraper", "trace_id": "8c1245cf8f0f", "context": {"removed_elements": 50}}
+{"timestamp": "2026-06-01T10:30:23.214312+00:00", "level": "DEBUG", "message": "клик_далее_выполнен", "logger": "scraper", "trace_id": "8c1245cf8f0f"}
+{"timestamp": "2026-06-01T10:31:00.265883+00:00", "level": "INFO", "message": "переход_на_следующую_страницу_выполнен", "logger": "scraper", "trace_id": "8c1245cf8f0f"}
+{"timestamp": "2026-06-01T10:31:00.266200+00:00", "level": "INFO", "message": "парсинг_страницы", "logger": "scraper", "trace_id": "8c1245cf8f0f", "context": {"url_index": 1, "page": 80, "remaining": 254}}
+{"timestamp": "2026-06-01T10:31:56.292483+00:00", "level": "INFO", "message": "страница_обработана", "logger": "scraper", "trace_id": "8c1245cf8f0f", "context": {"url_index": 1, "page": 80, "found": 45, "total_so_far": 3683}}
+{"timestamp": "2026-06-01T10:31:56.371267+00:00", "level": "DEBUG", "message": "dom_очищен", "logger": "scraper", "trace_id": "8c1245cf8f0f", "context": {"removed_elements": 50}}
+{"timestamp": "2026-06-01T10:31:57.604282+00:00", "level": "DEBUG", "message": "клик_далее_выполнен", "logger": "scraper", "trace_id": "8c1245cf8f0f"}
+{"timestamp": "2026-06-01T10:32:34.764819+00:00", "level": "INFO", "message": "переход_на_следующую_страницу_выполнен", "logger": "scraper", "trace_id": "8c1245cf8f0f"}
+{"timestamp": "2026-06-01T10:32:34.765179+00:00", "level": "INFO", "message": "парсинг_страницы", "logger": "scraper", "trace_id": "8c1245cf8f0f", "context": {"url_index": 1, "page": 81, "remaining": 253}}
+{"timestamp": "2026-06-01T10:33:31.284015+00:00", "level": "INFO", "message": "страница_обработана", "logger": "scraper", "trace_id": "8c1245cf8f0f", "context": {"url_index": 1, "page": 81, "found": 45, "total_so_far": 3728}}
+{"timestamp": "2026-06-01T10:33:31.355891+00:00", "level": "DEBUG", "message": "dom_очищен", "logger": "scraper", "trace_id": "8c1245cf8f0f", "context": {"removed_elements": 50}}
+{"timestamp": "2026-06-01T10:33:32.543095+00:00", "level": "DEBUG", "message": "клик_далее_выполнен", "logger": "scraper", "trace_id": "8c1245cf8f0f"}
+{"timestamp": "2026-06-01T10:34:07.803797+00:00", "level": "INFO", "message": "переход_на_следующую_страницу_выполнен", "logger": "scraper", "trace_id": "8c1245cf8f0f"}
+{"timestamp": "2026-06-01T10:34:07.804116+00:00", "level": "INFO", "message": "парсинг_страницы", "logger": "scraper", "trace_id": "8c1245cf8f0f", "context": {"url_index": 1, "page": 82, "remaining": 252}}
+{"timestamp": "2026-06-01T10:35:06.731838+00:00", "level": "INFO", "message": "страница_обработана", "logger": "scraper", "trace_id": "8c1245cf8f0f", "context": {"url_index": 1, "page": 82, "found": 49, "total_so_far": 3777}}
+{"timestamp": "2026-06-01T10:35:07.240837+00:00", "level": "DEBUG", "message": "dom_очищен", "logger": "scraper", "trace_id": "8c1245cf8f0f", "context": {"removed_elements": 50}}
+{"timestamp": "2026-06-01T10:35:08.446571+00:00", "level": "DEBUG", "message": "клик_далее_выполнен", "logger": "scraper", "trace_id": "8c1245cf8f0f"}
+{"timestamp": "2026-06-01T10:35:45.502865+00:00", "level": "INFO", "message": "переход_на_следующую_страницу_выполнен", "logger": "scraper", "trace_id": "8c1245cf8f0f"}
+{"timestamp": "2026-06-01T10:35:45.503165+00:00", "level": "INFO", "message": "парсинг_страницы", "logger": "scraper", "trace_id": "8c1245cf8f0f", "context": {"url_index": 1, "page": 83, "remaining": 251}}
+{"timestamp": "2026-06-01T10:36:45.812739+00:00", "level": "INFO", "message": "страница_обработана", "logger": "scraper", "trace_id": "8c1245cf8f0f", "context": {"url_index": 1, "page": 83, "found": 46, "total_so_far": 3823}}
+{"timestamp": "2026-06-01T10:36:45.894331+00:00", "level": "DEBUG", "message": "dom_очищен", "logger": "scraper", "trace_id": "8c1245cf8f0f", "context": {"removed_elements": 50}}
+{"timestamp": "2026-06-01T10:36:47.204273+00:00", "level": "DEBUG", "message": "клик_далее_выполнен", "logger": "scraper", "trace_id": "8c1245cf8f0f"}
+{"timestamp": "2026-06-01T10:37:22.835631+00:00", "level": "INFO", "message": "переход_на_следующую_страницу_выполнен", "logger": "scraper", "trace_id": "8c1245cf8f0f"}
+{"timestamp": "2026-06-01T10:37:22.835867+00:00", "level": "INFO", "message": "парсинг_страницы", "logger": "scraper", "trace_id": "8c1245cf8f0f", "context": {"url_index": 1, "page": 84, "remaining": 250}}
+{"timestamp": "2026-06-01T10:38:27.195561+00:00", "level": "INFO", "message": "страница_обработана", "logger": "scraper", "trace_id": "8c1245cf8f0f", "context": {"url_index": 1, "page": 84, "found": 45, "total_so_far": 3868}}
+{"timestamp": "2026-06-01T10:38:27.614349+00:00", "level": "DEBUG", "message": "dom_очищен", "logger": "scraper", "trace_id": "8c1245cf8f0f", "context": {"removed_elements": 50}}
+{"timestamp": "2026-06-01T10:38:28.811536+00:00", "level": "DEBUG", "message": "клик_далее_выполнен", "logger": "scraper", "trace_id": "8c1245cf8f0f"}
+{"timestamp": "2026-06-01T10:39:05.276281+00:00", "level": "INFO", "message": "переход_на_следующую_страницу_выполнен", "logger": "scraper", "trace_id": "8c1245cf8f0f"}
+{"timestamp": "2026-06-01T10:39:05.276966+00:00", "level": "INFO", "message": "парсинг_страницы", "logger": "scraper", "trace_id": "8c1245cf8f0f", "context": {"url_index": 1, "page": 85, "remaining": 249}}
+{"timestamp": "2026-06-01T10:40:08.283907+00:00", "level": "INFO", "message": "страница_обработана", "logger": "scraper", "trace_id": "8c1245cf8f0f", "context": {"url_index": 1, "page": 85, "found": 48, "total_so_far": 3916}}
+{"timestamp": "2026-06-01T10:40:08.391595+00:00", "level": "DEBUG", "message": "dom_очищен", "logger": "scraper", "trace_id": "8c1245cf8f0f", "context": {"removed_elements": 50}}
+{"timestamp": "2026-06-01T10:40:09.657464+00:00", "level": "DEBUG", "message": "клик_далее_выполнен", "logger": "scraper", "trace_id": "8c1245cf8f0f"}
+{"timestamp": "2026-06-01T10:40:47.323622+00:00", "level": "INFO", "message": "переход_на_следующую_страницу_выполнен", "logger": "scraper", "trace_id": "8c1245cf8f0f"}
+{"timestamp": "2026-06-01T10:40:47.324039+00:00", "level": "INFO", "message": "парсинг_страницы", "logger": "scraper", "trace_id": "8c1245cf8f0f", "context": {"url_index": 1, "page": 86, "remaining": 248}}
+{"timestamp": "2026-06-01T10:41:47.487604+00:00", "level": "INFO", "message": "страница_обработана", "logger": "scraper", "trace_id": "8c1245cf8f0f", "context": {"url_index": 1, "page": 86, "found": 47, "total_so_far": 3963}}
+{"timestamp": "2026-06-01T10:41:47.877894+00:00", "level": "DEBUG", "message": "dom_очищен", "logger": "scraper", "trace_id": "8c1245cf8f0f", "context": {"removed_elements": 50}}
+{"timestamp": "2026-06-01T10:41:49.092206+00:00", "level": "DEBUG", "message": "клик_далее_выполнен", "logger": "scraper", "trace_id": "8c1245cf8f0f"}
+{"timestamp": "2026-06-01T10:42:26.253463+00:00", "level": "INFO", "message": "переход_на_следующую_страницу_выполнен", "logger": "scraper", "trace_id": "8c1245cf8f0f"}
+{"timestamp": "2026-06-01T10:42:26.253639+00:00", "level": "INFO", "message": "парсинг_страницы", "logger": "scraper", "trace_id": "8c1245cf8f0f", "context": {"url_index": 1, "page": 87, "remaining": 247}}
+{"timestamp": "2026-06-01T10:43:31.414057+00:00", "level": "INFO", "message": "страница_обработана", "logger": "scraper", "trace_id": "8c1245cf8f0f", "context": {"url_index": 1, "page": 87, "found": 46, "total_so_far": 4009}}
+{"timestamp": "2026-06-01T10:43:31.514595+00:00", "level": "DEBUG", "message": "dom_очищен", "logger": "scraper", "trace_id": "8c1245cf8f0f", "context": {"removed_elements": 50}}
+{"timestamp": "2026-06-01T10:43:32.767434+00:00", "level": "DEBUG", "message": "клик_далее_выполнен", "logger": "scraper", "trace_id": "8c1245cf8f0f"}
+{"timestamp": "2026-06-01T10:44:07.846279+00:00", "level": "INFO", "message": "переход_на_следующую_страницу_выполнен", "logger": "scraper", "trace_id": "8c1245cf8f0f"}
+{"timestamp": "2026-06-01T10:44:07.846630+00:00", "level": "INFO", "message": "парсинг_страницы", "logger": "scraper", "trace_id": "8c1245cf8f0f", "context": {"url_index": 1, "page": 88, "remaining": 246}}
+{"timestamp": "2026-06-01T10:45:11.855276+00:00", "level": "INFO", "message": "страница_обработана", "logger": "scraper", "trace_id": "8c1245cf8f0f", "context": {"url_index": 1, "page": 88, "found": 45, "total_so_far": 4054}}
+{"timestamp": "2026-06-01T10:45:12.270280+00:00", "level": "DEBUG", "message": "dom_очищен", "logger": "scraper", "trace_id": "8c1245cf8f0f", "context": {"removed_elements": 50}}
+{"timestamp": "2026-06-01T10:45:13.856031+00:00", "level": "DEBUG", "message": "клик_далее_выполнен", "logger": "scraper", "trace_id": "8c1245cf8f0f"}
+{"timestamp": "2026-06-01T10:45:50.789057+00:00", "level": "INFO", "message": "переход_на_следующую_страницу_выполнен", "logger": "scraper", "trace_id": "8c1245cf8f0f"}
+{"timestamp": "2026-06-01T10:45:50.789791+00:00", "level": "INFO", "message": "парсинг_страницы", "logger": "scraper", "trace_id": "8c1245cf8f0f", "context": {"url_index": 1, "page": 89, "remaining": 245}}
+{"timestamp": "2026-06-01T10:46:59.506618+00:00", "level": "INFO", "message": "страница_обработана", "logger": "scraper", "trace_id": "8c1245cf8f0f", "context": {"url_index": 1, "page": 89, "found": 45, "total_so_far": 4099}}
+{"timestamp": "2026-06-01T10:46:59.579492+00:00", "level": "DEBUG", "message": "dom_очищен", "logger": "scraper", "trace_id": "8c1245cf8f0f", "context": {"removed_elements": 50}}
+{"timestamp": "2026-06-01T10:47:00.799547+00:00", "level": "DEBUG", "message": "клик_далее_выполнен", "logger": "scraper", "trace_id": "8c1245cf8f0f"}
+{"timestamp": "2026-06-01T10:47:36.327314+00:00", "level": "INFO", "message": "переход_на_следующую_страницу_выполнен", "logger": "scraper", "trace_id": "8c1245cf8f0f"}
+{"timestamp": "2026-06-01T10:47:36.327463+00:00", "level": "INFO", "message": "парсинг_страницы", "logger": "scraper", "trace_id": "8c1245cf8f0f", "context": {"url_index": 1, "page": 90, "remaining": 244}}
+{"timestamp": "2026-06-01T10:48:55.233794+00:00", "level": "INFO", "message": "страница_обработана", "logger": "scraper", "trace_id": "8c1245cf8f0f", "context": {"url_index": 1, "page": 90, "found": 48, "total_so_far": 4147}}
+{"timestamp": "2026-06-01T10:48:55.644066+00:00", "level": "DEBUG", "message": "dom_очищен", "logger": "scraper", "trace_id": "8c1245cf8f0f", "context": {"removed_elements": 50}}
+{"timestamp": "2026-06-01T10:48:56.804133+00:00", "level": "DEBUG", "message": "клик_далее_выполнен", "logger": "scraper", "trace_id": "8c1245cf8f0f"}
+{"timestamp": "2026-06-01T10:49:33.883728+00:00", "level": "INFO", "message": "переход_на_следующую_страницу_выполнен", "logger": "scraper", "trace_id": "8c1245cf8f0f"}
+{"timestamp": "2026-06-01T10:49:33.884014+00:00", "level": "INFO", "message": "парсинг_страницы", "logger": "scraper", "trace_id": "8c1245cf8f0f", "context": {"url_index": 1, "page": 91, "remaining": 243}}
