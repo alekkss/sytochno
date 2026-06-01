@@ -1,0 +1,3 @@
+{"timestamp": "2026-06-01T13:11:11.942761+00:00", "level": "INFO", "message": "запуск_тестового_парсинга_каталога", "logger": "test_catalog", "trace_id": "5bc8f451206a", "context": {"urls_count": 1, "max_pages": 5, "headless": true}}
+{"timestamp": "2026-06-01T13:12:39.559546+00:00", "level": "INFO", "message": "запуск_тестового_парсинга_каталога", "logger": "test_catalog", "trace_id": "2cd47c51a7dd", "context": {"urls_count": 1, "max_pages": 90, "headless": false}}
+{"timestamp": "2026-06-01T14:42:46.536181+00:00", "level": "INFO", "message": "тестовый_парсинг_завершён", "logger": "test_catalog", "trace_id": "2cd47c51a7dd", "context": {"total_listings": 4488}}
