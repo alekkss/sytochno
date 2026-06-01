@@ -9,6 +9,7 @@ from src.config.logger import configure as configure_logging
 from src.config.logger import get_logger
 from src.config.settings import Settings
 from src.models.booking_event import AnyEvent
+from src.models.proxy import ProxyConfig
 from src.repositories.snapshot_repository import SQLiteSnapshotRepository
 from src.repositories.sqlite_repository import SQLiteListingRepository
 from src.services.browser_service import BrowserService
@@ -27,15 +28,16 @@ async def run() -> None:
     Последовательно выполняет:
     1. Загрузку конфигурации.
     2. Инициализацию базы данных.
-    3. Запуск браузера.
-    4. Парсинг каталога (последовательный обход всех URL).
-    5. Обогащение объявлений данными календаря.
-    6. Сохранение результатов в SQLite.
-    7. Сохранение снимков текущего прогона.
-    8. Сравнение с предыдущими снимками и экспорт отчёта изменений.
-    9. Экспорт основного отчёта в Excel (перезаписывается).
-    10. Экспорт датированного снимка Excel (накапливается).
-    11. Корректное завершение работы.
+    3. Загрузку и проверку прокси (если включены).
+    4. Запуск браузера.
+    5. Парсинг каталога (последовательный или параллельный через прокси).
+    6. Обогащение объявлений данными календаря.
+    7. Сохранение результатов в SQLite.
+    8. Сохранение снимков текущего прогона.
+    9. Сравнение с предыдущими снимками и экспорт отчёта изменений.
+    10. Экспорт основного отчёта в Excel (перезаписывается).
+    11. Экспорт датированного снимка Excel (накапливается).
+    12. Корректное завершение работы.
     """
     # --- Шаг 1: Загрузка конфигурации ---
     try:
@@ -64,7 +66,45 @@ async def run() -> None:
     snapshot_repository = SQLiteSnapshotRepository(db_path=settings.db_path)
     snapshot_repository.initialize()
 
-    # --- Шаг 4: Создание сервисов (Dependency Injection) ---
+    # --- Шаг 4: Загрузка и проверка прокси (если включены) ---
+    working_proxies: list[ProxyConfig] = []
+
+    if settings.use_proxy:
+        logger.info("режим_прокси_включён", step="proxy_check")
+        proxy_service = ProxyService(settings=settings)
+
+        try:
+            proxies = proxy_service.load_proxies()
+            working_proxies = await proxy_service.check_proxies(proxies)
+        except RuntimeError as e:
+            logger.warning(
+                "ошибка_загрузки_прокси",
+                error=str(e),
+                step="proxy_check",
+            )
+
+        if not working_proxies:
+            logger.warning(
+                "нет_рабочих_прокси_переход_в_обычный_режим",
+                step="proxy_check",
+            )
+        else:
+            max_workers = settings.max_proxy_workers
+            if len(working_proxies) > max_workers:
+                logger.info(
+                    "ограничение_воркеров",
+                    total=len(working_proxies),
+                    step=f"лимит={max_workers}",
+                )
+                working_proxies = working_proxies[:max_workers]
+
+            logger.info(
+                "прокси_готовы",
+                total=len(working_proxies),
+                step="proxy_check",
+            )
+
+    # --- Шаг 5: Создание сервисов (Dependency Injection) ---
     browser_service = BrowserService(settings=settings)
     scraper_service = ScraperService(settings=settings, browser_service=browser_service)
     listing_service = ListingService(settings=settings, browser_service=browser_service)
@@ -78,16 +118,19 @@ async def run() -> None:
     comparison_export_service = ComparisonExportService(export_dir=export_dir)
 
     try:
-        # --- Шаг 5: Запуск браузера ---
+        # --- Шаг 6: Запуск браузера ---
         await browser_service.start()
 
-        # --- Шаг 6: Парсинг каталога ---
+        # --- Шаг 7: Парсинг каталога ---
         logger.info(
             "начало_парсинга_каталога",
             step="scraping",
             urls_count=len(settings.search_urls),
+            mode="параллельный" if working_proxies else "последовательный",
         )
-        listings = await scraper_service.scrape_catalog()
+        listings = await scraper_service.scrape_catalog(
+            working_proxies=working_proxies if working_proxies else None,
+        )
 
         if not listings:
             logger.warning("объявления_не_найдены")
@@ -99,11 +142,12 @@ async def run() -> None:
             step="scraping",
         )
 
-        # --- Шаг 7: Обогащение — парсинг карточек (календарь + цены) ---
+        # --- Шаг 8: Обогащение — парсинг карточек (календарь + цены) ---
         listings = await _enrich_with_proxy_or_sequential(
             settings=settings,
             listings=listings,
             listing_service=listing_service,
+            working_proxies=working_proxies,
             logger=logger,
         )
 
@@ -113,7 +157,7 @@ async def run() -> None:
             step="enrichment",
         )
 
-        # --- Шаг 8: Сохранение в базу данных ---
+        # --- Шаг 9: Сохранение в базу данных ---
         logger.info("сохранение_в_бд", step="storage")
         saved_count = repository.upsert_many(listings)
         logger.info(
@@ -122,11 +166,11 @@ async def run() -> None:
             step="storage",
         )
 
-        # --- Шаг 9: Сохранение снимков текущего прогона ---
+        # --- Шаг 10: Сохранение снимков текущего прогона ---
         logger.info("сохранение_снимков", step="snapshots")
         snapshot_service.save_snapshots(listings)
 
-        # --- Шаг 10: Сравнение снимков и экспорт отчёта изменений ---
+        # --- Шаг 11: Сравнение снимков и экспорт отчёта изменений ---
         all_events = _run_comparison(
             listings=listings,
             snapshot_repository=snapshot_repository,
@@ -152,7 +196,7 @@ async def run() -> None:
                 step="comparison_export",
             )
 
-        # --- Шаг 11: Экспорт отчётов в Excel ---
+        # --- Шаг 12: Экспорт отчётов в Excel ---
         logger.info("экспорт_в_excel", step="export")
         all_listings = repository.get_all()
 
@@ -166,8 +210,6 @@ async def run() -> None:
         )
 
         # Датированный снимок — накапливается, имя содержит дату и время парсинга.
-        # Формат: sutochno_report_YYYYMMDD_HHMMSS.xlsx
-        # Сохраняется в ту же папку, что и основной отчёт.
         run_timestamp = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
         base_name = Path(settings.export_path).stem
         snapshot_filename = f"{base_name}_{run_timestamp}.xlsx"
@@ -191,7 +233,7 @@ async def run() -> None:
         )
         sys.exit(1)
     finally:
-        # --- Шаг 12: Корректное завершение ---
+        # --- Шаг 13: Корректное завершение ---
         await browser_service.stop()
         repository.close()
         snapshot_repository.close()
@@ -264,57 +306,28 @@ async def _enrich_with_proxy_or_sequential(
     settings: Settings,
     listings: list,
     listing_service: ListingService,
+    working_proxies: list[ProxyConfig],
     logger: "any",  # type: ignore[name-defined]
 ) -> list:
     """Обогащает карточки: параллельно через прокси, через вкладки или последовательно.
 
     Логика выбора режима:
-    1. Если USE_PROXY=true — загружает и проверяет прокси.
+    1. Если есть рабочие прокси — параллельно через прокси-воркеры.
        Каждый прокси-браузер использует MAX_TABS вкладок.
-    2. Если прокси выключены и MAX_TABS > 1 — параллельные вкладки в одном браузере.
-    3. Если прокси выключены и MAX_TABS = 1 — последовательная обработка.
+    2. Если прокси нет и MAX_TABS > 1 — параллельные вкладки в одном браузере.
+    3. Если прокси нет и MAX_TABS = 1 — последовательная обработка.
 
     Args:
         settings: Настройки приложения.
         listings: Список карточек для обогащения.
         listing_service: Сервис парсинга карточек.
+        working_proxies: Список рабочих прокси (может быть пустым).
         logger: Логгер.
 
     Returns:
         Список обогащённых карточек.
     """
-    if settings.use_proxy:
-        logger.info("режим_прокси_включён", step="enrichment")
-
-        proxy_service = ProxyService(settings=settings)
-
-        try:
-            proxies = proxy_service.load_proxies()
-        except RuntimeError as e:
-            logger.warning(
-                "ошибка_загрузки_прокси",
-                error=str(e),
-                step="enrichment",
-            )
-            logger.info("переход_в_режим_без_прокси", step="enrichment")
-            return await _enrich_without_proxy(settings, listings, listing_service, logger)
-
-        working_proxies = await proxy_service.check_proxies(proxies)
-
-        if not working_proxies:
-            logger.warning("нет_рабочих_прокси", step="enrichment")
-            logger.info("переход_в_режим_без_прокси", step="enrichment")
-            return await _enrich_without_proxy(settings, listings, listing_service, logger)
-
-        max_workers = settings.max_proxy_workers
-        if len(working_proxies) > max_workers:
-            logger.info(
-                "ограничение_воркеров",
-                total=len(working_proxies),
-                step=f"лимит={max_workers}",
-            )
-            working_proxies = working_proxies[:max_workers]
-
+    if working_proxies:
         logger.info(
             "начало_параллельного_парсинга",
             total=len(listings),
