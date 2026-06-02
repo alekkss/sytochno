@@ -27,8 +27,8 @@ async def run() -> None:
     Последовательно выполняет:
     1. Загрузку конфигурации.
     2. Инициализацию базы данных.
-    3. Запуск браузера.
-    4. Парсинг каталога (последовательный обход всех URL).
+    3. Парсинг каталога (для каждой ссылки — отдельный браузер).
+    4. Запуск браузера для обогащения карточек.
     5. Обогащение объявлений данными календаря.
     6. Сохранение результатов в SQLite.
     7. Сохранение снимков текущего прогона.
@@ -77,11 +77,12 @@ async def run() -> None:
     export_dir = str(Path(settings.export_path).parent)
     comparison_export_service = ComparisonExportService(export_dir=export_dir)
 
-    try:
-        # --- Шаг 5: Запуск браузера ---
-        await browser_service.start()
+    # Флаг: был ли запущен браузер для обогащения
+    enrichment_browser_started = False
 
-        # --- Шаг 6: Парсинг каталога ---
+    try:
+        # --- Шаг 5: Парсинг каталога (Этап 1) ---
+        # ScraperService сам запускает и закрывает браузер для каждой ссылки
         logger.info(
             "начало_парсинга_каталога",
             step="scraping",
@@ -98,6 +99,10 @@ async def run() -> None:
             total=len(listings),
             step="scraping",
         )
+
+        # --- Шаг 6: Запуск браузера для обогащения (Этап 2) ---
+        await browser_service.start()
+        enrichment_browser_started = True
 
         # --- Шаг 7: Обогащение — парсинг карточек (календарь + цены) ---
         listings = await _enrich_with_proxy_or_sequential(
@@ -192,7 +197,9 @@ async def run() -> None:
         sys.exit(1)
     finally:
         # --- Шаг 12: Корректное завершение ---
-        await browser_service.stop()
+        # Останавливаем браузер только если он был запущен для обогащения
+        if enrichment_browser_started:
+            await browser_service.stop()
         repository.close()
         snapshot_repository.close()
         logger.info("приложение_завершено", step="shutdown")

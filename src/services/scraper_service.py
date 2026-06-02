@@ -19,10 +19,14 @@ _BASE_URL = "https://sutochno.ru"
 class ScraperService:
     """Сервис парсинга каталога sutochno.ru.
 
-    Обходит несколько URL поиска последовательно, извлекает данные объявлений
-    из карточек, обрабатывает пагинацию и возвращает список уникальных RawListing.
+    Обходит несколько URL поиска, для каждого запуская отдельный браузер.
+    Извлекает данные объявлений из карточек, обрабатывает пагинацию
+    и возвращает список уникальных RawListing.
     Дедупликация выполняется по external_id в процессе сбора.
     MAX_PAGES применяется суммарно ко всем ссылкам.
+
+    Для каждой ссылки браузер запускается заново — это снижает нагрузку
+    на память, обеспечивает чистую сессию и уменьшает риск блокировки.
     """
 
     def __init__(self, settings: Settings, browser_service: BrowserService) -> None:
@@ -40,7 +44,11 @@ class ScraperService:
     async def scrape_catalog(self) -> list[RawListing]:
         """Основной метод — обходит все URL поиска и собирает уникальные объявления.
 
-        Последовательно обрабатывает каждый URL из settings.search_urls.
+        Для каждой ссылки:
+        1. Запускает новый браузер.
+        2. Парсит все страницы пагинации.
+        3. Закрывает браузер.
+
         Общий счётчик страниц применяется суммарно ко всем ссылкам:
         если MAX_PAGES=20 и на первой ссылке пройдено 20 страниц —
         парсер останавливается и не переходит к следующим ссылкам.
@@ -54,6 +62,7 @@ class ScraperService:
 
         max_pages = self._settings.max_pages or 999
         total_pages_processed = 0
+        urls_processed = 0
 
         logger.info(
             "начало_парсинга_каталога",
@@ -82,28 +91,40 @@ class ScraperService:
                 url=search_url[:80] + "..." if len(search_url) > 80 else search_url,
             )
 
-            pages_from_url = await self._scrape_single_url(
-                search_url=search_url,
-                url_index=url_index,
-                remaining_pages=remaining_pages,
-                all_listings=all_listings,
-            )
+            # Запускаем новый браузер для каждой ссылки
+            await self._browser.start()
 
-            total_pages_processed += pages_from_url
+            try:
+                pages_from_url = await self._scrape_single_url(
+                    search_url=search_url,
+                    url_index=url_index,
+                    remaining_pages=remaining_pages,
+                    all_listings=all_listings,
+                )
 
-            logger.info(
-                "ссылка_обработана",
-                url_index=url_index,
-                pages_from_url=pages_from_url,
-                total_pages_processed=total_pages_processed,
-                listings_so_far=len(all_listings),
-            )
+                total_pages_processed += pages_from_url
+                urls_processed += 1
+
+                logger.info(
+                    "ссылка_обработана",
+                    url_index=url_index,
+                    pages_from_url=pages_from_url,
+                    total_pages_processed=total_pages_processed,
+                    listings_so_far=len(all_listings),
+                )
+            finally:
+                # Закрываем браузер после каждой ссылки
+                await self._browser.stop()
+                logger.info(
+                    "браузер_закрыт_после_ссылки",
+                    url_index=url_index,
+                )
 
         logger.info(
             "парсинг_каталога_завершён",
             total=len(all_listings),
             total_pages=total_pages_processed,
-            urls_processed=min(len(self._settings.search_urls), url_index if 'url_index' in dir() else 0),
+            urls_processed=urls_processed,
         )
 
         if self._duplicates_count > 0:
