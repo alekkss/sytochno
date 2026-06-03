@@ -22,45 +22,9 @@ _PLAYWRIGHT_STOP_TIMEOUT: float = 10.0
 
 # Пауза между шагами закрытия, чтобы Node.js-драйвер
 # успел обработать pending-события до разрыва pipe (секунды).
+# Решает проблему EPIPE в Node.js v24+, где unhandled write
+# на закрытый pipe стал fatal error.
 _CLOSE_DRAIN_DELAY: float = 0.5
-
-# Аргументы Chromium для ограничения потребления памяти.
-# Каждый прокси-браузер запускается с этими флагами, чтобы
-# 10 параллельных Chromium не вызывали OOM на сервере с 11 ГБ RAM.
-_CHROMIUM_MEMORY_ARGS: list[str] = [
-    # Базовые anti-detection
-    "--disable-blink-features=AutomationControlled",
-    "--disable-dev-shm-usage",
-    "--no-sandbox",
-    # Ограничение памяти рендерера (~256 МБ на процесс V8)
-    "--js-flags=--max-old-space-size=256",
-    # Ограничение количества процессов рендеринга
-    "--renderer-process-limit=1",
-    # Отключение GPU (экономит 50-100 МБ на процесс)
-    "--disable-gpu",
-    "--disable-gpu-compositing",
-    # Отключение фоновых процессов и сетевой активности
-    "--disable-background-networking",
-    "--disable-background-timer-throttling",
-    "--disable-backgrounding-occluded-windows",
-    "--disable-extensions",
-    "--disable-component-extensions-with-background-pages",
-    "--disable-default-apps",
-    "--disable-hang-monitor",
-    "--disable-ipc-flooding-protection",
-    "--disable-popup-blocking",
-    "--disable-prompt-on-repost",
-    "--disable-renderer-backgrounding",
-    "--disable-sync",
-    "--disable-translate",
-    # Ограничение кэша диска (50 МБ вместо сотен МБ по умолчанию)
-    "--disk-cache-size=52428800",
-    # Отключение crash reporter (экономит память)
-    "--no-first-run",
-    "--no-default-browser-check",
-    "--metrics-recording-only",
-    "--mute-audio",
-]
 
 
 class BrowserService:
@@ -73,7 +37,6 @@ class BrowserService:
     - Навигацию с обработкой таймаутов.
     - Запуск через прокси-сервер.
     - Создание дополнительных вкладок для параллельной обработки карточек.
-    - Ограничение памяти Chromium для предотвращения OOM.
     """
 
     def __init__(self, settings: Settings) -> None:
@@ -162,7 +125,11 @@ class BrowserService:
         """
         self._browser = await self._playwright.chromium.launch(
             headless=self._settings.headless_mode,
-            args=_CHROMIUM_MEMORY_ARGS,
+            args=[
+                "--disable-blink-features=AutomationControlled",
+                "--disable-dev-shm-usage",
+                "--no-sandbox",
+            ],
             ignore_default_args=["--enable-automation"],
         )
 
@@ -200,7 +167,11 @@ class BrowserService:
                 "username": proxy.username,
                 "password": proxy.password,
             },
-            args=_CHROMIUM_MEMORY_ARGS,
+            args=[
+                "--disable-blink-features=AutomationControlled",
+                "--disable-dev-shm-usage",
+                "--no-sandbox",
+            ],
             ignore_default_args=["--enable-automation"],
         )
 
@@ -362,6 +333,8 @@ class BrowserService:
                     step=f"превышен_лимит={_PLAYWRIGHT_STOP_TIMEOUT}с",
                 )
             except Exception as e:
+                # EPIPE или другие ошибки при разрыве соединения —
+                # не критичны, браузер уже закрыт, ресурсы освобождены.
                 logger.debug(
                     "ошибка_при_остановке_playwright",
                     error=str(e),
