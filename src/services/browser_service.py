@@ -20,6 +20,48 @@ logger = get_logger("browser")
 # Таймаут ожидания завершения Playwright (секунды)
 _PLAYWRIGHT_STOP_TIMEOUT: float = 10.0
 
+# Пауза между шагами закрытия, чтобы Node.js-драйвер
+# успел обработать pending-события до разрыва pipe (секунды).
+_CLOSE_DRAIN_DELAY: float = 0.5
+
+# Аргументы Chromium для ограничения потребления памяти.
+# Каждый прокси-браузер запускается с этими флагами, чтобы
+# 10 параллельных Chromium не вызывали OOM на сервере с 11 ГБ RAM.
+_CHROMIUM_MEMORY_ARGS: list[str] = [
+    # Базовые anti-detection
+    "--disable-blink-features=AutomationControlled",
+    "--disable-dev-shm-usage",
+    "--no-sandbox",
+    # Ограничение памяти рендерера (~256 МБ на процесс V8)
+    "--js-flags=--max-old-space-size=256",
+    # Ограничение количества процессов рендеринга
+    "--renderer-process-limit=1",
+    # Отключение GPU (экономит 50-100 МБ на процесс)
+    "--disable-gpu",
+    "--disable-gpu-compositing",
+    # Отключение фоновых процессов и сетевой активности
+    "--disable-background-networking",
+    "--disable-background-timer-throttling",
+    "--disable-backgrounding-occluded-windows",
+    "--disable-extensions",
+    "--disable-component-extensions-with-background-pages",
+    "--disable-default-apps",
+    "--disable-hang-monitor",
+    "--disable-ipc-flooding-protection",
+    "--disable-popup-blocking",
+    "--disable-prompt-on-repost",
+    "--disable-renderer-backgrounding",
+    "--disable-sync",
+    "--disable-translate",
+    # Ограничение кэша диска (50 МБ вместо сотен МБ по умолчанию)
+    "--disk-cache-size=52428800",
+    # Отключение crash reporter (экономит память)
+    "--no-first-run",
+    "--no-default-browser-check",
+    "--metrics-recording-only",
+    "--mute-audio",
+]
+
 
 class BrowserService:
     """Сервис для управления браузером Playwright.
@@ -31,6 +73,7 @@ class BrowserService:
     - Навигацию с обработкой таймаутов.
     - Запуск через прокси-сервер.
     - Создание дополнительных вкладок для параллельной обработки карточек.
+    - Ограничение памяти Chromium для предотвращения OOM.
     """
 
     def __init__(self, settings: Settings) -> None:
@@ -119,11 +162,7 @@ class BrowserService:
         """
         self._browser = await self._playwright.chromium.launch(
             headless=self._settings.headless_mode,
-            args=[
-                "--disable-blink-features=AutomationControlled",
-                "--disable-dev-shm-usage",
-                "--no-sandbox",
-            ],
+            args=_CHROMIUM_MEMORY_ARGS,
             ignore_default_args=["--enable-automation"],
         )
 
@@ -161,11 +200,7 @@ class BrowserService:
                 "username": proxy.username,
                 "password": proxy.password,
             },
-            args=[
-                "--disable-blink-features=AutomationControlled",
-                "--disable-dev-shm-usage",
-                "--no-sandbox",
-            ],
+            args=_CHROMIUM_MEMORY_ARGS,
             ignore_default_args=["--enable-automation"],
         )
 
@@ -245,13 +280,43 @@ class BrowserService:
     async def stop(self) -> None:
         """Останавливает браузер и освобождает все ресурсы.
 
-        Последовательно закрывает контекст, браузер и Playwright.
-        Каждый шаг обёрнут в try/except — ошибка на одном шаге
-        не блокирует выполнение остальных. На playwright.stop()
-        установлен таймаут, чтобы избежать бесконечного зависания
-        при незавершённых процессах Chromium.
+        Последовательность закрытия спроектирована для предотвращения
+        ошибки EPIPE в Node.js v24+. Между каждым шагом выдерживается
+        пауза (_CLOSE_DRAIN_DELAY), чтобы Node.js-драйвер Playwright
+        успел обработать pending dispose/event-сообщения до разрыва pipe.
+
+        Порядок закрытия:
+        1. Закрытие всех дополнительных страниц (вкладок).
+        2. Пауза — Node.js обрабатывает page dispose-события.
+        3. Закрытие контекста браузера.
+        4. Пауза — Node.js обрабатывает context dispose-события.
+        5. Закрытие браузера (убивает процесс Chromium).
+        6. Пауза — Node.js завершает финализацию процесса.
+        7. Остановка Playwright (закрывает pipe к Node.js-драйверу).
         """
-        # Шаг 1: Закрываем контекст браузера
+        # Шаг 1: Закрываем все дополнительные страницы
+        if self._context is not None:
+            try:
+                pages_to_close = [
+                    p for p in self._context.pages
+                    if p is not self._page and not p.is_closed()
+                ]
+                for p in pages_to_close:
+                    try:
+                        await p.close()
+                    except Exception:
+                        pass
+            except Exception as e:
+                logger.debug(
+                    "ошибка_при_закрытии_вкладок",
+                    error=str(e),
+                    error_type=type(e).__name__,
+                )
+
+        # Пауза: даём Node.js обработать page dispose-события
+        await asyncio.sleep(_CLOSE_DRAIN_DELAY)
+
+        # Шаг 2: Закрываем контекст браузера
         if self._context is not None:
             try:
                 await self._context.close()
@@ -265,7 +330,10 @@ class BrowserService:
                 self._context = None
                 self._page = None
 
-        # Шаг 2: Закрываем браузер (убивает процесс Chromium)
+        # Пауза: даём Node.js обработать context dispose-события
+        await asyncio.sleep(_CLOSE_DRAIN_DELAY)
+
+        # Шаг 3: Закрываем браузер (убивает процесс Chromium)
         if self._browser is not None:
             try:
                 await self._browser.close()
@@ -278,7 +346,10 @@ class BrowserService:
             finally:
                 self._browser = None
 
-        # Шаг 3: Останавливаем Playwright с таймаутом
+        # Пауза: даём Node.js завершить финализацию перед разрывом pipe
+        await asyncio.sleep(_CLOSE_DRAIN_DELAY)
+
+        # Шаг 4: Останавливаем Playwright с таймаутом
         if self._playwright is not None:
             try:
                 await asyncio.wait_for(

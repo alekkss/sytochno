@@ -20,6 +20,12 @@ if TYPE_CHECKING:
 
 logger = get_logger("enrich_strategies")
 
+# Пауза между запуском воркеров (секунды).
+# Предотвращает одновременный старт всех Chromium, который
+# вызывает пиковое потребление памяти и OOM на серверах с
+# ограниченной RAM (11 ГБ при 10 воркерах).
+_WORKER_STAGGER_DELAY: float = 5.0
+
 
 class EnrichStrategies:
     """Параллельные стратегии обогащения карточек.
@@ -137,6 +143,11 @@ class EnrichStrategies:
     ) -> list[RawListing]:
         """Обогащает карточки параллельно через несколько прокси-браузеров.
 
+        Воркеры запускаются с паузой _WORKER_STAGGER_DELAY между стартами,
+        чтобы не создавать пиковую нагрузку на RAM при одновременном запуске
+        всех процессов Chromium. Каждый воркер обрабатывает свою порцию
+        карточек независимо.
+
         Args:
             settings: Настройки приложения.
             listings: Полный список карточек.
@@ -157,8 +168,48 @@ class EnrichStrategies:
 
         parallel_start = time.perf_counter()
 
+        # Семафор ограничивает количество ОДНОВРЕМЕННО работающих воркеров.
+        # Даже если прокси 10, одновременно в памяти будет не более
+        # max_proxy_workers процессов Chromium.
+        worker_semaphore = asyncio.Semaphore(settings.max_proxy_workers)
+
+        async def _guarded_worker(
+            chunk: list[RawListing],
+            proxy: ProxyConfig,
+            worker_idx: int,
+            start_delay: float,
+        ) -> tuple[list[RawListing], float, BrowserService] | BaseException:
+            """Запускает воркер с задержкой и под семафором.
+
+            Args:
+                chunk: Порция карточек.
+                proxy: Прокси для воркера.
+                worker_idx: Номер воркера.
+                start_delay: Задержка перед стартом (секунды).
+
+            Returns:
+                Результат _worker или исключение.
+            """
+            async with worker_semaphore:
+                # Стаггер: каждый следующий воркер стартует позже предыдущего
+                if start_delay > 0:
+                    logger.debug(
+                        "ожидание_старта_воркера",
+                        step=f"воркер={worker_idx}, задержка={start_delay:.1f}с",
+                    )
+                    await asyncio.sleep(start_delay)
+
+                return await EnrichStrategies._worker(
+                    settings, chunk, proxy, worker_idx
+                )
+
         tasks = [
-            EnrichStrategies._worker(settings, chunk, proxy, worker_idx)
+            _guarded_worker(
+                chunk=chunk,
+                proxy=proxy,
+                worker_idx=worker_idx,
+                start_delay=_WORKER_STAGGER_DELAY * (worker_idx - 1),
+            )
             for worker_idx, (chunk, proxy) in enumerate(zip(chunks, proxies), start=1)
         ]
 
@@ -183,10 +234,14 @@ class EnrichStrategies:
                 worker_stats.append((worker_idx, len(enriched_list), duration))
                 browsers_to_stop.append((browser_svc, worker_idx))
 
+        # Останавливаем браузеры последовательно с паузой, чтобы
+        # не генерировать каскад EPIPE от одновременного закрытия.
         if browsers_to_stop:
             logger.info("остановка_прокси_браузеров", total=len(browsers_to_stop))
             for browser_svc, w_idx in browsers_to_stop:
                 await safe_stop_browser(browser_svc, w_idx)
+                # Пауза между закрытием браузеров — даёт OS освободить память
+                await asyncio.sleep(0.5)
             logger.info("все_прокси_браузеры_остановлены")
 
         if worker_stats:
