@@ -16,6 +16,18 @@ logger = get_logger("scraper")
 # Базовый URL для формирования абсолютных ссылок
 _BASE_URL = "https://sutochno.ru"
 
+# Максимальное количество попыток при сетевых ошибках браузера
+_MAX_BROWSER_RETRIES = 3
+
+# Маркеры сетевых ошибок Playwright — при их наличии выполняется смена прокси
+_NETWORK_ERROR_MARKERS = (
+    "ERR_TIMED_OUT",
+    "ERR_CONNECTION_REFUSED",
+    "ERR_CONNECTION_RESET",
+    "ERR_NAME_NOT_RESOLVED",
+    "net::",
+)
+
 
 class _BidirectionalState:
     """Общее состояние для синхронизации двух браузеров при двунаправленном обходе.
@@ -87,28 +99,62 @@ class ScraperService:
     Поддерживает двунаправленный обход пагинации: два браузера идут
     навстречу друг другу (первый — вперёд, второй — назад с последней
     страницы), что сокращает время обхода каталога вдвое.
+
+    При сетевой ошибке (ERR_TIMED_OUT и др.) автоматически переключает
+    упавший браузер на другую прокси из пула и повторяет попытку.
+    Логика ротации:
+    - прямой браузер работал без прокси → получает первую свободную прокси;
+    - прямой браузер уже на прокси → оба получают следующие прокси по кругу.
     """
 
     def __init__(
         self,
         settings: Settings,
         browser_service: BrowserService,
-        proxy: ProxyConfig | None = None,
+        proxies: list[ProxyConfig] | None = None,
     ) -> None:
         """Инициализирует сервис парсинга.
 
         Args:
             settings: Настройки приложения.
             browser_service: Сервис управления браузером (для прямого обхода).
-            proxy: Прокси для второго (обратного) браузера. Если None —
-                   второй браузер запускается без прокси.
+            proxies: Пул рабочих прокси для ротации при сетевых ошибках.
+                     Если None или пустой — оба браузера стартуют без прокси.
+                     При сетевой ошибке прямого браузера берётся первая прокси.
+                     При следующей ошибке — следующая прокси по кругу.
         """
         self._settings = settings
         self._browser = browser_service
-        self._proxy = proxy
+        self._proxies: list[ProxyConfig] = proxies or []
+        self._proxy_index: int = 0  # текущий индекс для ротации по кругу
         self._seen_ids: set[str] = set()
         self._duplicates_count: int = 0
         self._lock: asyncio.Lock = asyncio.Lock()
+
+    def _get_next_proxy(self, exclude: ProxyConfig | None = None) -> ProxyConfig | None:
+        """Возвращает следующую прокси из пула, пропуская исключённую.
+
+        Используется для ротации при сетевых ошибках:
+        - если прямой браузер упал без прокси — берёт первую из пула;
+        - если обратный браузер упал с прокси X — берёт следующую, не X.
+
+        Args:
+            exclude: Прокси, которую нужно пропустить (упавшая).
+
+        Returns:
+            Следующая прокси из пула или None, если пул пуст.
+        """
+        if not self._proxies:
+            return None
+
+        for _ in range(len(self._proxies)):
+            proxy = self._proxies[self._proxy_index % len(self._proxies)]
+            self._proxy_index += 1
+            if proxy != exclude:
+                return proxy
+
+        # Все прокси совпадают с exclude (пул из одной прокси) — вернём её же
+        return self._proxies[0]
 
     async def scrape_catalog(self) -> list[RawListing]:
         """Основной метод — обходит все URL поиска и собирает уникальные объявления.
@@ -119,7 +165,8 @@ class ScraperService:
         3. Если страниц > 1 — запускает второй (обратный) браузер на последнюю страницу.
         4. Оба браузера работают параллельно навстречу друг другу.
         5. Когда встречаются — оба останавливаются.
-        6. Закрывает оба браузера.
+        6. При сетевой ошибке — ротирует прокси и повторяет (до _MAX_BROWSER_RETRIES раз).
+        7. Закрывает оба браузера.
 
         Returns:
             Список уникальных объявлений со всех обработанных страниц и ссылок.
@@ -201,12 +248,10 @@ class ScraperService:
     ) -> int:
         """Обходит один URL поиска двумя браузерами навстречу друг другу.
 
-        Алгоритм:
-        1. Запускает прямой браузер, переходит на первую страницу.
-        2. Определяет общее количество страниц из пагинации.
-        3. Если страниц > 1 — запускает обратный браузер на последнюю страницу.
-        4. Оба работают параллельно через asyncio.gather.
-        5. Синхронизация через _BidirectionalState.
+        При сетевой ошибке автоматически меняет прокси и повторяет попытку:
+        - прямой браузер работал без прокси → следующая попытка через прокси;
+        - прямой браузер уже на прокси → оба получают новые прокси по кругу.
+        Максимальное количество попыток: _MAX_BROWSER_RETRIES.
 
         Args:
             search_url: URL страницы поиска.
@@ -217,8 +262,113 @@ class ScraperService:
         Returns:
             Количество обработанных страниц для этой ссылки.
         """
+        # Прямой браузер стартует без прокси (как раньше)
+        forward_proxy: ProxyConfig | None = None
+        # Обратный браузер стартует с первой прокси из пула (если есть)
+        backward_proxy: ProxyConfig | None = self._proxies[0] if self._proxies else None
+
+        for attempt in range(1, _MAX_BROWSER_RETRIES + 1):
+            try:
+                return await self._try_scrape_bidirectional(
+                    search_url=search_url,
+                    url_index=url_index,
+                    remaining_pages=remaining_pages,
+                    all_listings=all_listings,
+                    forward_proxy=forward_proxy,
+                    backward_proxy=backward_proxy,
+                )
+
+            except Exception as e:
+                error_text = str(e)
+                is_network_error = any(
+                    marker in error_text for marker in _NETWORK_ERROR_MARKERS
+                )
+
+                if not is_network_error or attempt >= _MAX_BROWSER_RETRIES:
+                    # Не сетевая ошибка или исчерпаны все попытки — пробрасываем выше
+                    logger.error(
+                        "ошибка_обхода_ссылки_исчерпаны_попытки",
+                        url_index=url_index,
+                        attempt=attempt,
+                        max_retries=_MAX_BROWSER_RETRIES,
+                        error=error_text[:300],
+                        error_type=type(e).__name__,
+                    )
+                    raise
+
+                # Сетевая ошибка — ротируем прокси и повторяем
+                logger.warning(
+                    "сетевая_ошибка_смена_прокси",
+                    url_index=url_index,
+                    attempt=attempt,
+                    error=error_text[:200],
+                    forward_proxy=str(forward_proxy) if forward_proxy else "без прокси",
+                    backward_proxy=str(backward_proxy) if backward_proxy else "без прокси",
+                )
+
+                if forward_proxy is None and self._proxies:
+                    # Прямой браузер был без прокси — теперь назначаем ему прокси
+                    forward_proxy = self._get_next_proxy(exclude=backward_proxy)
+                    logger.info(
+                        "прямой_браузер_переключён_на_прокси",
+                        url_index=url_index,
+                        attempt=attempt + 1,
+                        new_proxy=str(forward_proxy),
+                    )
+                elif self._proxies:
+                    # Прямой браузер уже на прокси — ротируем обе
+                    forward_proxy = self._get_next_proxy(exclude=backward_proxy)
+                    backward_proxy = self._get_next_proxy(exclude=forward_proxy)
+                    logger.info(
+                        "оба_браузера_переключены_на_новые_прокси",
+                        url_index=url_index,
+                        attempt=attempt + 1,
+                        new_forward=str(forward_proxy),
+                        new_backward=str(backward_proxy),
+                    )
+                else:
+                    # Прокси в пуле нет совсем — повторить без изменений не поможет
+                    logger.error(
+                        "пул_прокси_пуст_повтор_невозможен",
+                        url_index=url_index,
+                        attempt=attempt,
+                    )
+                    raise
+
+                await asyncio.sleep(3)
+
+        # Сюда не должны попасть — цикл завершается через return или raise
+        return 0
+
+    async def _try_scrape_bidirectional(
+        self,
+        search_url: str,
+        url_index: int,
+        remaining_pages: int,
+        all_listings: list[RawListing],
+        forward_proxy: ProxyConfig | None,
+        backward_proxy: ProxyConfig | None,
+    ) -> int:
+        """Одна попытка двунаправленного обхода с заданными прокси.
+
+        Запускает прямой браузер (с forward_proxy или без) и обратный
+        (с backward_proxy или без), пускает их параллельно навстречу друг другу.
+        Любая сетевая ошибка поднимается выше в _scrape_single_url_bidirectional,
+        который решает — менять прокси и повторять, или завершить с ошибкой.
+
+        Args:
+            search_url: URL страницы поиска.
+            url_index: Номер ссылки.
+            remaining_pages: Лимит страниц.
+            all_listings: Общий список объявлений.
+            forward_proxy: Прокси для прямого браузера (None = без прокси).
+            backward_proxy: Прокси для обратного браузера (None = без прокси).
+
+        Returns:
+            Количество обработанных страниц.
+        """
         # --- Запускаем прямой браузер ---
-        await self._browser.start()
+        await self._browser.start(proxy=forward_proxy)
 
         try:
             # Переходим на первую страницу каталога
@@ -241,6 +391,8 @@ class ScraperService:
                 "пагинация_определена",
                 url_index=url_index,
                 total_pages=total_pages,
+                forward_proxy=str(forward_proxy) if forward_proxy else "без прокси",
+                backward_proxy=str(backward_proxy) if backward_proxy else "без прокси",
             )
 
             # Ограничиваем общее количество страниц лимитом
@@ -266,7 +418,7 @@ class ScraperService:
 
             # Запускаем обратный браузер
             backward_browser = BrowserService(settings=self._settings)
-            await backward_browser.start(proxy=self._proxy)
+            await backward_browser.start(proxy=backward_proxy)
 
             try:
                 # Переходим обратным браузером на первую страницу

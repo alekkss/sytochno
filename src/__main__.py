@@ -97,15 +97,14 @@ async def run() -> None:
             )
 
     # --- Шаг 5: Создание сервисов (Dependency Injection) ---
-    # Прокси для обратного браузера скрапера: берём первую рабочую прокси.
-    # Если прокси нет — обратный браузер запустится без прокси.
-    scraper_proxy: ProxyConfig | None = working_proxies[0] if working_proxies else None
-
+    # Передаём весь пул рабочих прокси в ScraperService.
+    # При сетевой ошибке браузер автоматически переключится на следующую прокси.
+    # Если пул пуст — оба браузера стартуют без прокси (поведение как раньше).
     browser_service = BrowserService(settings=settings)
     scraper_service = ScraperService(
         settings=settings,
         browser_service=browser_service,
-        proxy=scraper_proxy,
+        proxies=working_proxies,
     )
     listing_service = ListingService(settings=settings, browser_service=browser_service)
     export_service = ExportService(settings=settings)
@@ -127,7 +126,7 @@ async def run() -> None:
             "начало_парсинга_каталога",
             step="scraping",
             urls_count=len(settings.search_urls),
-            bidirectional_proxy=str(scraper_proxy) if scraper_proxy else "без прокси",
+            proxies_available=len(working_proxies),
         )
         listings = await scraper_service.scrape_catalog()
 
