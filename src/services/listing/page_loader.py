@@ -1,6 +1,7 @@
 """Загрузка страницы карточки и перехват токена API."""
 
 import asyncio
+from typing import TYPE_CHECKING
 
 from playwright.async_api import Page
 
@@ -13,13 +14,50 @@ from src.services.listing.constants import (
     PAGE_READY_TIMEOUT_MS,
 )
 
+if TYPE_CHECKING:
+    from src.services.listing.connection_monitor import ConnectionMonitor
+
 logger = get_logger("page_loader")
 
 
 class PageLoader:
-    """Загрузка страницы карточки с retry и перехватом токена через route interception."""
+    """Загрузка страницы карточки с retry и перехватом токена через route interception.
 
-    async def goto_and_capture_token(self, page: Page, url: str) -> tuple[bool, str | None]:
+    При наличии ConnectionMonitor репортит результаты загрузки —
+    это позволяет централизованно детектировать массовые сбои
+    соединения/прокси и инициировать перезапуск браузера.
+    """
+
+    def __init__(self, monitor: "ConnectionMonitor | None" = None) -> None:
+        """Инициализирует загрузчик страниц.
+
+        Args:
+            monitor: Монитор здоровья соединения (опциональный).
+                Если передан — результаты загрузки репортятся в монитор.
+        """
+        self._monitor = monitor
+
+    @property
+    def monitor(self) -> "ConnectionMonitor | None":
+        """Возвращает текущий монитор соединения.
+
+        Returns:
+            Экземпляр ConnectionMonitor или None.
+        """
+        return self._monitor
+
+    @monitor.setter
+    def monitor(self, value: "ConnectionMonitor | None") -> None:
+        """Устанавливает монитор соединения.
+
+        Args:
+            value: Новый монитор или None для отключения.
+        """
+        self._monitor = value
+
+    async def goto_and_capture_token(
+        self, page: Page, url: str, object_id: str = ""
+    ) -> tuple[bool, str | None]:
         """Загружает страницу карточки и перехватывает токен API.
 
         Перехват выполняется через page.route — надёжнее page.on('request'),
@@ -29,10 +67,19 @@ class PageLoader:
         Args:
             page: Вкладка браузера.
             url: URL карточки.
+            object_id: ID объявления (для логов монитора).
 
         Returns:
             Кортеж (страница_загружена, токен_или_None).
         """
+        # Проверяем — не требуется ли уже перезапуск браузера
+        if self._monitor and self._monitor.should_skip():
+            logger.debug(
+                "загрузка_пропущена_перезапуск_требуется",
+                step=f"id={object_id}",
+            )
+            return False, None
+
         captured_token: list[str] = []
 
         async def _route_handler(route: "any") -> None:  # type: ignore[name-defined]
@@ -46,7 +93,7 @@ class PageLoader:
         await page.route("**/api/json/**", _route_handler)
 
         try:
-            loaded = await self.goto_with_retry(page, url)
+            loaded = await self.goto_with_retry(page, url, object_id)
             await asyncio.sleep(1.0)
         finally:
             await page.unroute("**/api/json/**")
@@ -63,7 +110,7 @@ class PageLoader:
 
         return loaded, token
 
-    async def goto_with_retry(self, page: Page, url: str) -> bool:
+    async def goto_with_retry(self, page: Page, url: str, object_id: str = "") -> bool:
         """Загружает страницу карточки с повторными попытками.
 
         При сетевых ошибках (таймаут, сброс соединения, проблемы прокси)
@@ -71,14 +118,35 @@ class PageLoader:
         пытается дождаться networkidle (мягкий таймаут), затем проверяет
         наличие ключевых элементов.
 
+        После полного провала (все попытки исчерпаны) репортит сбой
+        в монитор соединения. При успехе — сбрасывает счётчик.
+
         Args:
             page: Вкладка браузера.
             url: URL карточки.
+            object_id: ID объявления (для логов монитора).
 
         Returns:
             True если страница загружена, False — если все попытки исчерпаны.
         """
+        # Быстрая проверка перед началом retry-цикла
+        if self._monitor and self._monitor.should_skip():
+            logger.debug(
+                "goto_пропущен_перезапуск_требуется",
+                step=f"id={object_id}",
+            )
+            return False
+
         for attempt in range(1, MAX_GOTO_RETRIES + 1):
+            # Проверяем перед каждой попыткой — другая вкладка могла
+            # зафиксировать критическое количество сбоев
+            if self._monitor and self._monitor.should_skip():
+                logger.debug(
+                    "goto_прерван_перезапуск_требуется",
+                    step=f"id={object_id}, попытка={attempt}",
+                )
+                return False
+
             try:
                 logger.debug(
                     "goto_попытка",
@@ -101,6 +169,9 @@ class PageLoader:
                 page_ready = await self.wait_for_page_ready(page)
                 if page_ready:
                     logger.debug("страница_готова", step=f"попытка={attempt}")
+                    # Успех — сбрасываем счётчик сбоев в мониторе
+                    if self._monitor:
+                        await self._monitor.report_success(object_id)
                     return True
 
                 # Ключевые элементы не найдены — возможна CAPTCHA, редирект
@@ -116,6 +187,9 @@ class PageLoader:
                     if attempt < MAX_GOTO_RETRIES:
                         await asyncio.sleep(GOTO_RETRY_DELAY)
                         continue
+                    # Все попытки исчерпаны — редирект на каждой
+                    if self._monitor:
+                        await self._monitor.report_failure(object_id)
                     return False
 
                 # URL в порядке, но элементы не найдены — вёрстка могла
@@ -125,6 +199,9 @@ class PageLoader:
                     path=current_url,
                     step=f"попытка={attempt}",
                 )
+                # Считаем частичным успехом — страница загрузилась
+                if self._monitor:
+                    await self._monitor.report_success(object_id)
                 return True
 
             except Exception as e:
@@ -158,8 +235,14 @@ class PageLoader:
                     error_type=type(e).__name__,
                     step=f"попытка={attempt}/{MAX_GOTO_RETRIES}",
                 )
+                # Все попытки исчерпаны — репортим сбой в монитор
+                if self._monitor:
+                    await self._monitor.report_failure(object_id)
                 return False
 
+        # Сюда попадаем если цикл завершился без return (теоретически не должно)
+        if self._monitor:
+            await self._monitor.report_failure(object_id)
         return False
 
     async def wait_for_page_ready(self, page: Page) -> bool:

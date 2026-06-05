@@ -12,6 +12,19 @@ from src.models.proxy import ProxyConfig
 
 logger = get_logger("proxy")
 
+# Максимальное количество одновременных проверок прокси.
+# Каждая проверка запускает свой Chromium (~500 МБ RAM).
+# На сервере с 8 ГБ RAM безопасно проверять 3 одновременно.
+_MAX_CONCURRENT_CHECKS: int = 3
+
+# Таймаут навигации при проверке прокси (мс).
+# Увеличен по сравнению со стандартным — прокси могут быть медленными.
+_CHECK_NAVIGATION_TIMEOUT_MS: int = 60000
+
+# Время ожидания после загрузки страницы (секунды).
+# Достаточно убедиться, что контент подгрузился.
+_CHECK_SETTLE_DELAY: float = 5.0
+
 
 class ProxyService:
     """Сервис для работы с прокси-серверами.
@@ -20,6 +33,7 @@ class ProxyService:
     - Загрузку списка прокси из текстового файла.
     - Проверку каждой прокси на работоспособность.
     - Распределение карточек между рабочими прокси.
+    - Проверку и замену прокси при сбоях соединения.
     """
 
     def __init__(self, settings: Settings) -> None:
@@ -101,8 +115,9 @@ class ProxyService:
     async def check_proxies(self, proxies: list[ProxyConfig]) -> list[ProxyConfig]:
         """Проверяет работоспособность каждой прокси.
 
-        Для каждой прокси открывает отдельный браузер, переходит на sutochno.ru,
-        прокручивает страницу и ждёт 15 секунд. Если загрузка успешна — прокси рабочая.
+        Проверка выполняется пакетами — не более _MAX_CONCURRENT_CHECKS
+        одновременно, чтобы не перегружать RAM/CPU сервера
+        (каждая проверка запускает отдельный процесс Chromium).
 
         Args:
             proxies: Список прокси для проверки.
@@ -113,31 +128,41 @@ class ProxyService:
         logger.info(
             "начало_проверки_прокси",
             total=len(proxies),
+            step=f"параллельно={_MAX_CONCURRENT_CHECKS}",
         )
 
-        # Проверяем все прокси параллельно
-        tasks = [self._check_single_proxy(proxy) for proxy in proxies]
+        semaphore = asyncio.Semaphore(_MAX_CONCURRENT_CHECKS)
+
+        async def _check_with_limit(proxy: ProxyConfig) -> tuple[ProxyConfig, bool]:
+            """Проверяет прокси с ограничением параллельности."""
+            async with semaphore:
+                result = await self.check_single_proxy(proxy)
+                return proxy, result
+
+        tasks = [_check_with_limit(proxy) for proxy in proxies]
         results = await asyncio.gather(*tasks, return_exceptions=True)
 
         working: list[ProxyConfig] = []
-        for proxy, result in zip(proxies, results):
+        for result in results:
             if isinstance(result, Exception):
                 logger.warning(
-                    "прокси_недоступна",
+                    "прокси_ошибка_проверки",
                     error=str(result),
-                    step=str(proxy),
+                    error_type=type(result).__name__,
                 )
-            elif result is True:
-                working.append(proxy)
-                logger.info(
-                    "прокси_работает",
-                    step=str(proxy),
-                )
-            else:
-                logger.warning(
-                    "прокси_недоступна",
-                    step=str(proxy),
-                )
+            elif isinstance(result, tuple):
+                proxy, is_working = result
+                if is_working:
+                    working.append(proxy)
+                    logger.info(
+                        "прокси_работает",
+                        step=str(proxy),
+                    )
+                else:
+                    logger.warning(
+                        "прокси_недоступна",
+                        step=str(proxy),
+                    )
 
         self._working_proxies = working
 
@@ -148,11 +173,14 @@ class ProxyService:
         )
         return working
 
-    async def _check_single_proxy(self, proxy: ProxyConfig) -> bool:
+    async def check_single_proxy(self, proxy: ProxyConfig) -> bool:
         """Проверяет одну прокси на работоспособность.
 
         Открывает браузер с прокси, переходит на sutochno.ru,
-        прокручивает страницу и ждёт 15 секунд.
+        прокручивает страницу и ждёт стабилизации контента.
+
+        Таймаут навигации увеличен до 60 секунд — прокси могут
+        быть медленнее прямого соединения.
 
         Args:
             proxy: Прокси для проверки.
@@ -200,7 +228,7 @@ class ProxyService:
             """)
 
             page = await context.new_page()
-            page.set_default_navigation_timeout(30000)
+            page.set_default_navigation_timeout(_CHECK_NAVIGATION_TIMEOUT_MS)
 
             # Переходим на главную страницу sutochno.ru
             await page.goto("https://sutochno.ru", wait_until="domcontentloaded")
@@ -210,8 +238,8 @@ class ProxyService:
             await asyncio.sleep(2)
             await page.evaluate("window.scrollTo(0, document.body.scrollHeight)")
 
-            # Ждём 15 секунд для полной загрузки
-            await asyncio.sleep(15)
+            # Ждём стабилизации контента
+            await asyncio.sleep(_CHECK_SETTLE_DELAY)
 
             # Проверяем что страница загрузилась (есть контент)
             content = await page.content()
@@ -235,6 +263,79 @@ class ProxyService:
                 await browser.close()
             if playwright:
                 await playwright.stop()
+
+    async def get_replacement_proxy(
+        self,
+        current_proxy: ProxyConfig | None,
+        in_use_proxies: list[ProxyConfig] | None = None,
+    ) -> ProxyConfig | None:
+        """Ищет рабочую замену для текущей прокси из пула.
+
+        Перебирает рабочие прокси, исключая текущую и занятые другими
+        воркерами. Для каждого кандидата выполняет проверку через
+        check_single_proxy. Возвращает первую прошедшую проверку.
+
+        Args:
+            current_proxy: Текущая прокси, которая не прошла проверку
+                (исключается из кандидатов).
+            in_use_proxies: Список прокси, занятых другими воркерами
+                (исключаются из кандидатов).
+
+        Returns:
+            Рабочая прокси для замены или None если замена не найдена.
+        """
+        if in_use_proxies is None:
+            in_use_proxies = []
+
+        # Собираем множество прокси, которые нельзя использовать
+        excluded: set[str] = set()
+        if current_proxy is not None:
+            excluded.add(current_proxy.server_url)
+        for proxy in in_use_proxies:
+            excluded.add(proxy.server_url)
+
+        # Ищем кандидатов среди рабочих прокси
+        candidates = [
+            p for p in self._working_proxies
+            if p.server_url not in excluded
+        ]
+
+        if not candidates:
+            logger.warning(
+                "нет_кандидатов_для_замены",
+                step=f"рабочих={len(self._working_proxies)}, "
+                     f"исключено={len(excluded)}",
+            )
+            return None
+
+        logger.info(
+            "поиск_замены_прокси",
+            step=f"кандидатов={len(candidates)}",
+        )
+
+        # Проверяем кандидатов последовательно — возвращаем первую рабочую
+        for candidate in candidates:
+            is_working = await self.check_single_proxy(candidate)
+            if is_working:
+                logger.info(
+                    "замена_прокси_найдена",
+                    step=str(candidate),
+                )
+                return candidate
+            else:
+                logger.warning(
+                    "кандидат_не_прошёл_проверку",
+                    step=str(candidate),
+                )
+                # Убираем из списка рабочих — она больше не работает
+                if candidate in self._working_proxies:
+                    self._working_proxies.remove(candidate)
+
+        logger.warning(
+            "замена_прокси_не_найдена",
+            step=f"проверено={len(candidates)}, ни одна не работает",
+        )
+        return None
 
     @staticmethod
     def distribute_listings(

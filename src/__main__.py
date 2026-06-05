@@ -97,16 +97,17 @@ async def run() -> None:
             )
 
     # --- Шаг 5: Создание сервисов (Dependency Injection) ---
-    # Передаём весь пул рабочих прокси в ScraperService.
-    # При сетевой ошибке браузер автоматически переключится на следующую прокси.
-    # Если пул пуст — оба браузера стартуют без прокси (поведение как раньше).
     browser_service = BrowserService(settings=settings)
     scraper_service = ScraperService(
         settings=settings,
         browser_service=browser_service,
         proxies=working_proxies,
     )
-    listing_service = ListingService(settings=settings, browser_service=browser_service)
+    listing_service = ListingService(
+        settings=settings,
+        browser_service=browser_service,
+        proxy_service=proxy_service,
+    )
     export_service = ExportService(settings=settings)
 
     snapshot_service = SnapshotService(repository=snapshot_repository)
@@ -121,7 +122,6 @@ async def run() -> None:
 
     try:
         # --- Шаг 6: Парсинг каталога (Этап 1) ---
-        # ScraperService сам запускает и закрывает браузеры (прямой + обратный)
         logger.info(
             "начало_парсинга_каталога",
             step="scraping",
@@ -150,6 +150,7 @@ async def run() -> None:
             listings=listings,
             listing_service=listing_service,
             working_proxies=working_proxies,
+            proxy_service=proxy_service,
             logger=logger,
         )
 
@@ -310,6 +311,7 @@ async def _enrich_with_proxy_or_sequential(
     listings: list,
     listing_service: ListingService,
     working_proxies: list[ProxyConfig],
+    proxy_service: ProxyService | None,
     logger: "any",  # type: ignore[name-defined]
 ) -> list:
     """Обогащает карточки: параллельно через прокси, через вкладки или последовательно.
@@ -327,6 +329,7 @@ async def _enrich_with_proxy_or_sequential(
         listings: Список карточек для обогащения.
         listing_service: Сервис парсинга карточек.
         working_proxies: Список проверенных рабочих прокси.
+        proxy_service: Сервис прокси с заполненным пулом (для передачи в воркеры).
         logger: Логгер.
 
     Returns:
@@ -353,6 +356,7 @@ async def _enrich_with_proxy_or_sequential(
             settings=settings,
             listings=listings,
             proxies=proxies_to_use,
+            proxy_service=proxy_service,
         )
 
     return await _enrich_without_proxy(settings, listings, listing_service, logger)

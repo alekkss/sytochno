@@ -19,6 +19,7 @@ from src.config.settings import Settings
 from src.models.listing import RawListing
 from src.services.browser_service import BrowserService
 from src.services.listing.api_client import ApiClient
+from src.services.listing.connection_monitor import ConnectionMonitor
 from src.services.listing.constants import DAYS_COUNT, DEFAULT_GUESTS, format_duration
 from src.services.listing.enrich_strategies import EnrichStrategies
 from src.services.listing.hybrid_strategy import HybridStrategy
@@ -28,6 +29,7 @@ from src.services.listing.token_manager import TokenManager
 
 if TYPE_CHECKING:
     from src.models.proxy import ProxyConfig
+    from src.services.proxy_service import ProxyService
 
 logger = get_logger("listing")
 
@@ -45,20 +47,34 @@ class ListingService:
     - enrich_listing(listing, page=None)
     - enrich_listings(listings)
     - enrich_listings_tabbed(listings)
-    - enrich_listings_parallel(settings, listings, proxies) — статический
+    - enrich_listings_parallel(settings, listings, proxies, proxy_service) — статический
     """
 
-    def __init__(self, settings: Settings, browser_service: BrowserService) -> None:
+    def __init__(
+        self,
+        settings: Settings,
+        browser_service: BrowserService,
+        monitor: ConnectionMonitor | None = None,
+        proxy_service: "ProxyService | None" = None,
+    ) -> None:
         """Инициализирует сервис и все вложенные компоненты.
 
         Args:
             settings: Настройки приложения.
             browser_service: Сервис управления браузером.
+            monitor: Монитор здоровья соединения (опциональный).
+                Если передан — используется для раннего обнаружения
+                массовых сбоев и остановки бесполезных попыток.
+            proxy_service: Сервис прокси с заполненным пулом (опциональный).
+                Передаётся в EnrichStrategies для проверки/замены прокси
+                при перезапуске браузера.
         """
         self._settings = settings
         self._browser = browser_service
+        self._monitor = monitor
+        self._proxy_service = proxy_service
 
-        self._page_loader = PageLoader()
+        self._page_loader = PageLoader(monitor=monitor)
         self._token_manager = TokenManager(
             page_loader=self._page_loader,
             browser_service=self._browser,
@@ -73,7 +89,29 @@ class ListingService:
             listing_service=self,
             browser_service=self._browser,
             settings=self._settings,
+            proxy_service=self._proxy_service,
         )
+
+    @property
+    def monitor(self) -> ConnectionMonitor | None:
+        """Возвращает текущий монитор соединения.
+
+        Returns:
+            Экземпляр ConnectionMonitor или None.
+        """
+        return self._monitor
+
+    @monitor.setter
+    def monitor(self, value: ConnectionMonitor | None) -> None:
+        """Устанавливает монитор соединения.
+
+        Обновляет монитор как в сервисе, так и в PageLoader.
+
+        Args:
+            value: Новый монитор или None для отключения.
+        """
+        self._monitor = value
+        self._page_loader.monitor = value
 
     async def enrich_listing(
         self, listing: RawListing, page: Page | None = None
@@ -85,6 +123,9 @@ class ListingService:
         - страница не загрузилась;
         - токен API не перехвачен (частая проблема при параллельных вкладках);
         - hybrid_strategy вернула нулевой sentinel ([0]*60, [0]*60).
+
+        Если монитор соединения сигнализирует о необходимости перезапуска
+        браузера — обработка прерывается досрочно без траты попыток.
 
         Нулевой sentinel отличается от реально свободного объявления тем,
         что у свободного объявления цены > 0, а у sentinel все цены = 0.
@@ -110,6 +151,15 @@ class ListingService:
         )
 
         for attempt in range(1, _MAX_ENRICH_ATTEMPTS + 1):
+            # Проверяем монитор перед каждой попыткой — если перезапуск
+            # браузера уже требуется, не тратим время на бесполезные загрузки
+            if self._monitor and self._monitor.should_skip():
+                logger.debug(
+                    "карточка_пропущена_перезапуск_требуется",
+                    step=f"id={listing.external_id}, попытка={attempt}",
+                )
+                break
+
             try:
                 # Повторные попытки: пауза перед загрузкой страницы
                 if attempt > 1:
@@ -120,7 +170,7 @@ class ListingService:
                     await asyncio.sleep(_RETRY_DELAY_SECONDS)
 
                 loaded, token = await self._page_loader.goto_and_capture_token(
-                    active_page, listing.url
+                    active_page, listing.url, object_id=listing.external_id
                 )
 
                 if not loaded:
@@ -128,6 +178,13 @@ class ListingService:
                         "страница_не_загрузилась",
                         step=f"id={listing.external_id}, попытка={attempt}",
                     )
+                    # Если монитор сработал из-за этого сбоя — прерываем сразу
+                    if self._monitor and self._monitor.should_skip():
+                        logger.debug(
+                            "прерывание_после_сбоя_загрузки",
+                            step=f"id={listing.external_id}",
+                        )
+                        break
                     continue
 
                 if not token:
@@ -268,6 +325,7 @@ class ListingService:
         settings: Settings,
         listings: list[RawListing],
         proxies: list["ProxyConfig"],
+        proxy_service: "ProxyService | None" = None,
     ) -> list[RawListing]:
         """Обогащает карточки параллельно через несколько прокси-браузеров.
 
@@ -275,6 +333,8 @@ class ListingService:
             settings: Настройки приложения.
             listings: Полный список карточек.
             proxies: Список рабочих прокси.
+            proxy_service: Сервис прокси с заполненным пулом (опциональный).
+                Передаётся в воркеры для проверки/замены при перезапуске.
 
         Returns:
             Список обогащённых карточек.
@@ -283,4 +343,5 @@ class ListingService:
             settings=settings,
             listings=listings,
             proxies=proxies,
+            proxy_service=proxy_service,
         )
