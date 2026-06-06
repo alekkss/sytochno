@@ -25,6 +25,12 @@ _CONSOLE_CONTEXT_KEYS: set[str] = {
     "directory",
 }
 
+# Глобальные обработчики — один экземпляр на всё приложение.
+# Гарантирует, что все логгеры пишут через один file descriptor,
+# исключая гонки при ротации и перемешивание буферов.
+_shared_console_handler: logging.StreamHandler | None = None
+_shared_file_handler: RotatingFileHandler | None = None
+
 
 def get_trace_id() -> str:
     """Возвращает trace_id текущего запуска."""
@@ -163,8 +169,54 @@ class ContextLogger:
         )
 
 
+def _get_shared_console_handler() -> logging.StreamHandler:
+    """Возвращает единственный экземпляр консольного обработчика.
+
+    Создаётся один раз, переиспользуется всеми логгерами.
+
+    Returns:
+        Общий StreamHandler для stdout.
+    """
+    global _shared_console_handler  # noqa: PLW0603
+    if _shared_console_handler is None:
+        _shared_console_handler = logging.StreamHandler(sys.stdout)
+        _shared_console_handler.setFormatter(ConsoleFormatter())
+    return _shared_console_handler
+
+
+def _get_shared_file_handler(log_file_path: str) -> RotatingFileHandler:
+    """Возвращает единственный экземпляр файлового обработчика.
+
+    Создаётся один раз при первом вызове, переиспользуется всеми
+    логгерами. Гарантирует единый file descriptor, исключая гонки
+    при ротации и перемешивание записей из разных буферов.
+
+    Args:
+        log_file_path: Путь к файлу логов.
+
+    Returns:
+        Общий RotatingFileHandler.
+    """
+    global _shared_file_handler  # noqa: PLW0603
+    if _shared_file_handler is None:
+        log_path = Path(log_file_path)
+        log_path.parent.mkdir(parents=True, exist_ok=True)
+
+        _shared_file_handler = RotatingFileHandler(
+            filename=str(log_path),
+            maxBytes=10 * 1024 * 1024,  # 10 МБ
+            backupCount=5,
+            encoding="utf-8",
+        )
+        _shared_file_handler.setFormatter(JsonFileFormatter())
+    return _shared_file_handler
+
+
 def _setup_logger(name: str, log_level: str, log_file_path: str) -> logging.Logger:
-    """Настраивает логгер с двумя обработчиками (консоль + файл).
+    """Настраивает логгер с общими обработчиками (консоль + файл).
+
+    Все логгеры используют одни и те же экземпляры handler'ов —
+    это гарантирует единый поток записи в файл и корректную ротацию.
 
     Args:
         name: Имя логгера.
@@ -183,24 +235,12 @@ def _setup_logger(name: str, log_level: str, log_file_path: str) -> logging.Logg
     logger.setLevel(getattr(logging, log_level, logging.INFO))
     logger.propagate = False
 
-    # Обработчик консоли — человекочитаемый формат
-    console_handler = logging.StreamHandler(sys.stdout)
-    console_handler.setFormatter(ConsoleFormatter())
-    logger.addHandler(console_handler)
+    # Общий обработчик консоли
+    logger.addHandler(_get_shared_console_handler())
 
-    # Обработчик файла — JSON-формат с ротацией
+    # Общий обработчик файла
     if log_file_path:
-        log_path = Path(log_file_path)
-        log_path.parent.mkdir(parents=True, exist_ok=True)
-
-        file_handler = RotatingFileHandler(
-            filename=str(log_path),
-            maxBytes=10 * 1024 * 1024,  # 10 МБ
-            backupCount=5,
-            encoding="utf-8",
-        )
-        file_handler.setFormatter(JsonFileFormatter())
-        logger.addHandler(file_handler)
+        logger.addHandler(_get_shared_file_handler(log_file_path))
 
     return logger
 
@@ -229,33 +269,29 @@ def configure(log_level: str, log_file_path: str) -> None:
     _log_level = log_level
     _log_file_path = log_file_path
 
-    # Обновляем все уже существующие логгеры
+    # Обновляем уровень у общих обработчиков
     target_level = getattr(logging, log_level, logging.INFO)
 
-    for name, context_logger in _loggers_cache.items():
+    console = _get_shared_console_handler()
+    console.setLevel(logging.DEBUG)  # Фильтрация по уровню — на логгере
+
+    # Создаём/обновляем файловый обработчик
+    if log_file_path:
+        file_handler = _get_shared_file_handler(log_file_path)
+        file_handler.setLevel(logging.DEBUG)
+
+    # Обновляем все уже существующие логгеры
+    for context_logger in _loggers_cache.values():
         raw_logger = context_logger._logger
 
         # Обновляем уровень логирования
         raw_logger.setLevel(target_level)
 
-        # Проверяем, есть ли уже файловый обработчик
-        has_file_handler = any(
-            isinstance(h, RotatingFileHandler) for h in raw_logger.handlers
-        )
-
         # Добавляем файловый обработчик, если его нет и путь указан
-        if not has_file_handler and log_file_path:
-            log_path = Path(log_file_path)
-            log_path.parent.mkdir(parents=True, exist_ok=True)
-
-            file_handler = RotatingFileHandler(
-                filename=str(log_path),
-                maxBytes=10 * 1024 * 1024,  # 10 МБ
-                backupCount=5,
-                encoding="utf-8",
-            )
-            file_handler.setFormatter(JsonFileFormatter())
-            raw_logger.addHandler(file_handler)
+        if log_file_path:
+            shared_fh = _get_shared_file_handler(log_file_path)
+            if shared_fh not in raw_logger.handlers:
+                raw_logger.addHandler(shared_fh)
 
 
 def get_logger(name: str = "sutochno_parser") -> ContextLogger:
