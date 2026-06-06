@@ -22,6 +22,13 @@ from src.services.scraper_service import ScraperService
 from src.services.snapshot_service import SnapshotService
 
 
+# Максимальное количество раундов повторного обогащения
+_MAX_RETRY_ROUNDS: int = 50
+
+# Пауза между раундами повторного обогащения (секунды)
+_RETRY_ROUND_PAUSE_SECONDS: float = 30.0
+
+
 async def run() -> None:
     """Основной асинхронный pipeline приложения.
 
@@ -37,7 +44,8 @@ async def run() -> None:
     9. Сравнение с предыдущими снимками и экспорт отчёта изменений.
     10. Экспорт основного отчёта в Excel (перезаписывается).
     11. Экспорт датированного снимка Excel (накапливается).
-    12. Корректное завершение работы.
+    12. Повторное обогащение необработанных карточек через прокси.
+    13. Корректное завершение работы.
     """
     # --- Шаг 1: Загрузка конфигурации ---
     try:
@@ -169,13 +177,37 @@ async def run() -> None:
             step="storage",
         )
 
-        # --- Шаг 10: Сохранение снимков текущего прогона ---
-        logger.info("сохранение_снимков", step="snapshots")
-        snapshot_service.save_snapshots(listings)
+        # --- Шаг 10: Остановка основного браузера (перед повторным обогащением) ---
+        if enrichment_browser_started:
+            await browser_service.stop()
+            enrichment_browser_started = False
 
-        # --- Шаг 11: Сравнение снимков и экспорт отчёта изменений ---
+        # --- Шаг 11: Повторное обогащение необработанных карточек через прокси ---
+        if working_proxies:
+            await _retry_empty_listings(
+                settings=settings,
+                repository=repository,
+                working_proxies=working_proxies,
+                proxy_service=proxy_service,
+                snapshot_service=snapshot_service,
+                logger=logger,
+            )
+        else:
+            empty_count = len(repository.get_empty_listings())
+            if empty_count > 0:
+                logger.warning(
+                    "повторное_обогащение_пропущено_нет_прокси",
+                    step=f"пустых_карточек={empty_count}",
+                )
+
+        # --- Шаг 12: Сохранение снимков текущего прогона ---
+        logger.info("сохранение_снимков", step="snapshots")
+        all_listings = repository.get_all()
+        snapshot_service.save_snapshots(all_listings)
+
+        # --- Шаг 13: Сравнение снимков и экспорт отчёта изменений ---
         all_events = _run_comparison(
-            listings=listings,
+            listings=all_listings,
             snapshot_repository=snapshot_repository,
             comparison_service=comparison_service,
             logger=logger,
@@ -199,9 +231,8 @@ async def run() -> None:
                 step="comparison_export",
             )
 
-        # --- Шаг 12: Экспорт отчётов в Excel ---
+        # --- Шаг 14: Экспорт отчётов в Excel ---
         logger.info("экспорт_в_excel", step="export")
-        all_listings = repository.get_all()
 
         # Основной отчёт — перезаписывается при каждом запуске
         export_path = export_service.export(all_listings)
@@ -236,12 +267,144 @@ async def run() -> None:
         )
         sys.exit(1)
     finally:
-        # --- Шаг 13: Корректное завершение ---
+        # --- Шаг 15: Корректное завершение ---
         if enrichment_browser_started:
             await browser_service.stop()
         repository.close()
         snapshot_repository.close()
         logger.info("приложение_завершено", step="shutdown")
+
+
+async def _retry_empty_listings(
+    settings: Settings,
+    repository: SQLiteListingRepository,
+    working_proxies: list[ProxyConfig],
+    proxy_service: ProxyService | None,
+    snapshot_service: SnapshotService,
+    logger: "any",  # type: ignore[name-defined]
+) -> None:
+    """Цикл повторного обогащения карточек с пустыми данными через прокси.
+
+    Повторяет обогащение до тех пор, пока:
+    - Все карточки заполнены (пустых не осталось).
+    - Или прогресс остановился (раунд не обогатил ни одной новой карточки).
+    - Или достигнут лимит раундов (_MAX_RETRY_ROUNDS).
+
+    После каждого раунда:
+    - Обогащённые карточки сохраняются в базу данных.
+    - Заново загружается список пустых карточек для следующего раунда.
+
+    Args:
+        settings: Настройки приложения.
+        repository: Репозиторий объявлений.
+        working_proxies: Список проверенных рабочих прокси.
+        proxy_service: Сервис прокси (для передачи в воркеры).
+        snapshot_service: Сервис снимков (для сохранения после каждого раунда).
+        logger: Логгер.
+    """
+    for round_num in range(1, _MAX_RETRY_ROUNDS + 1):
+        # Получаем карточки с пустыми данными из базы
+        empty_listings = repository.get_empty_listings()
+
+        if not empty_listings:
+            logger.info(
+                "повторное_обогащение_не_требуется",
+                step="все_карточки_заполнены",
+            )
+            return
+
+        logger.info(
+            "═" * 60,
+        )
+        logger.info(
+            "начало_раунда_повторного_обогащения",
+            step=f"раунд={round_num}/{_MAX_RETRY_ROUNDS}",
+            total=f"пустых_карточек={len(empty_listings)}",
+        )
+
+        # Ограничиваем количество воркеров
+        max_workers = settings.max_proxy_workers
+        proxies_to_use = working_proxies[:max_workers]
+
+        # Обогащаем через прокси-браузеры
+        enriched_listings = await ListingService.enrich_listings_parallel(
+            settings=settings,
+            listings=empty_listings,
+            proxies=proxies_to_use,
+            proxy_service=proxy_service,
+        )
+
+        # Подсчитываем, сколько карточек были реально обогащены в этом раунде
+        newly_enriched = [
+            listing for listing in enriched_listings
+            if _is_listing_enriched(listing)
+        ]
+
+        logger.info(
+            "раунд_повторного_обогащения_завершён",
+            step=f"раунд={round_num}/{_MAX_RETRY_ROUNDS}",
+            total=f"обогащено={len(newly_enriched)} из {len(empty_listings)}",
+        )
+
+        # Сохраняем обогащённые карточки в базу
+        if newly_enriched:
+            repository.upsert_many(newly_enriched)
+            logger.info(
+                "результаты_раунда_сохранены",
+                total=len(newly_enriched),
+                step=f"раунд={round_num}",
+            )
+
+        # Проверка прогресса — если ни одна карточка не обогащена, прекращаем
+        if not newly_enriched:
+            logger.warning(
+                "повторное_обогащение_остановлено_нет_прогресса",
+                step=f"раунд={round_num}, оставшихся={len(empty_listings)}",
+            )
+            return
+
+        # Проверяем, остались ли ещё пустые карточки
+        remaining_empty = len(empty_listings) - len(newly_enriched)
+        if remaining_empty <= 0:
+            logger.info(
+                "повторное_обогащение_завершено_все_заполнены",
+                step=f"раундов={round_num}",
+            )
+            return
+
+        # Пауза перед следующим раундом — даём антибот-защите «остыть»
+        logger.info(
+            "пауза_между_раундами",
+            step=f"пауза={_RETRY_ROUND_PAUSE_SECONDS}с, осталось={remaining_empty}",
+        )
+        await asyncio.sleep(_RETRY_ROUND_PAUSE_SECONDS)
+
+    # Лимит раундов исчерпан
+    final_empty = repository.get_empty_listings()
+    logger.warning(
+        "лимит_раундов_повторного_обогащения_исчерпан",
+        step=f"раундов={_MAX_RETRY_ROUNDS}",
+        total=f"осталось_пустых={len(final_empty)}",
+    )
+
+
+def _is_listing_enriched(listing: "RawListing") -> bool:
+    """Проверяет, содержит ли карточка данные календаря и/или цен.
+
+    Карточка считается обогащённой, если хотя бы одна цена > 0
+    или хотя бы один день занят (calendar = 1).
+
+    Args:
+        listing: Объявление для проверки.
+
+    Returns:
+        True если карточка содержит данные.
+    """
+    if listing.calendar_60_days and any(c == 1 for c in listing.calendar_60_days):
+        return True
+    if listing.prices_60_days and any(p > 0 for p in listing.prices_60_days):
+        return True
+    return False
 
 
 def _run_comparison(

@@ -220,6 +220,92 @@ class SQLiteListingRepository(BaseListingRepository):
             return None
         return self._row_to_listing(row)
 
+    def get_empty_listings(self) -> list[RawListing]:
+        """Возвращает объявления с пустыми данными календаря и цен.
+
+        Карточка считается «пустой», если:
+        - calendar_60_days = '[]' или содержит только нули;
+        - И prices_60_days = '[]' или содержит только нули.
+
+        SQL-фильтрация выполняется по текстовому представлению JSON:
+        - '[]' — пустой массив (данные не собирались).
+        - Массив из нулей — данные не были получены (sentinel сбоя).
+
+        Дополнительная проверка на уровне Python отсеивает пограничные случаи.
+
+        Returns:
+            Список объявлений без данных о занятости и ценах.
+        """
+        conn = self._get_connection()
+
+        # SQL-фильтр: быстро отсекает очевидно пустые записи.
+        # Массив из 60 нулей в JSON выглядит как '[0, 0, 0, ...]' — проверяем
+        # отсутствие ненулевых значений через NOT LIKE '%1%' и NOT LIKE '%2%'...
+        # Более надёжный способ: загружаем кандидатов и проверяем в Python.
+        cursor = conn.execute("""
+            SELECT * FROM listings
+            WHERE (
+                calendar_60_days = '[]'
+                OR calendar_60_days = '""'
+                OR calendar_60_days IS NULL
+                OR calendar_60_days NOT LIKE '%1%'
+            )
+            AND (
+                prices_60_days = '[]'
+                OR prices_60_days = '""'
+                OR prices_60_days IS NULL
+                OR prices_60_days NOT LIKE '%1%'
+                AND prices_60_days NOT LIKE '%2%'
+                AND prices_60_days NOT LIKE '%3%'
+                AND prices_60_days NOT LIKE '%4%'
+                AND prices_60_days NOT LIKE '%5%'
+                AND prices_60_days NOT LIKE '%6%'
+                AND prices_60_days NOT LIKE '%7%'
+                AND prices_60_days NOT LIKE '%8%'
+                AND prices_60_days NOT LIKE '%9%'
+            )
+            ORDER BY id
+        """)
+        rows = cursor.fetchall()
+
+        # Дополнительная проверка на уровне Python — гарантирует корректность
+        result: list[RawListing] = []
+        for row in rows:
+            listing = self._row_to_listing(row)
+            if self._is_listing_empty(listing):
+                result.append(listing)
+
+        logger.info(
+            "пустые_карточки_найдены",
+            total=len(result),
+            step="get_empty_listings",
+        )
+        return result
+
+    @staticmethod
+    def _is_listing_empty(listing: RawListing) -> bool:
+        """Проверяет, являются ли данные карточки пустыми.
+
+        Карточка пустая, если одновременно:
+        - Календарь пуст или содержит только нули (нет ни одного занятого дня).
+        - Цены пусты или содержат только нули (нет ни одной цены).
+
+        Args:
+            listing: Объявление для проверки.
+
+        Returns:
+            True если карточка не содержит полезных данных.
+        """
+        calendar_empty = (
+            not listing.calendar_60_days
+            or all(c == 0 for c in listing.calendar_60_days)
+        )
+        prices_empty = (
+            not listing.prices_60_days
+            or all(p == 0 for p in listing.prices_60_days)
+        )
+        return calendar_empty and prices_empty
+
     def count(self) -> int:
         """Возвращает общее количество объявлений в базе.
 
