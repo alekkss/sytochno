@@ -32,6 +32,9 @@ class HybridStrategy:
        Перезагрузка страницы + повтор с новым токеном.
     5. При массовых ошибках в скользящем окне (>30 из 60) →
        перезагрузка страницы + повтор (НЕ нормализация как "свободен").
+    6. При 100% ошибках (60 из 60), не связанных с min_nights →
+       немедленное прерывание: токен протух или IP заблокирован.
+       Карточка уходит на retry верхнего уровня с новым токеном.
 
     Дата начала календаря (today) фиксируется один раз в начале
     fetch_calendar_and_prices и передаётся во все методы api_client —
@@ -170,6 +173,10 @@ class HybridStrategy:
     ) -> list[int]:
         """Определяет занятость каждого дня с адаптацией min_nights и retry.
 
+        При 100% ошибках (все 60 дней), не связанных с min_nights,
+        цикл немедленно прерывается — дальнейший перебор вариантов
+        бесполезен, так как причина в протухшем токене или блокировке IP.
+
         Args:
             page: Вкладка браузера.
             object_id: ID объявления.
@@ -204,6 +211,69 @@ class HybridStrategy:
                 return [0 if c == -1 else c for c in calendar]
 
             detected = self._detect_min_nights(errors_details)
+
+            # ── Раннее прерывание при 100% ошибках ──
+            # Если ВСЕ 60 дней вернули ошибку и причина НЕ в min_nights —
+            # токен протух или IP заблокирован. Перебирать остальные варианты
+            # nights бессмысленно: каждый вариант делает 60 запросов впустую.
+            # Прерываем цикл — карточка уйдёт на retry верхнего уровня.
+            if error_days == DAYS_COUNT and detected is None:
+                # Даём один шанс перезагрузить токен, если ещё не пробовали
+                if reloaded_for_nights is None:
+                    logger.info(
+                        "полный_провал_окна_перезагрузка_токена",
+                        step=f"id={object_id}, ночей={nights}, ошибок={error_days}",
+                    )
+                    new_token = await self._token_manager.reload_and_get_token(
+                        page, url, object_id
+                    )
+                    if new_token:
+                        current_token = new_token
+                        reloaded_for_nights = nights
+
+                        calendar_retry, _ = await self._api.fetch_availability(
+                            page, object_id, current_token,
+                            nights=nights, guests=self._guests, today=today,
+                        )
+                        error_days_retry = sum(
+                            1 for c in calendar_retry if c == -1
+                        )
+
+                        if error_days_retry < best_error_days:
+                            best_calendar = calendar_retry
+                            best_error_days = error_days_retry
+
+                        if best_error_days == 0:
+                            return best_calendar
+                        if best_error_days <= 5:
+                            return [
+                                0 if c == -1 else c for c in best_calendar
+                            ]
+
+                        # После перезагрузки всё ещё 100% ошибок — выходим
+                        if error_days_retry == DAYS_COUNT:
+                            logger.warning(
+                                "блокировка_или_протухший_токен",
+                                step=f"id={object_id}, ночей={nights}, "
+                                     f"ошибок_после_перезагрузки={error_days_retry}",
+                            )
+                            break
+                    else:
+                        # Не удалось получить новый токен — выходим
+                        logger.warning(
+                            "блокировка_или_протухший_токен",
+                            step=f"id={object_id}, ночей={nights}, "
+                                 f"ошибок={error_days}, новый_токен=нет",
+                        )
+                        break
+                else:
+                    # Уже перезагружали — повторная перезагрузка не поможет
+                    logger.warning(
+                        "блокировка_или_протухший_токен",
+                        step=f"id={object_id}, ночей={nights}, "
+                             f"ошибок={error_days}, перезагрузка_была={reloaded_for_nights}",
+                    )
+                    break
 
             if detected is not None and detected > nights:
                 logger.info(
@@ -266,6 +336,10 @@ class HybridStrategy:
     ) -> tuple[list[int], list[int]]:
         """Получает и цены, и занятость через скользящее окно (fallback).
 
+        При 100% ошибках (все 60 дней), не связанных с min_nights,
+        цикл немедленно прерывается — дальнейший перебор вариантов
+        бесполезен, так как причина в протухшем токене или блокировке IP.
+
         Args:
             page: Вкладка браузера.
             object_id: ID объявления.
@@ -277,6 +351,7 @@ class HybridStrategy:
             Кортеж (calendar_60_days, prices_60_days).
         """
         current_token = token
+        reloaded_in_full_sw: bool = False
 
         for nights in MIN_NIGHTS_VARIANTS:
             logger.info(
@@ -325,6 +400,97 @@ class HybridStrategy:
                 )
 
             detected = self._detect_min_nights(errors_details)
+
+            # ── Раннее прерывание при 100% ошибках ──
+            # Аналогично _determine_availability: если ВСЕ 60 дней — ошибки
+            # и причина НЕ в min_nights — прекращаем перебор немедленно.
+            if error_days == DAYS_COUNT and detected is None:
+                if not reloaded_in_full_sw:
+                    logger.info(
+                        "скользящее_окно_полный_провал_перезагрузка",
+                        step=f"id={object_id}, ночей={nights}, ошибок={error_days}",
+                    )
+                    new_token = await self._token_manager.reload_and_get_token(
+                        page, url, object_id
+                    )
+                    if new_token:
+                        current_token = new_token
+                        reloaded_in_full_sw = True
+
+                        calendar_retry, _ = await self._api.fetch_availability(
+                            page, object_id, current_token,
+                            nights=nights, guests=self._guests, today=today,
+                        )
+                        error_days_retry = sum(
+                            1 for c in calendar_retry if c == -1
+                        )
+
+                        if error_days_retry == 0:
+                            _, prices_60, bulk_ok = (
+                                await self._api.fetch_bulk_prices(
+                                    page, object_id, current_token,
+                                    guests=self._guests, today=today,
+                                )
+                            )
+                            if bulk_ok and sum(1 for p in prices_60 if p > 0) > 0:
+                                final_prices = [
+                                    0 if calendar_retry[i] == 1
+                                    else prices_60[i]
+                                    for i in range(DAYS_COUNT)
+                                ]
+                                return calendar_retry, final_prices
+
+                            return await self._api.sliding_window_with_prices(
+                                page, object_id, current_token,
+                                nights=nights, guests=self._guests, today=today,
+                            )
+
+                        if error_days_retry < ERROR_THRESHOLD:
+                            calendar_norm = [
+                                0 if c == -1 else c for c in calendar_retry
+                            ]
+                            _, prices_60, bulk_ok = (
+                                await self._api.fetch_bulk_prices(
+                                    page, object_id, current_token,
+                                    guests=self._guests, today=today,
+                                )
+                            )
+                            if bulk_ok:
+                                final_prices = [
+                                    0 if calendar_norm[i] == 1
+                                    else prices_60[i]
+                                    for i in range(DAYS_COUNT)
+                                ]
+                                return calendar_norm, final_prices
+
+                            return await self._api.sliding_window_with_prices(
+                                page, object_id, current_token,
+                                nights=nights, guests=self._guests, today=today,
+                            )
+
+                        # После перезагрузки всё ещё 100% ошибок — выходим
+                        if error_days_retry == DAYS_COUNT:
+                            logger.warning(
+                                "скользящее_окно_блокировка_или_протухший_токен",
+                                step=f"id={object_id}, ночей={nights}, "
+                                     f"ошибок_после_перезагрузки={error_days_retry}",
+                            )
+                            break
+                    else:
+                        logger.warning(
+                            "скользящее_окно_блокировка_или_протухший_токен",
+                            step=f"id={object_id}, ночей={nights}, "
+                                 f"ошибок={error_days}, новый_токен=нет",
+                        )
+                        break
+                else:
+                    # Уже перезагружали — выходим
+                    logger.warning(
+                        "скользящее_окно_блокировка_или_протухший_токен",
+                        step=f"id={object_id}, ночей={nights}, "
+                             f"ошибок={error_days}, перезагрузка_была=да",
+                    )
+                    break
 
             if detected is not None and detected > nights:
                 logger.info(
