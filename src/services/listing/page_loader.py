@@ -88,7 +88,21 @@ class PageLoader:
                 token = req.headers.get("token") or req.headers.get("Token")
                 if token and not captured_token:
                     captured_token.append(token)
-            await route.continue_()
+            # При навигации (page.goto) Playwright автоматически отменяет
+            # pending-запросы текущей страницы. Если route.continue_()
+            # вызывается для уже отменённого запроса — выбрасывается
+            # "Route is already handled!". Это не ошибка логики —
+            # безопасно игнорируем, чтобы не ронять page.evaluate().
+            try:
+                await route.continue_()
+            except Exception as e:
+                if "Route is already handled" in str(e):
+                    logger.debug(
+                        "route_уже_обработан_пропущен",
+                        step=f"id={object_id}",
+                    )
+                else:
+                    raise
 
         await page.route("**/api/json/**", _route_handler)
 
