@@ -73,18 +73,18 @@ def _get_int(key: str, default: str) -> int:
 def _load_search_urls() -> list[str]:
     """Загружает список URL поиска из переменных окружения.
 
-    Читает SUTOCHNO_SEARCH_URL_1 ... SUTOCHNO_SEARCH_URL_6,
+    Читает SUTOCHNO_SEARCH_URL_1 ... SUTOCHNO_SEARCH_URL_8,
     фильтрует пустые значения. Хотя бы одна должна быть заполнена.
 
     Returns:
-        Список непустых URL поиска (от 1 до 6 штук).
+        Список непустых URL поиска (от 1 до 8 штук).
 
     Raises:
         RuntimeError: Если ни одна ссылка не задана.
     """
     urls: list[str] = []
 
-    for i in range(1, 7):
+    for i in range(1, 9):
         key = f"SUTOCHNO_SEARCH_URL_{i}"
         value = os.getenv(key, "").strip()
         if value:
@@ -107,7 +107,7 @@ class Settings:
     frozen=True гарантирует, что настройки не будут случайно изменены.
     """
 
-    # URL поиска (от 1 до 6 ссылок)
+    # URL поиска (от 1 до 8 ссылок)
     search_urls: tuple[str, ...] = field(default_factory=tuple)
 
     # Браузер
