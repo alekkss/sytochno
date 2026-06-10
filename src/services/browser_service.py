@@ -32,6 +32,16 @@ _CLOSE_DRAIN_DELAY: float = 0.5
 # завершится и не заблокирует весь pipeline.
 _SCROLL_TIMEOUT_SECONDS: float = 30.0
 
+# Таймаут на один вызов page.evaluate внутри прокрутки (секунды).
+# Если один шаг завис — прекращаем прокрутку, а не ждём бесконечно.
+_SCROLL_STEP_TIMEOUT_SECONDS: float = 10.0
+
+# Максимальное количество шагов прокрутки.
+# Защита от infinite scroll — сайт может подгружать контент
+# при прокрутке, увеличивая высоту страницы бесконечно.
+# 20 шагов × ~500px = ~10000px — достаточно для любой страницы каталога.
+_MAX_SCROLL_STEPS: int = 20
+
 # Общие аргументы запуска Chromium — stealth + экономия памяти.
 # Используются и с прокси, и без прокси (единый набор, без дублирования).
 _BROWSER_ARGS: list[str] = [
@@ -411,39 +421,19 @@ class BrowserService:
     async def scroll_page(self) -> None:
         """Плавно прокручивает страницу вниз для имитации поведения пользователя.
 
-        Вся прокрутка выполняется в одном вызове page.evaluate —
-        JS-цикл внутри Chromium прокручивает страницу порциями с паузами.
-        Это минимизирует обращения через pipe к Chromium (1 вместо 20+),
-        что критично при двух параллельных браузерах в одном event loop.
+        Прокручивает порциями с небольшими паузами между ними.
+        Защищена тройным таймаутом:
+        1. Общий таймаут на всю прокрутку (_SCROLL_TIMEOUT_SECONDS).
+        2. Таймаут на каждый шаг evaluate (_SCROLL_STEP_TIMEOUT_SECONDS).
+        3. Лимит шагов (_MAX_SCROLL_STEPS) — защита от infinite scroll.
 
-        Защищена общим таймаутом: если Chromium захлебнулся по памяти/CPU
-        и evaluate не возвращает ответ — прокрутка прерывается штатно.
-        Парсинг продолжается с тем, что успело загрузиться.
+        Если любой таймаут сработал — прокрутка прекращается штатно
+        с предупреждением в логах. Парсинг продолжается с тем,
+        что успело загрузиться — карточки уже в DOM после domcontentloaded.
         """
-        page = self.page
-
         try:
             await asyncio.wait_for(
-                page.evaluate("""
-                    async () => {
-                        const viewportHeight = window.innerHeight || 1080;
-                        const maxSteps = 20;
-                        let currentPosition = 0;
-                        const pageHeight = document.body.scrollHeight;
-
-                        for (let step = 0; step < maxSteps; step++) {
-                            if (currentPosition >= pageHeight) break;
-
-                            const scrollStep = Math.floor(
-                                viewportHeight * (0.3 + Math.random() * 0.4)
-                            );
-                            currentPosition += scrollStep;
-                            window.scrollTo(0, currentPosition);
-
-                            await new Promise(r => setTimeout(r, 300 + Math.random() * 500));
-                        }
-                    }
-                """),
+                self._scroll_page_inner(),
                 timeout=_SCROLL_TIMEOUT_SECONDS,
             )
         except asyncio.TimeoutError:
@@ -457,6 +447,60 @@ class BrowserService:
                 error=str(e),
                 error_type=type(e).__name__,
             )
+
+    async def _scroll_page_inner(self) -> None:
+        """Внутренняя реализация прокрутки страницы.
+
+        Вынесена из scroll_page для обёртки в asyncio.wait_for.
+        Каждый вызов page.evaluate обёрнут в отдельный таймаут —
+        если Chromium завис на одном шаге, цикл прерывается
+        без блокировки всего процесса.
+        """
+        page = self.page
+        viewport_height = page.viewport_size["height"] if page.viewport_size else 1080
+
+        # Получаем высоту страницы с таймаутом
+        try:
+            page_height = await asyncio.wait_for(
+                page.evaluate("document.body.scrollHeight"),
+                timeout=_SCROLL_STEP_TIMEOUT_SECONDS,
+            )
+        except asyncio.TimeoutError:
+            logger.warning("не_удалось_получить_высоту_страницы")
+            return
+
+        current_position = 0
+        steps = 0
+
+        while current_position < page_height and steps < _MAX_SCROLL_STEPS:
+            scroll_step = random.randint(
+                int(viewport_height * 0.3),
+                int(viewport_height * 0.7),
+            )
+            current_position += scroll_step
+            steps += 1
+
+            try:
+                await asyncio.wait_for(
+                    page.evaluate(f"window.scrollTo(0, {current_position})"),
+                    timeout=_SCROLL_STEP_TIMEOUT_SECONDS,
+                )
+            except asyncio.TimeoutError:
+                logger.warning(
+                    "шаг_прокрутки_завис",
+                    step=f"позиция={current_position}, шаг={steps}",
+                )
+                break
+            except Exception as e:
+                logger.debug(
+                    "ошибка_шага_прокрутки",
+                    error=str(e),
+                    error_type=type(e).__name__,
+                    step=f"позиция={current_position}, шаг={steps}",
+                )
+                break
+
+            await asyncio.sleep(random.uniform(0.3, 0.8))
 
     async def get_page_content(self) -> str:
         """Возвращает HTML-содержимое текущей страницы.
