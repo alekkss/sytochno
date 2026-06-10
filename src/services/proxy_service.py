@@ -9,6 +9,7 @@ from src.config.logger import get_logger
 from src.config.settings import Settings
 from src.models.listing import RawListing
 from src.models.proxy import ProxyConfig
+from src.services.browser_service import _STEALTH_INIT_SCRIPT
 
 logger = get_logger("proxy")
 
@@ -24,6 +25,24 @@ _CHECK_NAVIGATION_TIMEOUT_MS: int = 60000
 # Время ожидания после загрузки страницы (секунды).
 # Достаточно убедиться, что контент подгрузился.
 _CHECK_SETTLE_DELAY: float = 5.0
+
+# Уменьшенный viewport для проверки прокси — Full HD не нужен,
+# экономим ~30% памяти на рендеринг страницы при каждой проверке.
+_CHECK_VIEWPORT: dict[str, int] = {"width": 1280, "height": 720}
+
+# Аргументы запуска Chromium для проверки прокси.
+# Минимальный набор для стабильности + экономия памяти.
+_CHECK_BROWSER_ARGS: list[str] = [
+    "--disable-blink-features=AutomationControlled",
+    "--disable-dev-shm-usage",
+    "--no-sandbox",
+    "--disable-gpu",
+    "--js-flags=--max-old-space-size=256",
+    "--renderer-process-limit=1",
+    "--disable-renderer-backgrounding",
+    "--disable-background-timer-throttling",
+    "--disable-backgrounding-occluded-windows",
+]
 
 
 class ProxyService:
@@ -179,8 +198,10 @@ class ProxyService:
         Открывает браузер с прокси, переходит на sutochno.ru,
         прокручивает страницу и ждёт стабилизации контента.
 
-        Таймаут навигации увеличен до 60 секунд — прокси могут
-        быть медленнее прямого соединения.
+        Каждый ресурс (context, browser, playwright) закрывается
+        в отдельном try/except внутри finally — это гарантирует
+        освобождение памяти даже при исключениях на любом шаге.
+        Один незакрытый Chromium = ~500 МБ утечки.
 
         Args:
             proxy: Прокси для проверки.
@@ -190,6 +211,7 @@ class ProxyService:
         """
         playwright = None
         browser = None
+        context = None
 
         try:
             playwright = await async_playwright().start()
@@ -201,15 +223,11 @@ class ProxyService:
                     "username": proxy.username,
                     "password": proxy.password,
                 },
-                args=[
-                    "--disable-blink-features=AutomationControlled",
-                    "--disable-dev-shm-usage",
-                    "--no-sandbox",
-                ],
+                args=_CHECK_BROWSER_ARGS,
             )
 
             context = await browser.new_context(
-                viewport={"width": 1920, "height": 1080},
+                viewport=_CHECK_VIEWPORT,
                 locale="ru-RU",
                 timezone_id="Europe/Moscow",
                 user_agent=(
@@ -220,12 +238,7 @@ class ProxyService:
             )
 
             # Скрываем признаки автоматизации
-            await context.add_init_script("""
-                Object.defineProperty(navigator, 'webdriver', {get: () => undefined});
-                Object.defineProperty(navigator, 'plugins', {get: () => [1, 2, 3, 4, 5]});
-                Object.defineProperty(navigator, 'languages', {get: () => ['ru-RU', 'ru', 'en-US', 'en']});
-                window.chrome = {runtime: {}};
-            """)
+            await context.add_init_script(_STEALTH_INIT_SCRIPT)
 
             page = await context.new_page()
             page.set_default_navigation_timeout(_CHECK_NAVIGATION_TIMEOUT_MS)
@@ -246,7 +259,6 @@ class ProxyService:
             if len(content) < 1000:
                 return False
 
-            await context.close()
             return True
 
         except Exception as e:
@@ -259,10 +271,26 @@ class ProxyService:
             return False
 
         finally:
-            if browser:
-                await browser.close()
-            if playwright:
-                await playwright.stop()
+            # Каждый ресурс закрывается отдельно — если context.close()
+            # бросит исключение, browser и playwright всё равно закроются.
+            # Без этого: один сбой в close() = утечка процесса Chromium (~500 МБ).
+            if context is not None:
+                try:
+                    await context.close()
+                except Exception:
+                    pass
+
+            if browser is not None:
+                try:
+                    await browser.close()
+                except Exception:
+                    pass
+
+            if playwright is not None:
+                try:
+                    await playwright.stop()
+                except Exception:
+                    pass
 
     async def get_replacement_proxy(
         self,

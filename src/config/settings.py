@@ -136,6 +136,14 @@ class Settings:
     proxies_path: str = "data/proxies.txt"
     max_proxy_workers: int = 5
 
+    # Мониторинг памяти
+    # Порог потребления RAM в МБ. При приближении к этому значению
+    # количество воркеров автоматически ограничивается.
+    # 0 = мониторинг отключён (поведение по умолчанию).
+    # Рекомендуемое значение: общий объём RAM минус 1-2 ГБ.
+    # Пример: для сервера с 20 ГБ RAM → MEMORY_LIMIT_MB=19000
+    memory_limit_mb: int = 0
+
     @classmethod
     def load(cls) -> "Settings":
         """Фабричный метод — загружает настройки из переменных окружения.
@@ -168,6 +176,7 @@ class Settings:
             use_proxy=_get_bool("USE_PROXY", "false"),
             proxies_path=os.getenv("PROXIES_PATH", "data/proxies.txt").strip(),
             max_proxy_workers=_get_int("MAX_PROXY_WORKERS", "5"),
+            memory_limit_mb=_get_int("MEMORY_LIMIT_MB", "0"),
         )
 
         # Валидация диапазонов
@@ -206,6 +215,15 @@ class Settings:
         if settings.max_proxy_workers < 1:
             raise RuntimeError(
                 "MAX_PROXY_WORKERS должен быть не менее 1."
+            )
+
+        # Валидация мониторинга памяти
+        if settings.memory_limit_mb < 0:
+            raise RuntimeError("MEMORY_LIMIT_MB не может быть отрицательным.")
+        if 0 < settings.memory_limit_mb < 1024:
+            raise RuntimeError(
+                "MEMORY_LIMIT_MB должен быть не менее 1024 (1 ГБ) или 0 (отключён). "
+                f"Получено: {settings.memory_limit_mb}."
             )
 
         return settings

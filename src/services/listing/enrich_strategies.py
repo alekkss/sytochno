@@ -15,6 +15,7 @@ from src.services.listing.constants import (
     format_duration,
     safe_stop_browser,
 )
+from src.services.memory_monitor import MemoryMonitor
 
 if TYPE_CHECKING:
     from src.services.listing_service import ListingService
@@ -161,7 +162,12 @@ class EnrichStrategies:
         tab_delay_ms: int,
         monitor: ConnectionMonitor,
     ) -> list[RawListing]:
-        """Обрабатывает пачку карточек параллельными вкладками.
+        """Обрабатывает пачку карточек порциями по max_tabs вкладок.
+
+        Вместо создания всех корутин одновременно через asyncio.gather
+        (что приводит к созданию сотен замыканий в памяти), карточки
+        обрабатываются порциями. После каждой порции дополнительные
+        вкладки закрываются — это освобождает ~50-150 МБ на вкладку.
 
         Вкладки проверяют monitor.should_skip() — при срабатывании
         монитора новые загрузки не начинаются.
@@ -176,67 +182,97 @@ class EnrichStrategies:
             Список карточек (модифицированных in-place).
         """
         total = len(listings)
-        semaphore = asyncio.Semaphore(max_tabs)
-        navigation_lock = asyncio.Lock()
         processed_count = 0
-        count_lock = asyncio.Lock()
 
-        async def _process_one(listing: RawListing) -> None:
-            """Обрабатывает одну карточку в отдельной вкладке."""
-            nonlocal processed_count
-            page: Page | None = None
+        # Разбиваем на порции по max_tabs карточек
+        for chunk_start in range(0, total, max_tabs):
+            # Проверяем монитор перед каждой порцией
+            if monitor.should_skip():
+                logger.debug(
+                    "порция_пропущена_перезапуск",
+                    step=f"с_позиции={chunk_start}",
+                )
+                break
 
-            async with semaphore:
-                # Проверяем монитор перед стартом — если перезапуск уже
-                # требуется, не тратим ресурсы на открытие вкладки
-                if monitor.should_skip():
-                    logger.debug(
-                        "вкладка_пропущена_перезапуск",
-                        step=f"id={listing.external_id}",
-                    )
-                    return
+            chunk = listings[chunk_start : chunk_start + max_tabs]
 
-                # Задержка при старте вкладки
-                async with navigation_lock:
-                    await asyncio.sleep(tab_delay_ms / 1000.0)
+            # Создаём задачи только для текущей порции
+            tasks = [
+                self._process_one_tab(
+                    listing, tab_delay_ms, monitor, idx
+                )
+                for idx, listing in enumerate(chunk)
+            ]
 
-                # Повторная проверка после ожидания задержки
-                if monitor.should_skip():
-                    return
+            results = await asyncio.gather(*tasks, return_exceptions=True)
 
-                try:
-                    page = await self._browser.create_page()
-                    await self._listing_service.enrich_listing(listing, page)
-                finally:
-                    if page is not None:
-                        await self._browser.close_page(page)
-
-                async with count_lock:
-                    processed_count += 1
-                    current = processed_count
-
-                if not monitor.should_skip():
-                    logger.info(
-                        "прогресс_вкладок",
-                        current=current,
-                        total=total,
-                    )
-
-        tasks = [_process_one(listing) for listing in listings]
-        results = await asyncio.gather(*tasks, return_exceptions=True)
-
-        error_count = sum(1 for r in results if isinstance(r, BaseException))
-        if error_count > 0:
+            # Логируем ошибки из текущей порции
             for idx, result in enumerate(results):
                 if isinstance(result, BaseException):
+                    listing_id = chunk[idx].external_id if idx < len(chunk) else "?"
                     logger.warning(
                         "ошибка_в_задаче_вкладки",
                         error=str(result),
                         error_type=type(result).__name__,
-                        step=f"карточка={idx + 1}",
+                        step=f"id={listing_id}",
                     )
 
+            processed_count += len(chunk)
+
+            # Закрываем все дополнительные вкладки после каждой порции —
+            # освобождаем память Chromium перед следующей порцией
+            await self._browser.close_all_pages()
+
+            if not monitor.should_skip():
+                logger.info(
+                    "прогресс_вкладок",
+                    current=min(processed_count, total),
+                    total=total,
+                )
+
         return listings
+
+    async def _process_one_tab(
+        self,
+        listing: RawListing,
+        tab_delay_ms: int,
+        monitor: ConnectionMonitor,
+        tab_index: int,
+    ) -> None:
+        """Обрабатывает одну карточку в отдельной вкладке.
+
+        Args:
+            listing: Объявление для обогащения.
+            tab_delay_ms: Задержка перед стартом (мс).
+            monitor: Монитор здоровья соединения.
+            tab_index: Порядковый номер вкладки в порции (для задержки).
+        """
+        page: Page | None = None
+
+        # Проверяем монитор перед стартом — если перезапуск уже
+        # требуется, не тратим ресурсы на открытие вкладки
+        if monitor.should_skip():
+            logger.debug(
+                "вкладка_пропущена_перезапуск",
+                step=f"id={listing.external_id}",
+            )
+            return
+
+        # Задержка между стартом вкладок внутри порции —
+        # первая вкладка стартует сразу, остальные с задержкой
+        if tab_index > 0:
+            await asyncio.sleep(tab_delay_ms / 1000.0)
+
+        # Повторная проверка после ожидания задержки
+        if monitor.should_skip():
+            return
+
+        try:
+            page = await self._browser.create_page()
+            await self._listing_service.enrich_listing(listing, page)
+        finally:
+            if page is not None:
+                await self._browser.close_page(page)
 
     async def _restart_browser_with_proxy_check(self) -> bool:
         """Перезапускает браузер с проверкой и возможной заменой прокси.
@@ -363,6 +399,11 @@ class EnrichStrategies:
     ) -> list[RawListing]:
         """Обогащает карточки параллельно через несколько прокси-браузеров.
 
+        Перед запуском воркеров выполняет статический расчёт безопасного
+        количества воркеров по доступной RAM. Во время работы запускает
+        фоновый мониторинг — при превышении порога воркеры досрочно
+        завершают текущую порцию и останавливаются.
+
         Args:
             settings: Настройки приложения.
             listings: Полный список карточек.
@@ -375,24 +416,49 @@ class EnrichStrategies:
         """
         from src.services.proxy_service import ProxyService as ProxyServiceClass
 
-        chunks = ProxyServiceClass.distribute_listings(listings, len(proxies))
+        # ── Статический расчёт безопасного количества воркеров ──
+        memory_monitor = MemoryMonitor(
+            memory_limit_mb=settings.memory_limit_mb,
+            max_tabs=settings.max_tabs,
+        )
+
+        requested_workers = len(proxies)
+        safe_workers = memory_monitor.calculate_safe_workers(requested_workers)
+
+        # Если безопасное количество меньше запрошенного — сокращаем
+        active_proxies = proxies[:safe_workers]
+
+        chunks = ProxyServiceClass.distribute_listings(listings, len(active_proxies))
 
         logger.info(
             "параллельная_обработка",
             total=len(listings),
-            step=f"прокси={len(proxies)}, вкладок_на_прокси={settings.max_tabs}",
+            step=f"прокси={len(active_proxies)}"
+                 f"{f' (ограничено_по_ram из {requested_workers})' if safe_workers < requested_workers else ''}"
+                 f", вкладок_на_прокси={settings.max_tabs}",
         )
+
+        # ── Запуск фонового мониторинга RAM ──
+        await memory_monitor.start_monitoring()
 
         parallel_start = time.perf_counter()
 
-        tasks = [
-            EnrichStrategies._worker(
-                settings, chunk, proxy, worker_idx, proxies, proxy_service
-            )
-            for worker_idx, (chunk, proxy) in enumerate(zip(chunks, proxies), start=1)
-        ]
+        try:
+            tasks = [
+                EnrichStrategies._worker(
+                    settings, chunk, proxy, worker_idx,
+                    active_proxies, proxy_service, memory_monitor,
+                )
+                for worker_idx, (chunk, proxy) in enumerate(
+                    zip(chunks, active_proxies), start=1
+                )
+            ]
 
-        results = await asyncio.gather(*tasks, return_exceptions=True)
+            results = await asyncio.gather(*tasks, return_exceptions=True)
+        finally:
+            # Гарантированная остановка мониторинга — даже при исключениях
+            await memory_monitor.stop_monitoring()
+
         parallel_elapsed = time.perf_counter() - parallel_start
 
         all_enriched: list[RawListing] = []
@@ -413,6 +479,8 @@ class EnrichStrategies:
                 worker_stats.append((worker_idx, len(enriched_list), duration))
                 browsers_to_stop.append((browser_svc, worker_idx))
 
+        # Гарантированная остановка всех браузеров воркеров —
+        # даже при исключениях в отдельных воркерах
         if browsers_to_stop:
             logger.info("остановка_прокси_браузеров", total=len(browsers_to_stop))
             for browser_svc, w_idx in browsers_to_stop:
@@ -460,12 +528,22 @@ class EnrichStrategies:
         worker_idx: int,
         all_proxies: list[ProxyConfig],
         proxy_service: "ProxyService | None" = None,
+        memory_monitor: MemoryMonitor | None = None,
     ) -> tuple[list[RawListing], float, BrowserService]:
         """Воркер — обрабатывает порцию карточек через один прокси-браузер.
 
         При срабатывании монитора соединения выполняет перезапуск браузера
         с проверкой текущей прокси. Если текущая мертва — ищет замену
         из пула proxy_service (уже проверенных на старте прокси).
+
+        При срабатывании монитора памяти (should_reduce_workers) воркер
+        досрочно завершает работу, возвращая уже обработанные карточки.
+        Необработанные остаются в списке — их подхватит retry-цикл
+        в __main__.py на следующем раунде.
+
+        Гарантирует остановку старого браузера при перезапуске — даже
+        если stop() бросит исключение, ссылка на старый экземпляр
+        не сохраняется и ресурсы будут освобождены.
 
         Args:
             settings: Настройки приложения.
@@ -474,6 +552,7 @@ class EnrichStrategies:
             worker_idx: Номер воркера (для логов).
             all_proxies: Полный список прокси всех воркеров (для исключения занятых).
             proxy_service: Сервис прокси с заполненным пулом (опциональный).
+            memory_monitor: Монитор RAM (опциональный). Общий для всех воркеров.
 
         Returns:
             Кортеж (список карточек, время работы, browser_service).
@@ -517,8 +596,36 @@ class EnrichStrategies:
             restart_count = 0
 
             while remaining and restart_count <= _MAX_RESTARTS_PER_WORKER:
+                # ── Проверка монитора памяти перед каждой итерацией ──
+                # Если RAM превышает порог — воркер досрочно завершается,
+                # освобождая память для оставшихся воркеров.
+                if memory_monitor is not None and memory_monitor.should_reduce_workers:
+                    enriched_in_worker = sum(
+                        1 for l in listings if EnrichStrategies._is_enriched(l)
+                    )
+                    logger.warning(
+                        "воркер_остановлен_по_ram",
+                        step=f"воркер={worker_idx}, "
+                             f"обогащено={enriched_in_worker}, "
+                             f"осталось={len(remaining)}",
+                    )
+                    break
+
                 await monitor.reset()
                 await listing_service.enrich_listings_tabbed(remaining)
+
+                # ── Проверка памяти после обработки порции ──
+                if memory_monitor is not None and memory_monitor.should_reduce_workers:
+                    enriched_in_worker = sum(
+                        1 for l in listings if EnrichStrategies._is_enriched(l)
+                    )
+                    logger.warning(
+                        "воркер_остановлен_по_ram_после_порции",
+                        step=f"воркер={worker_idx}, "
+                             f"обогащено={enriched_in_worker}, "
+                             f"осталось={len(remaining)}",
+                    )
+                    break
 
                 if monitor.restart_needed:
                     restart_count += 1
@@ -537,9 +644,11 @@ class EnrichStrategies:
                              f"перезапуск={restart_count}/{_MAX_RESTARTS_PER_WORKER}",
                     )
 
-                    # Останавливаем браузер
+                    # Гарантированная остановка старого браузера —
+                    # даже при исключении в stop() переходим к созданию нового
+                    old_browser = browser_service
                     try:
-                        await browser_service.stop()
+                        await old_browser.stop()
                     except Exception as e:
                         logger.warning(
                             "воркер_ошибка_остановки",
@@ -585,7 +694,7 @@ class EnrichStrategies:
                                 )
                                 current_proxy = None
 
-                    # Перезапускаем браузер
+                    # Создаём НОВЫЙ browser_service — старый уже остановлен
                     try:
                         browser_service = BrowserService(settings=settings)
                         await browser_service.start(proxy=current_proxy)

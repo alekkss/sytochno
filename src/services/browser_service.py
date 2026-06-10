@@ -26,6 +26,58 @@ _PLAYWRIGHT_STOP_TIMEOUT: float = 10.0
 # на закрытый pipe стал fatal error.
 _CLOSE_DRAIN_DELAY: float = 0.5
 
+# Общие аргументы запуска Chromium — stealth + экономия памяти.
+# Используются и с прокси, и без прокси (единый набор, без дублирования).
+_BROWSER_ARGS: list[str] = [
+    # ── Stealth: обход детекции автоматизации ──
+    "--disable-blink-features=AutomationControlled",
+
+    # ── Стабильность: предотвращение краша в контейнерах/серверах ──
+    "--disable-dev-shm-usage",
+    "--no-sandbox",
+
+    # ── Экономия памяти: ограничение ресурсов Chromium ──
+    # Ограничиваем JS-хип каждого renderer-процесса до 512 МБ.
+    # Для sutochno.ru (не тяжёлое SPA) достаточно с запасом.
+    # Без этого флага Chromium может потреблять до 4 ГБ на renderer.
+    "--js-flags=--max-old-space-size=512",
+    # Ограничиваем количество renderer-процессов на один браузер.
+    # По умолчанию Chromium создаёт отдельный процесс для каждой вкладки.
+    # С 5 вкладками на воркер и 20 воркерами — это 100 процессов.
+    # Лимит 4 заставляет вкладки разделять renderer-процессы.
+    "--renderer-process-limit=4",
+    # Запрещаем фоновую активность неактивных вкладок.
+    # Без этих флагов Chromium продолжает выполнять JS-таймеры,
+    # requestAnimationFrame и сетевые запросы во вкладках,
+    # которые не находятся в фокусе — впустую расходуя CPU и RAM.
+    "--disable-renderer-backgrounding",
+    "--disable-background-timer-throttling",
+    "--disable-backgrounding-occluded-windows",
+    # Отключаем GPU-ускорение — на серверах нет GPU,
+    # а software-рендеринг расходует дополнительную память.
+    "--disable-gpu",
+]
+
+# Общий скрипт stealth-инъекции — скрывает признаки автоматизации.
+_STEALTH_INIT_SCRIPT: str = """
+    Object.defineProperty(navigator, 'webdriver', {get: () => undefined});
+    Object.defineProperty(navigator, 'plugins', {get: () => [1, 2, 3, 4, 5]});
+    Object.defineProperty(navigator, 'languages', {get: () => ['ru-RU', 'ru', 'en-US', 'en']});
+    window.chrome = {runtime: {}};
+"""
+
+# Общие параметры контекста браузера.
+_CONTEXT_OPTIONS: dict = {
+    "viewport": {"width": 1920, "height": 1080},
+    "locale": "ru-RU",
+    "timezone_id": "Europe/Moscow",
+    "user_agent": (
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+        "AppleWebKit/537.36 (KHTML, like Gecko) "
+        "Chrome/124.0.0.0 Safari/537.36"
+    ),
+}
+
 
 class BrowserService:
     """Сервис для управления браузером Playwright.
@@ -37,6 +89,7 @@ class BrowserService:
     - Навигацию с обработкой таймаутов.
     - Запуск через прокси-сервер.
     - Создание дополнительных вкладок для параллельной обработки карточек.
+    - Оптимизацию потребления памяти через аргументы Chromium.
     """
 
     def __init__(self, settings: Settings) -> None:
@@ -103,10 +156,27 @@ class BrowserService:
 
         self._playwright = await async_playwright().start()
 
+        launch_kwargs: dict = {
+            "headless": self._settings.headless_mode,
+            "args": _BROWSER_ARGS,
+            "ignore_default_args": ["--enable-automation"],
+        }
+
         if proxy:
-            await self._start_with_proxy(proxy)
-        else:
-            await self._start_without_proxy()
+            launch_kwargs["proxy"] = {
+                "server": proxy.server_url,
+                "username": proxy.username,
+                "password": proxy.password,
+            }
+
+        self._browser = await self._playwright.chromium.launch(**launch_kwargs)
+
+        self._context = await self._browser.new_context(**_CONTEXT_OPTIONS)
+
+        # Скрываем признаки автоматизации
+        await self._context.add_init_script(_STEALTH_INIT_SCRIPT)
+
+        self._page = await self._context.new_page()
 
         # Устанавливаем таймаут навигации
         self._page.set_default_navigation_timeout(self._settings.navigation_timeout)
@@ -115,86 +185,6 @@ class BrowserService:
             "браузер_запущен",
             step=proxy_label,
         )
-
-    async def _start_without_proxy(self) -> None:
-        """Запускает браузер без прокси через launch + new_context.
-
-        Использует обычный launch() вместо launch_persistent_context(),
-        чтобы гарантировать корректное завершение процесса Chromium
-        через browser.close().
-        """
-        self._browser = await self._playwright.chromium.launch(
-            headless=self._settings.headless_mode,
-            args=[
-                "--disable-blink-features=AutomationControlled",
-                "--disable-dev-shm-usage",
-                "--no-sandbox",
-            ],
-            ignore_default_args=["--enable-automation"],
-        )
-
-        self._context = await self._browser.new_context(
-            viewport={"width": 1920, "height": 1080},
-            locale="ru-RU",
-            timezone_id="Europe/Moscow",
-            user_agent=(
-                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-                "AppleWebKit/537.36 (KHTML, like Gecko) "
-                "Chrome/124.0.0.0 Safari/537.36"
-            ),
-        )
-
-        # Скрываем признаки автоматизации
-        await self._context.add_init_script("""
-            Object.defineProperty(navigator, 'webdriver', {get: () => undefined});
-            Object.defineProperty(navigator, 'plugins', {get: () => [1, 2, 3, 4, 5]});
-            Object.defineProperty(navigator, 'languages', {get: () => ['ru-RU', 'ru', 'en-US', 'en']});
-            window.chrome = {runtime: {}};
-        """)
-
-        self._page = await self._context.new_page()
-
-    async def _start_with_proxy(self, proxy: ProxyConfig) -> None:
-        """Запускает браузер с прокси через обычный launch + context.
-
-        Args:
-            proxy: Конфигурация прокси.
-        """
-        self._browser = await self._playwright.chromium.launch(
-            headless=self._settings.headless_mode,
-            proxy={
-                "server": proxy.server_url,
-                "username": proxy.username,
-                "password": proxy.password,
-            },
-            args=[
-                "--disable-blink-features=AutomationControlled",
-                "--disable-dev-shm-usage",
-                "--no-sandbox",
-            ],
-            ignore_default_args=["--enable-automation"],
-        )
-
-        self._context = await self._browser.new_context(
-            viewport={"width": 1920, "height": 1080},
-            locale="ru-RU",
-            timezone_id="Europe/Moscow",
-            user_agent=(
-                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-                "AppleWebKit/537.36 (KHTML, like Gecko) "
-                "Chrome/124.0.0.0 Safari/537.36"
-            ),
-        )
-
-        # Скрываем признаки автоматизации
-        await self._context.add_init_script("""
-            Object.defineProperty(navigator, 'webdriver', {get: () => undefined});
-            Object.defineProperty(navigator, 'plugins', {get: () => [1, 2, 3, 4, 5]});
-            Object.defineProperty(navigator, 'languages', {get: () => ['ru-RU', 'ru', 'en-US', 'en']});
-            window.chrome = {runtime: {}};
-        """)
-
-        self._page = await self._context.new_page()
 
     async def create_page(self) -> Page:
         """Создаёт новую вкладку (page) в существующем контексте браузера.
@@ -246,6 +236,45 @@ class BrowserService:
                 "ошибка_при_закрытии_вкладки",
                 error=str(e),
                 error_type=type(e).__name__,
+            )
+
+    async def close_all_pages(self) -> None:
+        """Закрывает все дополнительные вкладки, оставляя только основную.
+
+        Используется для освобождения памяти между пачками карточек
+        без полного перезапуска браузера. Каждая вкладка Chromium
+        потребляет ~50–150 МБ — при 5 вкладках на 20 воркеров это до 15 ГБ.
+
+        Основная страница (self._page) не закрывается — она нужна
+        для поддержания сессии и контекста браузера.
+        """
+        if self._context is None:
+            return
+
+        pages_to_close = [
+            p for p in self._context.pages
+            if p is not self._page and not p.is_closed()
+        ]
+
+        if not pages_to_close:
+            return
+
+        closed_count = 0
+        for p in pages_to_close:
+            try:
+                await p.close()
+                closed_count += 1
+            except Exception as e:
+                logger.debug(
+                    "ошибка_при_закрытии_вкладки",
+                    error=str(e),
+                    error_type=type(e).__name__,
+                )
+
+        if closed_count > 0:
+            logger.debug(
+                "вкладки_очищены",
+                step=f"закрыто={closed_count}",
             )
 
     async def stop(self) -> None:
