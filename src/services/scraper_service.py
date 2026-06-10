@@ -28,6 +28,14 @@ _NETWORK_ERROR_MARKERS = (
     "net::",
 )
 
+# Таймаут ожидания domcontentloaded после клика по пагинации (мс).
+# domcontentloaded срабатывает быстро (~1-2 сек) — не ждём рекламу/аналитику.
+_PAGINATION_LOAD_TIMEOUT_MS: int = 15000
+
+# Пауза после загрузки страницы пагинации (секунды).
+# Даёт время JS-фреймворку отрендерить карточки после DOM ready.
+_PAGINATION_SETTLE_DELAY: float = 1.0
+
 
 class _BidirectionalState:
     """Общее состояние для синхронизации двух браузеров при двунаправленном обходе.
@@ -105,6 +113,10 @@ class ScraperService:
     Логика ротации:
     - прямой браузер работал без прокси → получает первую свободную прокси;
     - прямой браузер уже на прокси → оба получают следующие прокси по кругу.
+
+    После парсинга каждой страницы выполняется очистка DOM — обработанные
+    карточки удаляются из памяти браузера, что предотвращает зависание
+    при обходе большого количества страниц (100+).
     """
 
     def __init__(
@@ -405,6 +417,8 @@ class ScraperService:
                 page_listings = await self._parse_current_page(self._browser.page)
                 async with self._lock:
                     all_listings.extend(page_listings)
+                # Очищаем DOM после парсинга
+                await self._cleanup_parsed_cards(self._browser.page)
                 logger.info(
                     "страница_обработана",
                     url_index=url_index,
@@ -556,6 +570,10 @@ class ScraperService:
             async with self._lock:
                 all_listings.extend(page_listings)
 
+            # Очищаем обработанные карточки из DOM — предотвращаем
+            # рост памяти и замедление при 100+ страницах
+            await self._cleanup_parsed_cards(browser.page)
+
             pages_processed += 1
 
             logger.info(
@@ -627,6 +645,9 @@ class ScraperService:
             async with self._lock:
                 all_listings.extend(page_listings)
 
+            # Очищаем обработанные карточки из DOM
+            await self._cleanup_parsed_cards(browser.page)
+
             pages_processed += 1
 
             logger.info(
@@ -696,6 +717,9 @@ class ScraperService:
             page_listings = await self._parse_current_page(self._browser.page)
             async with self._lock:
                 all_listings.extend(page_listings)
+
+            # Очищаем обработанные карточки из DOM
+            await self._cleanup_parsed_cards(self._browser.page)
 
             pages_processed += 1
 
@@ -784,12 +808,8 @@ class ScraperService:
             """, target_page)
 
             if clicked:
-                # Ждём загрузку страницы
-                try:
-                    await page.wait_for_load_state("networkidle", timeout=30000)
-                except Exception:
-                    pass
-                await asyncio.sleep(3)
+                # Ждём загрузку страницы — domcontentloaded вместо networkidle
+                await self._wait_for_pagination_load(page)
 
                 # Проверяем что карточки загрузились
                 cards_found = await self._wait_for_cards(page)
@@ -842,11 +862,7 @@ class ScraperService:
                 return False
 
             # Ждём загрузку после сдвига
-            try:
-                await page.wait_for_load_state("networkidle", timeout=30000)
-            except Exception:
-                pass
-            await asyncio.sleep(3)
+            await self._wait_for_pagination_load(page)
 
             logger.debug(
                 "пагинация_сдвинута",
@@ -906,6 +922,61 @@ class ScraperService:
                 path=page.url,
             )
             return False
+
+    async def _wait_for_pagination_load(self, page: Page) -> None:
+        """Ожидает загрузку страницы после клика по пагинации.
+
+        Использует domcontentloaded вместо networkidle — не ждёт
+        завершения рекламы, аналитики и фоновых запросов.
+        После загрузки DOM ожидает появления карточек и даёт
+        короткую паузу для рендеринга.
+
+        Args:
+            page: Страница Playwright.
+        """
+        try:
+            await page.wait_for_load_state(
+                "domcontentloaded", timeout=_PAGINATION_LOAD_TIMEOUT_MS
+            )
+        except Exception:
+            pass
+
+        # Ждём появления карточек — это конкретный индикатор
+        # того, что нужный контент загружен
+        await self._wait_for_cards(page)
+
+        # Короткая пауза для стабилизации JS-рендеринга
+        await asyncio.sleep(_PAGINATION_SETTLE_DELAY)
+
+    async def _cleanup_parsed_cards(self, page: Page) -> None:
+        """Удаляет обработанные карточки из DOM браузера.
+
+        Предотвращает рост памяти при обходе большого количества страниц.
+        Без очистки: 100 страниц × 20 карточек = 2000 DOM-элементов
+        с изображениями — Chromium замедляется, scroll_page тормозит.
+
+        Удаляются только карточки с data-observe-id (уже спарсенные).
+        Пагинация и остальные элементы страницы не затрагиваются.
+
+        Args:
+            page: Страница Playwright.
+        """
+        removed = await page.evaluate("""
+            () => {
+                const cards = document.querySelectorAll('.card[data-observe-id]');
+                const count = cards.length;
+                for (const card of cards) {
+                    card.remove();
+                }
+                return count;
+            }
+        """)
+
+        if removed > 0:
+            logger.debug(
+                "dom_очищен",
+                step=f"удалено_карточек={removed}",
+            )
 
     async def _parse_current_page(self, page: Page) -> list[RawListing]:
         """Парсит все карточки объявлений на текущей странице.
@@ -1264,13 +1335,8 @@ class ScraperService:
 
         logger.debug("клик_далее_выполнен")
 
-        # Ждём загрузку
-        try:
-            await page.wait_for_load_state("networkidle", timeout=30000)
-        except Exception:
-            pass
-
-        await asyncio.sleep(3)
+        # Ждём загрузку — domcontentloaded + карточки вместо networkidle
+        await self._wait_for_pagination_load(page)
 
         # Прокручиваем наверх
         await page.evaluate("window.scrollTo(0, 0)")
@@ -1347,13 +1413,8 @@ class ScraperService:
 
         logger.debug("клик_назад_выполнен")
 
-        # Ждём загрузку
-        try:
-            await page.wait_for_load_state("networkidle", timeout=30000)
-        except Exception:
-            pass
-
-        await asyncio.sleep(3)
+        # Ждём загрузку — domcontentloaded + карточки вместо networkidle
+        await self._wait_for_pagination_load(page)
 
         # Прокручиваем наверх
         await page.evaluate("window.scrollTo(0, 0)")
