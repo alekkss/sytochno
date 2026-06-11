@@ -42,6 +42,15 @@ _PAGINATION_LOAD_TIMEOUT_MS: int = 15000
 # Даёт время JS-фреймворку отрендерить карточки после DOM ready.
 _PAGINATION_SETTLE_DELAY: float = 1.0
 
+# Пауза перед прокруткой страницы (секунды).
+# После загрузки новой страницы Chromium продолжает фоновую работу:
+# декодирование изображений (если включены), layout, garbage collection.
+# Без этой паузы scroll_page() начинает evaluate-вызовы к renderer'у,
+# который ещё не завершил обработку — это может привести к зависанию
+# и последующему Target crashed при нехватке памяти.
+# 5 секунд даёт время на стабилизацию перед нагрузкой прокруткой.
+_PRE_SCROLL_DELAY: float = 5.0
+
 
 class _BrowserCrashedError(Exception):
     """Сигнал о том, что renderer процесс Chromium упал.
@@ -127,7 +136,7 @@ class ScraperService:
 
     При сетевой ошибке или крахе renderer'а (Target crashed) автоматически
     перезапускает браузер, переключает прокси из пула и повторяет попытку.
-    Уже собранные данные до момента краша сохраняются.
+    Уже собранные данные до момента краха сохраняются.
 
     Логика ротации:
     - прямой браузер работал без прокси → получает первую свободную прокси;
@@ -280,7 +289,7 @@ class ScraperService:
         """Обходит один URL поиска двумя браузерами навстречу друг другу.
 
         При сетевой ошибке или крахе renderer'а автоматически меняет прокси
-        и повторяет попытку. Уже собранные объявления до момента краша
+        и повторяет попытку. Уже собранные объявления до момента краха
         сохраняются в all_listings — повторная попытка продолжает с чистого
         браузера, но дедупликация по _seen_ids исключает повторный сбор.
 
@@ -314,8 +323,8 @@ class ScraperService:
                 return total_pages_from_all_attempts
 
             except _BrowserCrashedError as e:
-                # Крах renderer'а — данные до краша уже в all_listings.
-                # Считаем страницы, обработанные до краша.
+                # Крах renderer'а — данные до краха уже в all_listings.
+                # Считаем страницы, обработанные до краха.
                 pages_before_crash = getattr(e, "pages_processed", 0)
                 total_pages_from_all_attempts += pages_before_crash
 
@@ -482,6 +491,8 @@ class ScraperService:
 
             # Если всего одна страница — обрабатываем просто
             if total_pages == 1:
+                # Пауза перед прокруткой — даём странице стабилизироваться
+                await asyncio.sleep(_PRE_SCROLL_DELAY)
                 await self._browser.scroll_page()
                 await self._browser.random_delay()
                 page_listings = await self._parse_current_page(self._browser.page)
@@ -633,7 +644,13 @@ class ScraperService:
         page_num: int,
         direction: str,
     ) -> bool:
-        """Безопасно обрабатывает одну страницу: scroll + parse + cleanup.
+        """Безопасно обрабатывает одну страницу: пауза + scroll + parse + cleanup.
+
+        Перед прокруткой выдерживает паузу _PRE_SCROLL_DELAY секунд — это даёт
+        Chromium время на завершение фоновых операций (layout, GC, decode)
+        после загрузки новой страницы. Без паузы evaluate-вызовы прокрутки
+        конкурируют с внутренними задачами renderer'а, что может привести
+        к зависанию и Target crashed.
 
         При крахе renderer'а (Target crashed) возвращает False.
         Данные, которые удалось спарсить до краха, сохраняются в all_listings.
@@ -650,6 +667,12 @@ class ScraperService:
             True если страница обработана успешно, False если renderer упал.
         """
         try:
+            # Пауза перед прокруткой — даём странице стабилизироваться.
+            # Chromium после загрузки продолжает фоновую работу: layout,
+            # paint, GC, декодирование. Без паузы scroll evaluate может
+            # застать renderer в нестабильном состоянии.
+            await asyncio.sleep(_PRE_SCROLL_DELAY)
+
             # Прокрутка страницы (может сработать таймаут — это нормально)
             await browser.scroll_page()
 
@@ -710,23 +733,58 @@ class ScraperService:
     async def _is_page_alive(self, page: Page) -> bool:
         """Проверяет, жив ли renderer процесс страницы.
 
-        Отправляет минимальный evaluate-запрос. Если renderer мёртв —
-        получим Target crashed или таймаут.
+        Выполняет до 3 попыток с паузой 2 секунды между ними.
+        Chromium может временно «подвисать» под нагрузкой (GC, layout),
+        но восстанавливаться через несколько секунд. Одна попытка
+        с коротким таймаутом даёт ложноотрицательный результат —
+        страница объявляется мёртвой, хотя через 10-15 секунд
+        она снова отвечает.
+
+        3 попытки × (5 сек таймаут + 2 сек пауза) = до 21 секунды
+        на принятие решения. Это достаточно для восстановления
+        после временной заморозки, но не слишком долго при реальном крахе.
 
         Args:
             page: Страница Playwright.
 
         Returns:
-            True если renderer отвечает, False если мёртв.
+            True если renderer отвечает, False если мёртв после всех попыток.
         """
-        try:
-            await asyncio.wait_for(
-                page.evaluate("1 + 1"),
-                timeout=5.0,
-            )
-            return True
-        except Exception:
-            return False
+        max_attempts = 3
+        pause_between_attempts = 2.0
+        evaluate_timeout = 5.0
+
+        for attempt in range(1, max_attempts + 1):
+            try:
+                await asyncio.wait_for(
+                    page.evaluate("1 + 1"),
+                    timeout=evaluate_timeout,
+                )
+                # Renderer ответил — жив
+                if attempt > 1:
+                    logger.info(
+                        "renderer_восстановился",
+                        step=f"попытка={attempt}",
+                    )
+                return True
+            except Exception as e:
+                if attempt < max_attempts:
+                    logger.debug(
+                        "renderer_не_отвечает_повтор",
+                        step=f"попытка={attempt}/{max_attempts}",
+                        error=str(e)[:100],
+                        error_type=type(e).__name__,
+                    )
+                    await asyncio.sleep(pause_between_attempts)
+                else:
+                    logger.warning(
+                        "renderer_не_отвечает_все_попытки_исчерпаны",
+                        step=f"попытки={max_attempts}",
+                        error=str(e)[:100],
+                        error_type=type(e).__name__,
+                    )
+
+        return False
 
     async def _run_forward(
         self,
