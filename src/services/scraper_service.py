@@ -19,13 +19,19 @@ _BASE_URL = "https://sutochno.ru"
 # Максимальное количество попыток при сетевых ошибках браузера
 _MAX_BROWSER_RETRIES = 3
 
-# Маркеры сетевых ошибок Playwright — при их наличии выполняется смена прокси
+# Маркеры ошибок Playwright — при их наличии выполняется перезапуск браузера + смена прокси.
+# Target crashed — renderer процесс убит OOM-killer'ом или внутренним лимитом Chromium.
+# Лечится только перезапуском всего браузера.
 _NETWORK_ERROR_MARKERS = (
     "ERR_TIMED_OUT",
     "ERR_CONNECTION_REFUSED",
     "ERR_CONNECTION_RESET",
     "ERR_NAME_NOT_RESOLVED",
     "net::",
+    "Target crashed",
+    "Target closed",
+    "Browser closed",
+    "Connection closed",
 )
 
 # Таймаут ожидания domcontentloaded после клика по пагинации (мс).
@@ -35,6 +41,17 @@ _PAGINATION_LOAD_TIMEOUT_MS: int = 15000
 # Пауза после загрузки страницы пагинации (секунды).
 # Даёт время JS-фреймворку отрендерить карточки после DOM ready.
 _PAGINATION_SETTLE_DELAY: float = 1.0
+
+
+class _BrowserCrashedError(Exception):
+    """Сигнал о том, что renderer процесс Chromium упал.
+
+    Используется для выхода из цикла обхода страниц с сохранением
+    уже собранных данных. Поднимается вверх к retry-логике,
+    которая перезапускает браузер и повторяет обход.
+    """
+
+    pass
 
 
 class _BidirectionalState:
@@ -108,8 +125,10 @@ class ScraperService:
     навстречу друг другу (первый — вперёд, второй — назад с последней
     страницы), что сокращает время обхода каталога вдвое.
 
-    При сетевой ошибке (ERR_TIMED_OUT и др.) автоматически переключает
-    упавший браузер на другую прокси из пула и повторяет попытку.
+    При сетевой ошибке или крахе renderer'а (Target crashed) автоматически
+    перезапускает браузер, переключает прокси из пула и повторяет попытку.
+    Уже собранные данные до момента краша сохраняются.
+
     Логика ротации:
     - прямой браузер работал без прокси → получает первую свободную прокси;
     - прямой браузер уже на прокси → оба получают следующие прокси по кругу.
@@ -177,7 +196,7 @@ class ScraperService:
         3. Если страниц > 1 — запускает второй (обратный) браузер на последнюю страницу.
         4. Оба браузера работают параллельно навстречу друг другу.
         5. Когда встречаются — оба останавливаются.
-        6. При сетевой ошибке — ротирует прокси и повторяет (до _MAX_BROWSER_RETRIES раз).
+        6. При сетевой ошибке/крахе — ротирует прокси и повторяет (до _MAX_BROWSER_RETRIES).
         7. Закрывает оба браузера.
 
         Returns:
@@ -260,10 +279,10 @@ class ScraperService:
     ) -> int:
         """Обходит один URL поиска двумя браузерами навстречу друг другу.
 
-        При сетевой ошибке автоматически меняет прокси и повторяет попытку:
-        - прямой браузер работал без прокси → следующая попытка через прокси;
-        - прямой браузер уже на прокси → оба получают новые прокси по кругу.
-        Максимальное количество попыток: _MAX_BROWSER_RETRIES.
+        При сетевой ошибке или крахе renderer'а автоматически меняет прокси
+        и повторяет попытку. Уже собранные объявления до момента краша
+        сохраняются в all_listings — повторная попытка продолжает с чистого
+        браузера, но дедупликация по _seen_ids исключает повторный сбор.
 
         Args:
             search_url: URL страницы поиска.
@@ -279,25 +298,64 @@ class ScraperService:
         # Обратный браузер стартует с первой прокси из пула (если есть)
         backward_proxy: ProxyConfig | None = self._proxies[0] if self._proxies else None
 
+        total_pages_from_all_attempts = 0
+
         for attempt in range(1, _MAX_BROWSER_RETRIES + 1):
             try:
-                return await self._try_scrape_bidirectional(
+                pages_this_attempt = await self._try_scrape_bidirectional(
                     search_url=search_url,
                     url_index=url_index,
-                    remaining_pages=remaining_pages,
+                    remaining_pages=remaining_pages - total_pages_from_all_attempts,
                     all_listings=all_listings,
                     forward_proxy=forward_proxy,
                     backward_proxy=backward_proxy,
                 )
+                total_pages_from_all_attempts += pages_this_attempt
+                return total_pages_from_all_attempts
+
+            except _BrowserCrashedError as e:
+                # Крах renderer'а — данные до краша уже в all_listings.
+                # Считаем страницы, обработанные до краша.
+                pages_before_crash = getattr(e, "pages_processed", 0)
+                total_pages_from_all_attempts += pages_before_crash
+
+                if attempt >= _MAX_BROWSER_RETRIES:
+                    logger.error(
+                        "крах_браузера_исчерпаны_попытки",
+                        url_index=url_index,
+                        attempt=attempt,
+                        max_retries=_MAX_BROWSER_RETRIES,
+                        pages_saved=total_pages_from_all_attempts,
+                        error=str(e)[:300],
+                    )
+                    # Возвращаем то, что успели собрать
+                    return total_pages_from_all_attempts
+
+                logger.warning(
+                    "крах_браузера_перезапуск",
+                    url_index=url_index,
+                    attempt=attempt,
+                    pages_before_crash=pages_before_crash,
+                    total_saved=total_pages_from_all_attempts,
+                    error=str(e)[:200],
+                )
+
+                # Ротируем прокси для следующей попытки
+                self._rotate_proxies_after_error(
+                    forward_proxy, backward_proxy, url_index, attempt
+                )
+                forward_proxy = self._get_next_proxy(exclude=backward_proxy)
+                backward_proxy = self._get_next_proxy(exclude=forward_proxy)
+
+                await asyncio.sleep(3)
 
             except Exception as e:
                 error_text = str(e)
-                is_network_error = any(
+                is_recoverable = any(
                     marker in error_text for marker in _NETWORK_ERROR_MARKERS
                 )
 
-                if not is_network_error or attempt >= _MAX_BROWSER_RETRIES:
-                    # Не сетевая ошибка или исчерпаны все попытки — пробрасываем выше
+                if not is_recoverable or attempt >= _MAX_BROWSER_RETRIES:
                     logger.error(
                         "ошибка_обхода_ссылки_исчерпаны_попытки",
                         url_index=url_index,
@@ -318,39 +376,49 @@ class ScraperService:
                     backward_proxy=str(backward_proxy) if backward_proxy else "без прокси",
                 )
 
-                if forward_proxy is None and self._proxies:
-                    # Прямой браузер был без прокси — теперь назначаем ему прокси
-                    forward_proxy = self._get_next_proxy(exclude=backward_proxy)
-                    logger.info(
-                        "прямой_браузер_переключён_на_прокси",
-                        url_index=url_index,
-                        attempt=attempt + 1,
-                        new_proxy=str(forward_proxy),
-                    )
-                elif self._proxies:
-                    # Прямой браузер уже на прокси — ротируем обе
-                    forward_proxy = self._get_next_proxy(exclude=backward_proxy)
-                    backward_proxy = self._get_next_proxy(exclude=forward_proxy)
-                    logger.info(
-                        "оба_браузера_переключены_на_новые_прокси",
-                        url_index=url_index,
-                        attempt=attempt + 1,
-                        new_forward=str(forward_proxy),
-                        new_backward=str(backward_proxy),
-                    )
-                else:
-                    # Прокси в пуле нет совсем — повторить без изменений не поможет
-                    logger.error(
-                        "пул_прокси_пуст_повтор_невозможен",
-                        url_index=url_index,
-                        attempt=attempt,
-                    )
-                    raise
+                self._rotate_proxies_after_error(
+                    forward_proxy, backward_proxy, url_index, attempt
+                )
+                forward_proxy = self._get_next_proxy(exclude=backward_proxy)
+                backward_proxy = self._get_next_proxy(exclude=forward_proxy)
 
                 await asyncio.sleep(3)
 
-        # Сюда не должны попасть — цикл завершается через return или raise
-        return 0
+        return total_pages_from_all_attempts
+
+    def _rotate_proxies_after_error(
+        self,
+        forward_proxy: ProxyConfig | None,
+        backward_proxy: ProxyConfig | None,
+        url_index: int,
+        attempt: int,
+    ) -> None:
+        """Логирует ротацию прокси после ошибки.
+
+        Args:
+            forward_proxy: Текущая прокси прямого браузера.
+            backward_proxy: Текущая прокси обратного браузера.
+            url_index: Номер ссылки.
+            attempt: Номер попытки.
+        """
+        if forward_proxy is None and self._proxies:
+            logger.info(
+                "прямой_браузер_переключён_на_прокси",
+                url_index=url_index,
+                attempt=attempt + 1,
+            )
+        elif self._proxies:
+            logger.info(
+                "оба_браузера_переключены_на_новые_прокси",
+                url_index=url_index,
+                attempt=attempt + 1,
+            )
+        else:
+            logger.warning(
+                "пул_прокси_пуст_повтор_без_смены",
+                url_index=url_index,
+                attempt=attempt,
+            )
 
     async def _try_scrape_bidirectional(
         self,
@@ -363,10 +431,9 @@ class ScraperService:
     ) -> int:
         """Одна попытка двунаправленного обхода с заданными прокси.
 
-        Запускает прямой браузер (с forward_proxy или без) и обратный
-        (с backward_proxy или без), пускает их параллельно навстречу друг другу.
-        Любая сетевая ошибка поднимается выше в _scrape_single_url_bidirectional,
-        который решает — менять прокси и повторять, или завершить с ошибкой.
+        При крахе renderer'а (Target crashed) поднимает _BrowserCrashedError
+        с атрибутом pages_processed — количество страниц, обработанных до краха.
+        Данные этих страниц уже в all_listings.
 
         Args:
             search_url: URL страницы поиска.
@@ -378,6 +445,9 @@ class ScraperService:
 
         Returns:
             Количество обработанных страниц.
+
+        Raises:
+            _BrowserCrashedError: Если renderer упал (с pages_processed).
         """
         # --- Запускаем прямой браузер ---
         await self._browser.start(proxy=forward_proxy)
@@ -501,16 +571,36 @@ class ScraperService:
 
                 # Подсчитываем общее количество обработанных страниц
                 total_processed = 0
+                has_crash = False
+                crash_error: Exception | None = None
+
                 for result in results:
-                    if isinstance(result, Exception):
-                        logger.warning(
-                            "ошибка_в_браузере_обхода",
-                            error=str(result),
-                            error_type=type(result).__name__,
-                            url_index=url_index,
-                        )
+                    if isinstance(result, _BrowserCrashedError):
+                        has_crash = True
+                        crash_error = result
+                        total_processed += getattr(result, "pages_processed", 0)
+                    elif isinstance(result, Exception):
+                        error_text = str(result)
+                        if any(m in error_text for m in _NETWORK_ERROR_MARKERS):
+                            has_crash = True
+                            crash_error = result
+                        else:
+                            logger.warning(
+                                "ошибка_в_браузере_обхода",
+                                error=error_text[:300],
+                                error_type=type(result).__name__,
+                                url_index=url_index,
+                            )
                     elif isinstance(result, int):
                         total_processed += result
+
+                if has_crash:
+                    # Один из браузеров упал — поднимаем ошибку выше для retry
+                    err = _BrowserCrashedError(
+                        f"Renderer упал: {crash_error}"
+                    )
+                    err.pages_processed = total_processed  # type: ignore[attr-defined]
+                    raise err
 
                 logger.info(
                     "двунаправленный_обход_завершён",
@@ -534,6 +624,110 @@ class ScraperService:
                 url_index=url_index,
             )
 
+    async def _safe_process_page(
+        self,
+        browser: BrowserService,
+        page_obj: Page,
+        all_listings: list[RawListing],
+        url_index: int,
+        page_num: int,
+        direction: str,
+    ) -> bool:
+        """Безопасно обрабатывает одну страницу: scroll + parse + cleanup.
+
+        При крахе renderer'а (Target crashed) возвращает False.
+        Данные, которые удалось спарсить до краха, сохраняются в all_listings.
+
+        Args:
+            browser: Сервис браузера.
+            page_obj: Объект страницы Playwright.
+            all_listings: Общий список объявлений.
+            url_index: Номер ссылки.
+            page_num: Номер текущей страницы.
+            direction: Направление обхода (для логов).
+
+        Returns:
+            True если страница обработана успешно, False если renderer упал.
+        """
+        try:
+            # Прокрутка страницы (может сработать таймаут — это нормально)
+            await browser.scroll_page()
+
+            # Проверяем, жив ли renderer после прокрутки.
+            # Если scroll_page завершился по таймауту — renderer может быть мёртв.
+            if not await self._is_page_alive(page_obj):
+                logger.error(
+                    "renderer_мёртв_после_прокрутки",
+                    url_index=url_index,
+                    page=page_num,
+                    direction=direction,
+                )
+                return False
+
+            await browser.random_delay()
+
+            # Парсинг карточек
+            page_listings = await self._parse_current_page(page_obj)
+            async with self._lock:
+                all_listings.extend(page_listings)
+
+            # Очистка DOM
+            await self._cleanup_parsed_cards(page_obj)
+
+            logger.info(
+                "страница_обработана",
+                url_index=url_index,
+                page=page_num,
+                direction=direction,
+                found=len(page_listings),
+            )
+            return True
+
+        except Exception as e:
+            error_text = str(e)
+            if any(marker in error_text for marker in _NETWORK_ERROR_MARKERS):
+                logger.error(
+                    "крах_renderer_при_обработке_страницы",
+                    url_index=url_index,
+                    page=page_num,
+                    direction=direction,
+                    error=error_text[:300],
+                    error_type=type(e).__name__,
+                )
+                return False
+
+            # Другая ошибка — логируем, но считаем страницу пропущенной (не крах)
+            logger.warning(
+                "ошибка_обработки_страницы",
+                url_index=url_index,
+                page=page_num,
+                direction=direction,
+                error=error_text[:300],
+                error_type=type(e).__name__,
+            )
+            return True  # Не крах — можно продолжать обход
+
+    async def _is_page_alive(self, page: Page) -> bool:
+        """Проверяет, жив ли renderer процесс страницы.
+
+        Отправляет минимальный evaluate-запрос. Если renderer мёртв —
+        получим Target crashed или таймаут.
+
+        Args:
+            page: Страница Playwright.
+
+        Returns:
+            True если renderer отвечает, False если мёртв.
+        """
+        try:
+            await asyncio.wait_for(
+                page.evaluate("1 + 1"),
+                timeout=5.0,
+            )
+            return True
+        except Exception:
+            return False
+
     async def _run_forward(
         self,
         browser: BrowserService,
@@ -543,6 +737,9 @@ class ScraperService:
     ) -> int:
         """Прямой обход — движется вперёд с первой страницы.
 
+        При крахе renderer'а поднимает _BrowserCrashedError с количеством
+        обработанных страниц — данные до краха уже в all_listings.
+
         Args:
             browser: Браузер для прямого обхода.
             state: Общее состояние синхронизации.
@@ -551,37 +748,42 @@ class ScraperService:
 
         Returns:
             Количество обработанных страниц.
+
+        Raises:
+            _BrowserCrashedError: Если renderer упал.
         """
         pages_processed = 0
         current_page = 1
 
         while not state.should_stop:
             logger.info(
-                "прямой_парсинг_страницы",
+                "парсинг_страницы",
                 url_index=url_index,
                 page=current_page,
+                direction="прямой",
             )
 
-            # Прокручиваем и парсим
-            await browser.scroll_page()
-            await browser.random_delay()
+            # Безопасная обработка страницы
+            success = await self._safe_process_page(
+                browser=browser,
+                page_obj=browser.page,
+                all_listings=all_listings,
+                url_index=url_index,
+                page_num=current_page,
+                direction="прямой",
+            )
 
-            page_listings = await self._parse_current_page(browser.page)
-            async with self._lock:
-                all_listings.extend(page_listings)
-
-            # Очищаем обработанные карточки из DOM — предотвращаем
-            # рост памяти и замедление при 100+ страницах
-            await self._cleanup_parsed_cards(browser.page)
+            if not success:
+                # Renderer упал — поднимаем ошибку для retry
+                err = _BrowserCrashedError(
+                    f"Renderer упал на странице {current_page} (прямой обход)"
+                )
+                err.pages_processed = pages_processed  # type: ignore[attr-defined]
+                # Сигнализируем обратному браузеру остановиться
+                state.stop_event.set()
+                raise err
 
             pages_processed += 1
-
-            logger.info(
-                "прямой_страница_обработана",
-                url_index=url_index,
-                page=current_page,
-                found=len(page_listings),
-            )
 
             # Сообщаем о прогрессе и проверяем, нужно ли продолжать
             should_continue = await state.report_forward(current_page)
@@ -617,6 +819,9 @@ class ScraperService:
     ) -> int:
         """Обратный обход — движется назад с последней страницы.
 
+        При крахе renderer'а поднимает _BrowserCrashedError с количеством
+        обработанных страниц — данные до краха уже в all_listings.
+
         Args:
             browser: Браузер для обратного обхода.
             state: Общее состояние синхронизации.
@@ -626,36 +831,42 @@ class ScraperService:
 
         Returns:
             Количество обработанных страниц.
+
+        Raises:
+            _BrowserCrashedError: Если renderer упал.
         """
         pages_processed = 0
         current_page = start_page
 
         while not state.should_stop:
             logger.info(
-                "обратный_парсинг_страницы",
+                "парсинг_страницы",
                 url_index=url_index,
                 page=current_page,
+                direction="обратный",
             )
 
-            # Прокручиваем и парсим
-            await browser.scroll_page()
-            await browser.random_delay()
+            # Безопасная обработка страницы
+            success = await self._safe_process_page(
+                browser=browser,
+                page_obj=browser.page,
+                all_listings=all_listings,
+                url_index=url_index,
+                page_num=current_page,
+                direction="обратный",
+            )
 
-            page_listings = await self._parse_current_page(browser.page)
-            async with self._lock:
-                all_listings.extend(page_listings)
-
-            # Очищаем обработанные карточки из DOM
-            await self._cleanup_parsed_cards(browser.page)
+            if not success:
+                # Renderer упал — поднимаем ошибку для retry
+                err = _BrowserCrashedError(
+                    f"Renderer упал на странице {current_page} (обратный обход)"
+                )
+                err.pages_processed = pages_processed  # type: ignore[attr-defined]
+                # Сигнализируем прямому браузеру остановиться
+                state.stop_event.set()
+                raise err
 
             pages_processed += 1
-
-            logger.info(
-                "обратный_страница_обработана",
-                url_index=url_index,
-                page=current_page,
-                found=len(page_listings),
-            )
 
             # Сообщаем о прогрессе и проверяем, нужно ли продолжать
             should_continue = await state.report_backward(current_page)
@@ -690,6 +901,7 @@ class ScraperService:
         """Обходит каталог только прямым браузером (fallback).
 
         Используется когда обратный браузер не удалось запустить.
+        При крахе renderer'а — поднимает _BrowserCrashedError.
 
         Args:
             url_index: Номер ссылки для логов.
@@ -698,6 +910,9 @@ class ScraperService:
 
         Returns:
             Количество обработанных страниц.
+
+        Raises:
+            _BrowserCrashedError: Если renderer упал.
         """
         pages_processed = 0
 
@@ -711,25 +926,24 @@ class ScraperService:
                 remaining=remaining_pages - pages_processed,
             )
 
-            await self._browser.scroll_page()
-            await self._browser.random_delay()
+            # Безопасная обработка страницы
+            success = await self._safe_process_page(
+                browser=self._browser,
+                page_obj=self._browser.page,
+                all_listings=all_listings,
+                url_index=url_index,
+                page_num=current_page,
+                direction="прямой",
+            )
 
-            page_listings = await self._parse_current_page(self._browser.page)
-            async with self._lock:
-                all_listings.extend(page_listings)
-
-            # Очищаем обработанные карточки из DOM
-            await self._cleanup_parsed_cards(self._browser.page)
+            if not success:
+                err = _BrowserCrashedError(
+                    f"Renderer упал на странице {current_page} (forward_only)"
+                )
+                err.pages_processed = pages_processed  # type: ignore[attr-defined]
+                raise err
 
             pages_processed += 1
-
-            logger.info(
-                "страница_обработана",
-                url_index=url_index,
-                page=current_page,
-                found=len(page_listings),
-                total_so_far=len(all_listings),
-            )
 
             if pages_processed >= remaining_pages:
                 break
@@ -961,21 +1175,30 @@ class ScraperService:
         Args:
             page: Страница Playwright.
         """
-        removed = await page.evaluate("""
-            () => {
-                const cards = document.querySelectorAll('.card[data-observe-id]');
-                const count = cards.length;
-                for (const card of cards) {
-                    card.remove();
+        try:
+            removed = await page.evaluate("""
+                () => {
+                    const cards = document.querySelectorAll('.card[data-observe-id]');
+                    const count = cards.length;
+                    for (const card of cards) {
+                        card.remove();
+                    }
+                    return count;
                 }
-                return count;
-            }
-        """)
+            """)
 
-        if removed > 0:
+            if removed > 0:
+                logger.debug(
+                    "dom_очищен",
+                    step=f"удалено_карточек={removed}",
+                )
+        except Exception as e:
+            # Если evaluate упал — renderer может быть мёртв.
+            # Не логируем как ошибку — _safe_process_page проверит is_page_alive.
             logger.debug(
-                "dom_очищен",
-                step=f"удалено_карточек={removed}",
+                "ошибка_очистки_dom",
+                error=str(e)[:200],
+                error_type=type(e).__name__,
             )
 
     async def _parse_current_page(self, page: Page) -> list[RawListing]:
