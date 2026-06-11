@@ -1,7 +1,26 @@
-"""Сервис парсинга каталога — обход страниц и извлечение данных объявлений."""
+"""Сервис парсинга каталога — сбор объявлений через внутреннее API sutochno.ru.
+
+Двухфазный подход:
+  Фаза A — searchObjectsOnMap: для каждой ссылки поиска загружает страницу
+  в браузере, перехватывает реальный URL API от фронтенда, затем через fetch()
+  с пагинацией offset += 50 собирает ID всех объявлений.
+
+  Фаза B — searchObjectsByLocation: по собранным ID пачками по 50
+  запрашивает полные данные (название, цена, рейтинг, отзывы, площадь,
+  гости, адрес, метро, быстрое бронирование).
+
+При сбое (сетевая ошибка, блокировка IP, протухший токен):
+  1. Закрывает текущий браузер.
+  2. Открывает новый через прокси из пула.
+  3. Загружает ту же страницу → перехватывает новый URL/токен.
+  4. Продолжает с того же offset (не с начала).
+  5. Если прокси тоже упала — берёт следующую из пула.
+  6. Если пул исчерпан — возвращает то, что собрано.
+"""
 
 import asyncio
 import re
+from datetime import datetime, timezone
 
 from playwright.async_api import Page
 
@@ -13,20 +32,33 @@ from src.services.browser_service import BrowserService
 
 logger = get_logger("scraper")
 
-# Базовый URL для формирования абсолютных ссылок
-_BASE_URL = "https://sutochno.ru"
+# ── Константы ──────────────────────────────────────────────
 
-# Максимальное количество попыток при сетевых ошибках браузера
-_MAX_BROWSER_RETRIES = 3
+# Размер страницы API (объектов за один запрос)
+_API_PAGE_SIZE: int = 50
 
-# Маркеры ошибок Playwright — при их наличии выполняется перезапуск браузера + смена прокси.
-# Target crashed — renderer процесс убит OOM-killer'ом или внутренним лимитом Chromium.
-# Лечится только перезапуском всего браузера.
-_NETWORK_ERROR_MARKERS = (
+# Пауза между API-запросами fetch() (секунды)
+_PAUSE_BETWEEN_API: float = 0.5
+
+# Пауза после загрузки страницы — ожидание фронтенд API-запросов (секунды)
+_PAUSE_AFTER_PAGE_LOAD: float = 10.0
+
+# Пауза между обработкой ссылок поиска (секунды)
+_PAUSE_BETWEEN_URLS: float = 3.0
+
+# Максимальное количество ошибок подряд до переключения на прокси
+_MAX_CONSECUTIVE_ERRORS: int = 3
+
+# Максимальное количество перезапусков браузера с прокси за одну ссылку
+_MAX_PROXY_RESTARTS: int = 5
+
+# Маркеры ошибок API, при которых выполняется переключение на прокси
+_API_ERROR_MARKERS: tuple[str, ...] = (
+    "Bad request",
+    "Application authentication failed",
     "ERR_TIMED_OUT",
     "ERR_CONNECTION_REFUSED",
     "ERR_CONNECTION_RESET",
-    "ERR_NAME_NOT_RESOLVED",
     "net::",
     "Target crashed",
     "Target closed",
@@ -34,117 +66,30 @@ _NETWORK_ERROR_MARKERS = (
     "Connection closed",
 )
 
-# Таймаут ожидания domcontentloaded после клика по пагинации (мс).
-# domcontentloaded срабатывает быстро (~1-2 сек) — не ждём рекламу/аналитику.
-_PAGINATION_LOAD_TIMEOUT_MS: int = 15000
+# URL эндпоинта для получения полных данных объявлений
+_API_SEARCH_BY_LOCATION: str = (
+    "https://sutochno.ru/api/json/search/searchObjectsByLocation"
+)
 
-# Пауза после загрузки страницы пагинации (секунды).
-# Даёт время JS-фреймворку отрендерить карточки после DOM ready.
-_PAGINATION_SETTLE_DELAY: float = 1.0
-
-# Пауза перед прокруткой страницы (секунды).
-# После загрузки новой страницы Chromium продолжает фоновую работу:
-# декодирование изображений (если включены), layout, garbage collection.
-# Без этой паузы scroll_page() начинает evaluate-вызовы к renderer'у,
-# который ещё не завершил обработку — это может привести к зависанию
-# и последующему Target crashed при нехватке памяти.
-# 5 секунд даёт время на стабилизацию перед нагрузкой прокруткой.
-_PRE_SCROLL_DELAY: float = 5.0
-
-
-class _BrowserCrashedError(Exception):
-    """Сигнал о том, что renderer процесс Chromium упал.
-
-    Используется для выхода из цикла обхода страниц с сохранением
-    уже собранных данных. Поднимается вверх к retry-логике,
-    которая перезапускает браузер и повторяет обход.
-    """
-
-    pass
-
-
-class _BidirectionalState:
-    """Общее состояние для синхронизации двух браузеров при двунаправленном обходе.
-
-    Хранит множество обработанных страниц и сигнал остановки.
-    Оба браузера проверяют состояние после обработки каждой страницы:
-    если номера встретились (forward_page >= backward_page) — оба останавливаются.
-    """
-
-    def __init__(self, total_pages: int) -> None:
-        """Инициализирует состояние.
-
-        Args:
-            total_pages: Общее количество страниц в пагинации.
-        """
-        self.total_pages: int = total_pages
-        self.forward_page: int = 0
-        self.backward_page: int = total_pages + 1
-        self.stop_event: asyncio.Event = asyncio.Event()
-        self.lock: asyncio.Lock = asyncio.Lock()
-
-    async def report_forward(self, page_num: int) -> bool:
-        """Сообщает о завершении обработки страницы прямым браузером.
-
-        Args:
-            page_num: Номер обработанной страницы.
-
-        Returns:
-            True если нужно продолжать, False если пора остановиться.
-        """
-        async with self.lock:
-            self.forward_page = page_num
-            if self.forward_page >= self.backward_page - 1:
-                self.stop_event.set()
-                return False
-            return not self.stop_event.is_set()
-
-    async def report_backward(self, page_num: int) -> bool:
-        """Сообщает о завершении обработки страницы обратным браузером.
-
-        Args:
-            page_num: Номер обработанной страницы.
-
-        Returns:
-            True если нужно продолжать, False если пора остановиться.
-        """
-        async with self.lock:
-            self.backward_page = page_num
-            if self.forward_page >= self.backward_page - 1:
-                self.stop_event.set()
-                return False
-            return not self.stop_event.is_set()
-
-    @property
-    def should_stop(self) -> bool:
-        """Проверяет, установлен ли сигнал остановки."""
-        return self.stop_event.is_set()
+# Заголовки браузера, которые не нужно передавать в fetch()
+_SKIP_HEADERS: set[str] = {
+    "host", "connection", "content-length",
+    "accept-encoding", "sec-fetch-dest",
+    "sec-fetch-mode", "sec-fetch-site",
+    "sec-ch-ua", "sec-ch-ua-mobile",
+    "sec-ch-ua-platform",
+}
 
 
 class ScraperService:
-    """Сервис парсинга каталога sutochno.ru.
+    """Сервис парсинга каталога sutochno.ru через внутреннее API.
 
-    Обходит несколько URL поиска, для каждого запуская отдельный браузер.
-    Извлекает данные объявлений из карточек, обрабатывает пагинацию
-    и возвращает список уникальных RawListing.
+    Обходит несколько URL поиска, для каждого перехватывает API-запрос
+    от фронтенда и использует его для пагинации. Извлекает полные данные
+    объявлений через второй API-эндпоинт.
+
     Дедупликация выполняется по external_id в процессе сбора.
-    MAX_PAGES применяется суммарно ко всем ссылкам.
-
-    Поддерживает двунаправленный обход пагинации: два браузера идут
-    навстречу друг другу (первый — вперёд, второй — назад с последней
-    страницы), что сокращает время обхода каталога вдвое.
-
-    При сетевой ошибке или крахе renderer'а (Target crashed) автоматически
-    перезапускает браузер, переключает прокси из пула и повторяет попытку.
-    Уже собранные данные до момента краха сохраняются.
-
-    Логика ротации:
-    - прямой браузер работал без прокси → получает первую свободную прокси;
-    - прямой браузер уже на прокси → оба получают следующие прокси по кругу.
-
-    После парсинга каждой страницы выполняется очистка DOM — обработанные
-    карточки удаляются из памяти браузера, что предотвращает зависание
-    при обходе большого количества страниц (100+).
+    При сбоях автоматически переключается на прокси.
     """
 
     def __init__(
@@ -153,36 +98,30 @@ class ScraperService:
         browser_service: BrowserService,
         proxies: list[ProxyConfig] | None = None,
     ) -> None:
-        """Инициализирует сервис парсинга.
+        """Инициализирует сервис.
 
         Args:
             settings: Настройки приложения.
-            browser_service: Сервис управления браузером (для прямого обхода).
-            proxies: Пул рабочих прокси для ротации при сетевых ошибках.
-                     Если None или пустой — оба браузера стартуют без прокси.
-                     При сетевой ошибке прямого браузера берётся первая прокси.
-                     При следующей ошибке — следующая прокси по кругу.
+            browser_service: Сервис управления браузером.
+            proxies: Пул рабочих прокси для fallback при блокировке.
         """
         self._settings = settings
         self._browser = browser_service
         self._proxies: list[ProxyConfig] = proxies or []
-        self._proxy_index: int = 0  # текущий индекс для ротации по кругу
-        self._seen_ids: set[str] = set()
+        self._proxy_index: int = 0
+        self._seen_ids: set[int] = set()
         self._duplicates_count: int = 0
-        self._lock: asyncio.Lock = asyncio.Lock()
 
-    def _get_next_proxy(self, exclude: ProxyConfig | None = None) -> ProxyConfig | None:
+    def _get_next_proxy(
+        self, exclude: ProxyConfig | None = None,
+    ) -> ProxyConfig | None:
         """Возвращает следующую прокси из пула, пропуская исключённую.
 
-        Используется для ротации при сетевых ошибках:
-        - если прямой браузер упал без прокси — берёт первую из пула;
-        - если обратный браузер упал с прокси X — берёт следующую, не X.
-
         Args:
-            exclude: Прокси, которую нужно пропустить (упавшая).
+            exclude: Прокси, которую нужно пропустить.
 
         Returns:
-            Следующая прокси из пула или None, если пул пуст.
+            Следующая прокси или None, если пул пуст.
         """
         if not self._proxies:
             return None
@@ -193,1183 +132,697 @@ class ScraperService:
             if proxy != exclude:
                 return proxy
 
-        # Все прокси совпадают с exclude (пул из одной прокси) — вернём её же
         return self._proxies[0]
 
     async def scrape_catalog(self) -> list[RawListing]:
-        """Основной метод — обходит все URL поиска и собирает уникальные объявления.
+        """Основной метод — обходит все URL поиска и собирает объявления.
 
         Для каждой ссылки:
-        1. Запускает прямой браузер на первую страницу.
-        2. Определяет общее количество страниц из пагинации.
-        3. Если страниц > 1 — запускает второй (обратный) браузер на последнюю страницу.
-        4. Оба браузера работают параллельно навстречу друг другу.
-        5. Когда встречаются — оба останавливаются.
-        6. При сетевой ошибке/крахе — ротирует прокси и повторяет (до _MAX_BROWSER_RETRIES).
-        7. Закрывает оба браузера.
+        1. Загружает страницу в браузере (для сессии и токена).
+        2. Перехватывает URL searchObjectsOnMap от фронтенда.
+        3. Через fetch() с пагинацией собирает все ID.
+        4. Через searchObjectsByLocation получает полные данные.
 
         Returns:
-            Список уникальных объявлений со всех обработанных страниц и ссылок.
+            Список уникальных объявлений со всех ссылок.
         """
-        all_listings: list[RawListing] = []
         self._seen_ids.clear()
         self._duplicates_count = 0
 
-        max_pages = self._settings.max_pages or 999
-        total_pages_processed = 0
-        urls_processed = 0
+        all_ids: list[int] = []
+        api_headers: dict[str, str] | None = None
+        current_proxy: ProxyConfig | None = None
 
         logger.info(
             "начало_парсинга_каталога",
             urls_count=len(self._settings.search_urls),
-            max_pages=max_pages,
         )
 
-        for url_index, search_url in enumerate(self._settings.search_urls, start=1):
-            # Проверяем, не исчерпан ли лимит страниц
-            if total_pages_processed >= max_pages:
-                logger.info(
-                    "лимит_страниц_достигнут_пропуск_ссылки",
-                    url_index=url_index,
-                    total_pages_processed=total_pages_processed,
-                    max_pages=max_pages,
-                )
-                break
-
-            remaining_pages = max_pages - total_pages_processed
-
+        # ── Фаза A: Сбор ID по всем ссылкам ──
+        for url_index, search_url in enumerate(self._settings.search_urls, 1):
             logger.info(
                 "начало_обхода_ссылки",
                 url_index=url_index,
                 urls_total=len(self._settings.search_urls),
-                remaining_pages=remaining_pages,
-                url=search_url[:80] + "..." if len(search_url) > 80 else search_url,
+                url=search_url[:100],
             )
 
-            pages_from_url = await self._scrape_single_url_bidirectional(
+            ids_from_url, api_headers, current_proxy = await self._collect_ids_for_url(
                 search_url=search_url,
                 url_index=url_index,
-                remaining_pages=remaining_pages,
-                all_listings=all_listings,
+                current_proxy=current_proxy,
+                previous_headers=api_headers,
             )
 
-            total_pages_processed += pages_from_url
-            urls_processed += 1
+            all_ids.extend(ids_from_url)
 
             logger.info(
                 "ссылка_обработана",
                 url_index=url_index,
-                pages_from_url=pages_from_url,
-                total_pages_processed=total_pages_processed,
-                listings_so_far=len(all_listings),
+                new_ids=len(ids_from_url),
+                total_ids=len(all_ids),
+                total_unique=len(self._seen_ids),
             )
+
+            if url_index < len(self._settings.search_urls):
+                await asyncio.sleep(_PAUSE_BETWEEN_URLS)
+
+        logger.info(
+            "сбор_id_завершён",
+            total_unique=len(self._seen_ids),
+            total_with_duplicates=len(all_ids),
+            duplicates=self._duplicates_count,
+        )
+
+        if not all_ids:
+            logger.warning("не_собрано_ни_одного_id")
+            return []
+
+        # ── Фаза B: Получение полных данных ──
+        if api_headers is None:
+            logger.error("нет_заголовков_api_для_получения_данных")
+            return []
+
+        # Нужна живая страница для fetch() — если браузер закрыт, открываем
+        page = await self._ensure_browser_page(current_proxy)
+        if page is None:
+            logger.error("не_удалось_открыть_браузер_для_получения_данных")
+            return []
+
+        listings = await self._fetch_full_listings(
+            page=page,
+            ids=all_ids,
+            headers=api_headers,
+        )
+
+        # Закрываем браузер после сбора
+        await self._browser.stop()
 
         logger.info(
             "парсинг_каталога_завершён",
-            total=len(all_listings),
-            total_pages=total_pages_processed,
-            urls_processed=urls_processed,
+            total_listings=len(listings),
+            total_ids=len(all_ids),
+            duplicates=self._duplicates_count,
         )
-
-        if self._duplicates_count > 0:
-            logger.info(
-                "дубликаты_отброшены",
-                total=self._duplicates_count,
-            )
-
-        return all_listings
-
-    async def _scrape_single_url_bidirectional(
-        self,
-        search_url: str,
-        url_index: int,
-        remaining_pages: int,
-        all_listings: list[RawListing],
-    ) -> int:
-        """Обходит один URL поиска двумя браузерами навстречу друг другу.
-
-        При сетевой ошибке или крахе renderer'а автоматически меняет прокси
-        и повторяет попытку. Уже собранные объявления до момента краха
-        сохраняются в all_listings — повторная попытка продолжает с чистого
-        браузера, но дедупликация по _seen_ids исключает повторный сбор.
-
-        Args:
-            search_url: URL страницы поиска.
-            url_index: Порядковый номер ссылки (для логов).
-            remaining_pages: Сколько страниц ещё можно обработать.
-            all_listings: Общий список объявлений (мутируется).
-
-        Returns:
-            Количество обработанных страниц для этой ссылки.
-        """
-        # Прямой браузер стартует без прокси (как раньше)
-        forward_proxy: ProxyConfig | None = None
-        # Обратный браузер стартует с первой прокси из пула (если есть)
-        backward_proxy: ProxyConfig | None = self._proxies[0] if self._proxies else None
-
-        total_pages_from_all_attempts = 0
-
-        for attempt in range(1, _MAX_BROWSER_RETRIES + 1):
-            try:
-                pages_this_attempt = await self._try_scrape_bidirectional(
-                    search_url=search_url,
-                    url_index=url_index,
-                    remaining_pages=remaining_pages - total_pages_from_all_attempts,
-                    all_listings=all_listings,
-                    forward_proxy=forward_proxy,
-                    backward_proxy=backward_proxy,
-                )
-                total_pages_from_all_attempts += pages_this_attempt
-                return total_pages_from_all_attempts
-
-            except _BrowserCrashedError as e:
-                # Крах renderer'а — данные до краха уже в all_listings.
-                # Считаем страницы, обработанные до краха.
-                pages_before_crash = getattr(e, "pages_processed", 0)
-                total_pages_from_all_attempts += pages_before_crash
-
-                if attempt >= _MAX_BROWSER_RETRIES:
-                    logger.error(
-                        "крах_браузера_исчерпаны_попытки",
-                        url_index=url_index,
-                        attempt=attempt,
-                        max_retries=_MAX_BROWSER_RETRIES,
-                        pages_saved=total_pages_from_all_attempts,
-                        error=str(e)[:300],
-                    )
-                    # Возвращаем то, что успели собрать
-                    return total_pages_from_all_attempts
-
-                logger.warning(
-                    "крах_браузера_перезапуск",
-                    url_index=url_index,
-                    attempt=attempt,
-                    pages_before_crash=pages_before_crash,
-                    total_saved=total_pages_from_all_attempts,
-                    error=str(e)[:200],
-                )
-
-                # Ротируем прокси для следующей попытки
-                self._rotate_proxies_after_error(
-                    forward_proxy, backward_proxy, url_index, attempt
-                )
-                forward_proxy = self._get_next_proxy(exclude=backward_proxy)
-                backward_proxy = self._get_next_proxy(exclude=forward_proxy)
-
-                await asyncio.sleep(3)
-
-            except Exception as e:
-                error_text = str(e)
-                is_recoverable = any(
-                    marker in error_text for marker in _NETWORK_ERROR_MARKERS
-                )
-
-                if not is_recoverable or attempt >= _MAX_BROWSER_RETRIES:
-                    logger.error(
-                        "ошибка_обхода_ссылки_исчерпаны_попытки",
-                        url_index=url_index,
-                        attempt=attempt,
-                        max_retries=_MAX_BROWSER_RETRIES,
-                        error=error_text[:300],
-                        error_type=type(e).__name__,
-                    )
-                    raise
-
-                # Сетевая ошибка — ротируем прокси и повторяем
-                logger.warning(
-                    "сетевая_ошибка_смена_прокси",
-                    url_index=url_index,
-                    attempt=attempt,
-                    error=error_text[:200],
-                    forward_proxy=str(forward_proxy) if forward_proxy else "без прокси",
-                    backward_proxy=str(backward_proxy) if backward_proxy else "без прокси",
-                )
-
-                self._rotate_proxies_after_error(
-                    forward_proxy, backward_proxy, url_index, attempt
-                )
-                forward_proxy = self._get_next_proxy(exclude=backward_proxy)
-                backward_proxy = self._get_next_proxy(exclude=forward_proxy)
-
-                await asyncio.sleep(3)
-
-        return total_pages_from_all_attempts
-
-    def _rotate_proxies_after_error(
-        self,
-        forward_proxy: ProxyConfig | None,
-        backward_proxy: ProxyConfig | None,
-        url_index: int,
-        attempt: int,
-    ) -> None:
-        """Логирует ротацию прокси после ошибки.
-
-        Args:
-            forward_proxy: Текущая прокси прямого браузера.
-            backward_proxy: Текущая прокси обратного браузера.
-            url_index: Номер ссылки.
-            attempt: Номер попытки.
-        """
-        if forward_proxy is None and self._proxies:
-            logger.info(
-                "прямой_браузер_переключён_на_прокси",
-                url_index=url_index,
-                attempt=attempt + 1,
-            )
-        elif self._proxies:
-            logger.info(
-                "оба_браузера_переключены_на_новые_прокси",
-                url_index=url_index,
-                attempt=attempt + 1,
-            )
-        else:
-            logger.warning(
-                "пул_прокси_пуст_повтор_без_смены",
-                url_index=url_index,
-                attempt=attempt,
-            )
-
-    async def _try_scrape_bidirectional(
-        self,
-        search_url: str,
-        url_index: int,
-        remaining_pages: int,
-        all_listings: list[RawListing],
-        forward_proxy: ProxyConfig | None,
-        backward_proxy: ProxyConfig | None,
-    ) -> int:
-        """Одна попытка двунаправленного обхода с заданными прокси.
-
-        При крахе renderer'а (Target crashed) поднимает _BrowserCrashedError
-        с атрибутом pages_processed — количество страниц, обработанных до краха.
-        Данные этих страниц уже в all_listings.
-
-        Args:
-            search_url: URL страницы поиска.
-            url_index: Номер ссылки.
-            remaining_pages: Лимит страниц.
-            all_listings: Общий список объявлений.
-            forward_proxy: Прокси для прямого браузера (None = без прокси).
-            backward_proxy: Прокси для обратного браузера (None = без прокси).
-
-        Returns:
-            Количество обработанных страниц.
-
-        Raises:
-            _BrowserCrashedError: Если renderer упал (с pages_processed).
-        """
-        # --- Запускаем прямой браузер ---
-        await self._browser.start(proxy=forward_proxy)
-
-        try:
-            # Переходим на первую страницу каталога
-            await self._browser.navigate(search_url)
-
-            # Ожидаем загрузку карточек
-            cards_found = await self._wait_for_cards(self._browser.page)
-            if not cards_found:
-                logger.warning(
-                    "страница_не_загрузилась",
-                    url_index=url_index,
-                    url=search_url[:80] + "..." if len(search_url) > 80 else search_url,
-                )
-                return 0
-
-            # Определяем общее количество страниц из пагинации
-            total_pages = await self._get_total_pages(self._browser.page)
-
-            logger.info(
-                "пагинация_определена",
-                url_index=url_index,
-                total_pages=total_pages,
-                forward_proxy=str(forward_proxy) if forward_proxy else "без прокси",
-                backward_proxy=str(backward_proxy) if backward_proxy else "без прокси",
-            )
-
-            # Ограничиваем общее количество страниц лимитом
-            effective_pages = min(total_pages, remaining_pages)
-
-            # Если всего одна страница — обрабатываем просто
-            if total_pages == 1:
-                # Пауза перед прокруткой — даём странице стабилизироваться
-                await asyncio.sleep(_PRE_SCROLL_DELAY)
-                await self._browser.scroll_page()
-                await self._browser.random_delay()
-                page_listings = await self._parse_current_page(self._browser.page)
-                async with self._lock:
-                    all_listings.extend(page_listings)
-                # Очищаем DOM после парсинга
-                await self._cleanup_parsed_cards(self._browser.page)
-                logger.info(
-                    "страница_обработана",
-                    url_index=url_index,
-                    page=1,
-                    found=len(page_listings),
-                )
-                return 1
-
-            # --- Двунаправленный обход ---
-            state = _BidirectionalState(total_pages=effective_pages)
-
-            # Запускаем обратный браузер
-            backward_browser = BrowserService(settings=self._settings)
-            await backward_browser.start(proxy=backward_proxy)
-
-            try:
-                # Переходим обратным браузером на первую страницу
-                await backward_browser.navigate(search_url)
-                backward_cards_found = await self._wait_for_cards(backward_browser.page)
-
-                if not backward_cards_found:
-                    logger.warning(
-                        "обратный_браузер_не_загрузился",
-                        url_index=url_index,
-                    )
-                    # Fallback: обходим только прямым браузером
-                    return await self._scrape_forward_only(
-                        url_index=url_index,
-                        remaining_pages=remaining_pages,
-                        all_listings=all_listings,
-                    )
-
-                # Переходим на последнюю страницу
-                last_page_reached = await self._go_to_page_number(
-                    backward_browser.page, effective_pages
-                )
-
-                if not last_page_reached:
-                    logger.warning(
-                        "не_удалось_перейти_на_последнюю_страницу",
-                        url_index=url_index,
-                        target_page=effective_pages,
-                    )
-                    # Fallback: обходим только прямым браузером
-                    return await self._scrape_forward_only(
-                        url_index=url_index,
-                        remaining_pages=remaining_pages,
-                        all_listings=all_listings,
-                    )
-
-                logger.info(
-                    "двунаправленный_обход_запущен",
-                    url_index=url_index,
-                    total_pages=effective_pages,
-                    step="прямой=1, обратный=" + str(effective_pages),
-                )
-
-                # Запускаем оба обхода параллельно
-                forward_task = asyncio.create_task(
-                    self._run_forward(
-                        browser=self._browser,
-                        state=state,
-                        url_index=url_index,
-                        all_listings=all_listings,
-                    )
-                )
-                backward_task = asyncio.create_task(
-                    self._run_backward(
-                        browser=backward_browser,
-                        state=state,
-                        url_index=url_index,
-                        all_listings=all_listings,
-                        start_page=effective_pages,
-                    )
-                )
-
-                results = await asyncio.gather(
-                    forward_task, backward_task, return_exceptions=True
-                )
-
-                # Подсчитываем общее количество обработанных страниц
-                total_processed = 0
-                has_crash = False
-                crash_error: Exception | None = None
-
-                for result in results:
-                    if isinstance(result, _BrowserCrashedError):
-                        has_crash = True
-                        crash_error = result
-                        total_processed += getattr(result, "pages_processed", 0)
-                    elif isinstance(result, Exception):
-                        error_text = str(result)
-                        if any(m in error_text for m in _NETWORK_ERROR_MARKERS):
-                            has_crash = True
-                            crash_error = result
-                        else:
-                            logger.warning(
-                                "ошибка_в_браузере_обхода",
-                                error=error_text[:300],
-                                error_type=type(result).__name__,
-                                url_index=url_index,
-                            )
-                    elif isinstance(result, int):
-                        total_processed += result
-
-                if has_crash:
-                    # Один из браузеров упал — поднимаем ошибку выше для retry
-                    err = _BrowserCrashedError(
-                        f"Renderer упал: {crash_error}"
-                    )
-                    err.pages_processed = total_processed  # type: ignore[attr-defined]
-                    raise err
-
-                logger.info(
-                    "двунаправленный_обход_завершён",
-                    url_index=url_index,
-                    total_processed=total_processed,
-                    listings_collected=len(all_listings),
-                )
-
-                return total_processed
-
-            finally:
-                await backward_browser.stop()
-                logger.info(
-                    "обратный_браузер_закрыт",
-                    url_index=url_index,
-                )
-        finally:
-            await self._browser.stop()
-            logger.info(
-                "браузер_закрыт_после_ссылки",
-                url_index=url_index,
-            )
-
-    async def _safe_process_page(
-        self,
-        browser: BrowserService,
-        page_obj: Page,
-        all_listings: list[RawListing],
-        url_index: int,
-        page_num: int,
-        direction: str,
-    ) -> bool:
-        """Безопасно обрабатывает одну страницу: пауза + scroll + parse + cleanup.
-
-        Перед прокруткой выдерживает паузу _PRE_SCROLL_DELAY секунд — это даёт
-        Chromium время на завершение фоновых операций (layout, GC, decode)
-        после загрузки новой страницы. Без паузы evaluate-вызовы прокрутки
-        конкурируют с внутренними задачами renderer'а, что может привести
-        к зависанию и Target crashed.
-
-        При крахе renderer'а (Target crashed) возвращает False.
-        Данные, которые удалось спарсить до краха, сохраняются в all_listings.
-
-        Args:
-            browser: Сервис браузера.
-            page_obj: Объект страницы Playwright.
-            all_listings: Общий список объявлений.
-            url_index: Номер ссылки.
-            page_num: Номер текущей страницы.
-            direction: Направление обхода (для логов).
-
-        Returns:
-            True если страница обработана успешно, False если renderer упал.
-        """
-        try:
-            # Пауза перед прокруткой — даём странице стабилизироваться.
-            # Chromium после загрузки продолжает фоновую работу: layout,
-            # paint, GC, декодирование. Без паузы scroll evaluate может
-            # застать renderer в нестабильном состоянии.
-            await asyncio.sleep(_PRE_SCROLL_DELAY)
-
-            # Прокрутка страницы (может сработать таймаут — это нормально)
-            await browser.scroll_page()
-
-            # Проверяем, жив ли renderer после прокрутки.
-            # Если scroll_page завершился по таймауту — renderer может быть мёртв.
-            if not await self._is_page_alive(page_obj):
-                logger.error(
-                    "renderer_мёртв_после_прокрутки",
-                    url_index=url_index,
-                    page=page_num,
-                    direction=direction,
-                )
-                return False
-
-            await browser.random_delay()
-
-            # Парсинг карточек
-            page_listings = await self._parse_current_page(page_obj)
-            async with self._lock:
-                all_listings.extend(page_listings)
-
-            # Очистка DOM
-            await self._cleanup_parsed_cards(page_obj)
-
-            logger.info(
-                "страница_обработана",
-                url_index=url_index,
-                page=page_num,
-                direction=direction,
-                found=len(page_listings),
-            )
-            return True
-
-        except Exception as e:
-            error_text = str(e)
-            if any(marker in error_text for marker in _NETWORK_ERROR_MARKERS):
-                logger.error(
-                    "крах_renderer_при_обработке_страницы",
-                    url_index=url_index,
-                    page=page_num,
-                    direction=direction,
-                    error=error_text[:300],
-                    error_type=type(e).__name__,
-                )
-                return False
-
-            # Другая ошибка — логируем, но считаем страницу пропущенной (не крах)
-            logger.warning(
-                "ошибка_обработки_страницы",
-                url_index=url_index,
-                page=page_num,
-                direction=direction,
-                error=error_text[:300],
-                error_type=type(e).__name__,
-            )
-            return True  # Не крах — можно продолжать обход
-
-    async def _is_page_alive(self, page: Page) -> bool:
-        """Проверяет, жив ли renderer процесс страницы.
-
-        Выполняет до 3 попыток с паузой 2 секунды между ними.
-        Chromium может временно «подвисать» под нагрузкой (GC, layout),
-        но восстанавливаться через несколько секунд. Одна попытка
-        с коротким таймаутом даёт ложноотрицательный результат —
-        страница объявляется мёртвой, хотя через 10-15 секунд
-        она снова отвечает.
-
-        3 попытки × (5 сек таймаут + 2 сек пауза) = до 21 секунды
-        на принятие решения. Это достаточно для восстановления
-        после временной заморозки, но не слишком долго при реальном крахе.
-
-        Args:
-            page: Страница Playwright.
-
-        Returns:
-            True если renderer отвечает, False если мёртв после всех попыток.
-        """
-        max_attempts = 3
-        pause_between_attempts = 2.0
-        evaluate_timeout = 5.0
-
-        for attempt in range(1, max_attempts + 1):
-            try:
-                await asyncio.wait_for(
-                    page.evaluate("1 + 1"),
-                    timeout=evaluate_timeout,
-                )
-                # Renderer ответил — жив
-                if attempt > 1:
-                    logger.info(
-                        "renderer_восстановился",
-                        step=f"попытка={attempt}",
-                    )
-                return True
-            except Exception as e:
-                if attempt < max_attempts:
-                    logger.debug(
-                        "renderer_не_отвечает_повтор",
-                        step=f"попытка={attempt}/{max_attempts}",
-                        error=str(e)[:100],
-                        error_type=type(e).__name__,
-                    )
-                    await asyncio.sleep(pause_between_attempts)
-                else:
-                    logger.warning(
-                        "renderer_не_отвечает_все_попытки_исчерпаны",
-                        step=f"попытки={max_attempts}",
-                        error=str(e)[:100],
-                        error_type=type(e).__name__,
-                    )
-
-        return False
-
-    async def _run_forward(
-        self,
-        browser: BrowserService,
-        state: _BidirectionalState,
-        url_index: int,
-        all_listings: list[RawListing],
-    ) -> int:
-        """Прямой обход — движется вперёд с первой страницы.
-
-        При крахе renderer'а поднимает _BrowserCrashedError с количеством
-        обработанных страниц — данные до краха уже в all_listings.
-
-        Args:
-            browser: Браузер для прямого обхода.
-            state: Общее состояние синхронизации.
-            url_index: Номер ссылки для логов.
-            all_listings: Общий список объявлений.
-
-        Returns:
-            Количество обработанных страниц.
-
-        Raises:
-            _BrowserCrashedError: Если renderer упал.
-        """
-        pages_processed = 0
-        current_page = 1
-
-        while not state.should_stop:
-            logger.info(
-                "парсинг_страницы",
-                url_index=url_index,
-                page=current_page,
-                direction="прямой",
-            )
-
-            # Безопасная обработка страницы
-            success = await self._safe_process_page(
-                browser=browser,
-                page_obj=browser.page,
-                all_listings=all_listings,
-                url_index=url_index,
-                page_num=current_page,
-                direction="прямой",
-            )
-
-            if not success:
-                # Renderer упал — поднимаем ошибку для retry
-                err = _BrowserCrashedError(
-                    f"Renderer упал на странице {current_page} (прямой обход)"
-                )
-                err.pages_processed = pages_processed  # type: ignore[attr-defined]
-                # Сигнализируем обратному браузеру остановиться
-                state.stop_event.set()
-                raise err
-
-            pages_processed += 1
-
-            # Сообщаем о прогрессе и проверяем, нужно ли продолжать
-            should_continue = await state.report_forward(current_page)
-            if not should_continue:
-                logger.info(
-                    "прямой_браузер_остановлен_встреча",
-                    url_index=url_index,
-                    page=current_page,
-                )
-                break
-
-            # Переходим на следующую страницу
-            has_next = await self._go_to_next_page(browser.page)
-            if not has_next:
-                logger.info(
-                    "прямой_последняя_страница",
-                    url_index=url_index,
-                    page=current_page,
-                )
-                break
-
-            current_page += 1
-
-        return pages_processed
-
-    async def _run_backward(
-        self,
-        browser: BrowserService,
-        state: _BidirectionalState,
-        url_index: int,
-        all_listings: list[RawListing],
-        start_page: int,
-    ) -> int:
-        """Обратный обход — движется назад с последней страницы.
-
-        При крахе renderer'а поднимает _BrowserCrashedError с количеством
-        обработанных страниц — данные до краха уже в all_listings.
-
-        Args:
-            browser: Браузер для обратного обхода.
-            state: Общее состояние синхронизации.
-            url_index: Номер ссылки для логов.
-            all_listings: Общий список объявлений.
-            start_page: Номер последней страницы (откуда начинать).
-
-        Returns:
-            Количество обработанных страниц.
-
-        Raises:
-            _BrowserCrashedError: Если renderer упал.
-        """
-        pages_processed = 0
-        current_page = start_page
-
-        while not state.should_stop:
-            logger.info(
-                "парсинг_страницы",
-                url_index=url_index,
-                page=current_page,
-                direction="обратный",
-            )
-
-            # Безопасная обработка страницы
-            success = await self._safe_process_page(
-                browser=browser,
-                page_obj=browser.page,
-                all_listings=all_listings,
-                url_index=url_index,
-                page_num=current_page,
-                direction="обратный",
-            )
-
-            if not success:
-                # Renderer упал — поднимаем ошибку для retry
-                err = _BrowserCrashedError(
-                    f"Renderer упал на странице {current_page} (обратный обход)"
-                )
-                err.pages_processed = pages_processed  # type: ignore[attr-defined]
-                # Сигнализируем прямому браузеру остановиться
-                state.stop_event.set()
-                raise err
-
-            pages_processed += 1
-
-            # Сообщаем о прогрессе и проверяем, нужно ли продолжать
-            should_continue = await state.report_backward(current_page)
-            if not should_continue:
-                logger.info(
-                    "обратный_браузер_остановлен_встреча",
-                    url_index=url_index,
-                    page=current_page,
-                )
-                break
-
-            # Переходим на предыдущую страницу
-            has_prev = await self._go_to_prev_page(browser.page)
-            if not has_prev:
-                logger.info(
-                    "обратный_первая_страница_достигнута",
-                    url_index=url_index,
-                    page=current_page,
-                )
-                break
-
-            current_page -= 1
-
-        return pages_processed
-
-    async def _scrape_forward_only(
-        self,
-        url_index: int,
-        remaining_pages: int,
-        all_listings: list[RawListing],
-    ) -> int:
-        """Обходит каталог только прямым браузером (fallback).
-
-        Используется когда обратный браузер не удалось запустить.
-        При крахе renderer'а — поднимает _BrowserCrashedError.
-
-        Args:
-            url_index: Номер ссылки для логов.
-            remaining_pages: Лимит страниц.
-            all_listings: Общий список объявлений.
-
-        Returns:
-            Количество обработанных страниц.
-
-        Raises:
-            _BrowserCrashedError: Если renderer упал.
-        """
-        pages_processed = 0
-
-        while pages_processed < remaining_pages:
-            current_page = pages_processed + 1
-
-            logger.info(
-                "парсинг_страницы",
-                url_index=url_index,
-                page=current_page,
-                remaining=remaining_pages - pages_processed,
-            )
-
-            # Безопасная обработка страницы
-            success = await self._safe_process_page(
-                browser=self._browser,
-                page_obj=self._browser.page,
-                all_listings=all_listings,
-                url_index=url_index,
-                page_num=current_page,
-                direction="прямой",
-            )
-
-            if not success:
-                err = _BrowserCrashedError(
-                    f"Renderer упал на странице {current_page} (forward_only)"
-                )
-                err.pages_processed = pages_processed  # type: ignore[attr-defined]
-                raise err
-
-            pages_processed += 1
-
-            if pages_processed >= remaining_pages:
-                break
-
-            has_next = await self._go_to_next_page(self._browser.page)
-            if not has_next:
-                logger.info(
-                    "последняя_страница_достигнута",
-                    url_index=url_index,
-                    page=current_page,
-                )
-                break
-
-        return pages_processed
-
-    async def _get_total_pages(self, page: Page) -> int:
-        """Определяет общее количество страниц из пагинации.
-
-        Парсит элементы пагинации и находит максимальный номер страницы.
-        Ищет последний li.page-item с числовым значением перед кнопкой «Далее».
-
-        Args:
-            page: Страница Playwright.
-
-        Returns:
-            Общее количество страниц (минимум 1).
-        """
-        total = await page.evaluate("""
-            () => {
-                const items = document.querySelectorAll('.pagination li.page-item a');
-                let maxPage = 1;
-                for (const item of items) {
-                    const text = item.textContent.trim();
-                    const num = parseInt(text, 10);
-                    if (!isNaN(num) && num > maxPage) {
-                        maxPage = num;
-                    }
-                }
-                return maxPage;
-            }
-        """)
-
-        return max(1, total)
-
-    async def _go_to_page_number(self, page: Page, target_page: int) -> bool:
-        """Переходит на указанный номер страницы через клик по элементу пагинации.
-
-        Если номер страницы виден в пагинации — кликает по нему.
-        Если нет (скрыт за «...») — кликает по последнему видимому номеру,
-        затем повторяет попытку найти нужный номер.
-
-        Args:
-            page: Страница Playwright.
-            target_page: Номер целевой страницы.
-
-        Returns:
-            True если удалось перейти на целевую страницу.
-        """
-        max_attempts = 10
-
-        for attempt in range(max_attempts):
-            # Пробуем кликнуть по номеру целевой страницы
-            clicked = await page.evaluate("""
-                (targetPage) => {
-                    const items = document.querySelectorAll('.pagination li.page-item a');
-                    for (const item of items) {
-                        const text = item.textContent.trim();
-                        const num = parseInt(text, 10);
-                        if (num === targetPage) {
-                            item.click();
-                            return true;
-                        }
-                    }
-                    return false;
-                }
-            """, target_page)
-
-            if clicked:
-                # Ждём загрузку страницы — domcontentloaded вместо networkidle
-                await self._wait_for_pagination_load(page)
-
-                # Проверяем что карточки загрузились
-                cards_found = await self._wait_for_cards(page)
-                if cards_found:
-                    # Проверяем, что текущая страница — целевая
-                    current = await self._get_active_page_number(page)
-                    if current == target_page:
-                        logger.info(
-                            "переход_на_страницу_выполнен",
-                            target_page=target_page,
-                        )
-                        return True
-
-                logger.debug(
-                    "попытка_перехода_на_страницу",
-                    attempt=attempt + 1,
-                    target_page=target_page,
-                )
-                continue
-
-            # Номер не виден — кликаем по максимальному видимому номеру,
-            # чтобы сдвинуть пагинацию ближе к целевой странице
-            shifted = await page.evaluate("""
-                (targetPage) => {
-                    const items = document.querySelectorAll('.pagination li.page-item a');
-                    let maxVisible = 0;
-                    let maxElement = null;
-                    for (const item of items) {
-                        const text = item.textContent.trim();
-                        const num = parseInt(text, 10);
-                        if (!isNaN(num) && num > maxVisible && num < targetPage) {
-                            maxVisible = num;
-                            maxElement = item;
-                        }
-                    }
-                    if (maxElement) {
-                        maxElement.click();
-                        return maxVisible;
-                    }
-                    return 0;
-                }
-            """, target_page)
-
-            if not shifted:
-                logger.warning(
-                    "не_удалось_сдвинуть_пагинацию",
-                    target_page=target_page,
-                    attempt=attempt + 1,
-                )
-                return False
-
-            # Ждём загрузку после сдвига
-            await self._wait_for_pagination_load(page)
-
-            logger.debug(
-                "пагинация_сдвинута",
-                shifted_to=shifted,
-                target_page=target_page,
-                attempt=attempt + 1,
-            )
-
-        logger.warning(
-            "не_удалось_перейти_на_страницу_лимит_попыток",
-            target_page=target_page,
-            max_attempts=max_attempts,
-        )
-        return False
-
-    async def _get_active_page_number(self, page: Page) -> int:
-        """Определяет номер текущей активной страницы в пагинации.
-
-        Args:
-            page: Страница Playwright.
-
-        Returns:
-            Номер активной страницы или 0, если не определён.
-        """
-        result = await page.evaluate("""
-            () => {
-                const active = document.querySelector('.pagination li.page-item.active a');
-                if (active) {
-                    const num = parseInt(active.textContent.trim(), 10);
-                    return isNaN(num) ? 0 : num;
-                }
-                return 0;
-            }
-        """)
-        return result
-
-    async def _wait_for_cards(self, page: Page) -> bool:
-        """Ожидает появления карточек объявлений на странице.
-
-        Args:
-            page: Страница Playwright.
-
-        Returns:
-            True если карточки появились, False если таймаут.
-        """
-        try:
-            await page.wait_for_selector(
-                ".card[data-observe-id]",
-                timeout=30000,
-            )
-            return True
-        except Exception as e:
-            logger.warning(
-                "карточки_не_найдены_на_странице",
-                error=str(e)[:200],
-                error_type=type(e).__name__,
-                path=page.url,
-            )
-            return False
-
-    async def _wait_for_pagination_load(self, page: Page) -> None:
-        """Ожидает загрузку страницы после клика по пагинации.
-
-        Использует domcontentloaded вместо networkidle — не ждёт
-        завершения рекламы, аналитики и фоновых запросов.
-        После загрузки DOM ожидает появления карточек и даёт
-        короткую паузу для рендеринга.
-
-        Args:
-            page: Страница Playwright.
-        """
-        try:
-            await page.wait_for_load_state(
-                "domcontentloaded", timeout=_PAGINATION_LOAD_TIMEOUT_MS
-            )
-        except Exception:
-            pass
-
-        # Ждём появления карточек — это конкретный индикатор
-        # того, что нужный контент загружен
-        await self._wait_for_cards(page)
-
-        # Короткая пауза для стабилизации JS-рендеринга
-        await asyncio.sleep(_PAGINATION_SETTLE_DELAY)
-
-    async def _cleanup_parsed_cards(self, page: Page) -> None:
-        """Удаляет обработанные карточки из DOM браузера.
-
-        Предотвращает рост памяти при обходе большого количества страниц.
-        Без очистки: 100 страниц × 20 карточек = 2000 DOM-элементов
-        с изображениями — Chromium замедляется, scroll_page тормозит.
-
-        Удаляются только карточки с data-observe-id (уже спарсенные).
-        Пагинация и остальные элементы страницы не затрагиваются.
-
-        Args:
-            page: Страница Playwright.
-        """
-        try:
-            removed = await page.evaluate("""
-                () => {
-                    const cards = document.querySelectorAll('.card[data-observe-id]');
-                    const count = cards.length;
-                    for (const card of cards) {
-                        card.remove();
-                    }
-                    return count;
-                }
-            """)
-
-            if removed > 0:
-                logger.debug(
-                    "dom_очищен",
-                    step=f"удалено_карточек={removed}",
-                )
-        except Exception as e:
-            # Если evaluate упал — renderer может быть мёртв.
-            # Не логируем как ошибку — _safe_process_page проверит is_page_alive.
-            logger.debug(
-                "ошибка_очистки_dom",
-                error=str(e)[:200],
-                error_type=type(e).__name__,
-            )
-
-    async def _parse_current_page(self, page: Page) -> list[RawListing]:
-        """Парсит все карточки объявлений на текущей странице.
-
-        Потокобезопасная дедупликация через asyncio.Lock.
-
-        Args:
-            page: Страница Playwright.
-
-        Returns:
-            Список уникальных объявлений с текущей страницы.
-        """
-        listings: list[RawListing] = []
-
-        # Находим все карточки по атрибуту data-observe-id
-        cards = await page.query_selector_all(".card[data-observe-id]")
-
-        if not cards:
-            logger.warning("нет_карточек_на_странице")
-            return listings
-
-        for card in cards:
-            try:
-                # Предварительная проверка ID до полного парсинга
-                external_id = await card.get_attribute("data-observe-id")
-                if not external_id:
-                    continue
-
-                async with self._lock:
-                    if external_id in self._seen_ids:
-                        self._duplicates_count += 1
-                        continue
-                    # Резервируем ID сразу, чтобы второй браузер не взял его
-                    self._seen_ids.add(external_id)
-
-                listing = await self._parse_card(card, page)
-                if listing is not None:
-                    listings.append(listing)
-                else:
-                    # Если парсинг не удался — убираем из seen
-                    async with self._lock:
-                        self._seen_ids.discard(external_id)
-            except Exception as e:
-                logger.warning(
-                    "ошибка_парсинга_карточки",
-                    error=str(e),
-                    error_type=type(e).__name__,
-                )
 
         return listings
 
-    async def _parse_card(self, card: "any", page: Page) -> RawListing | None:  # type: ignore[name-defined]
-        """Извлекает данные из одной карточки объявления.
+    # ── Фаза A: Сбор ID ──────────────────────────────────────
+
+    async def _collect_ids_for_url(
+        self,
+        search_url: str,
+        url_index: int,
+        current_proxy: ProxyConfig | None,
+        previous_headers: dict[str, str] | None,
+    ) -> tuple[list[int], dict[str, str] | None, ProxyConfig | None]:
+        """Собирает ID объявлений для одной ссылки поиска.
+
+        При сбое переключается на прокси и продолжает с того же offset.
 
         Args:
-            card: Элемент карточки на странице.
-            page: Страница Playwright.
+            search_url: URL страницы поиска.
+            url_index: Номер ссылки (для логов).
+            current_proxy: Текущая прокси (None = без прокси).
+            previous_headers: Заголовки от предыдущей ссылки (для переиспользования).
 
         Returns:
-            Объект RawListing или None, если не удалось извлечь обязательные данные.
+            Кортеж (список новых ID, актуальные заголовки, текущая прокси).
         """
-        # ID объявления
-        external_id = await card.get_attribute("data-observe-id")
-        if not external_id:
+        new_ids: list[int] = []
+        offset: int = 0
+        consecutive_errors: int = 0
+        proxy_restarts: int = 0
+        api_headers = previous_headers
+        map_url: str | None = None
+
+        while True:
+            # Если нет перехваченного URL — загружаем страницу
+            if map_url is None:
+                load_result = await self._load_page_and_intercept(
+                    search_url=search_url,
+                    proxy=current_proxy,
+                )
+
+                if load_result is None:
+                    # Не удалось загрузить — пробуем прокси
+                    switched = await self._switch_to_proxy(
+                        current_proxy=current_proxy,
+                        url_index=url_index,
+                        proxy_restarts=proxy_restarts,
+                    )
+                    if switched is None:
+                        logger.warning(
+                            "не_удалось_загрузить_ссылку_пропуск",
+                            url_index=url_index,
+                        )
+                        break
+
+                    current_proxy, proxy_restarts = switched
+                    continue
+
+                map_url, api_headers = load_result
+
+            # Пагинация через fetch()
+            page = self._browser.page
+            paginated_url = _replace_offset(map_url, offset)
+
+            result = await _fetch_get(page, paginated_url, api_headers)
+
+            # Проверяем ошибки
+            if _is_error_response(result):
+                consecutive_errors += 1
+                error_msg = _extract_error_message(result)
+
+                logger.warning(
+                    "ошибка_api_запроса",
+                    url_index=url_index,
+                    offset=offset,
+                    error=error_msg,
+                    consecutive=consecutive_errors,
+                )
+
+                if consecutive_errors >= _MAX_CONSECUTIVE_ERRORS:
+                    # Переключаемся на прокси
+                    switched = await self._switch_to_proxy(
+                        current_proxy=current_proxy,
+                        url_index=url_index,
+                        proxy_restarts=proxy_restarts,
+                    )
+                    if switched is None:
+                        logger.warning(
+                            "прокси_исчерпаны_продолжаем_с_собранными",
+                            url_index=url_index,
+                            collected=len(new_ids),
+                        )
+                        break
+
+                    current_proxy, proxy_restarts = switched
+                    consecutive_errors = 0
+                    map_url = None  # Перехватим новый URL после перезагрузки
+                    continue
+
+                await asyncio.sleep(_PAUSE_BETWEEN_API)
+                continue
+
+            # Успешный ответ — сбрасываем счётчик ошибок
+            consecutive_errors = 0
+
+            objects = _extract_objects(result.get("data"))
+
+            if not objects:
+                logger.debug(
+                    "пустой_ответ_конец_пагинации",
+                    url_index=url_index,
+                    offset=offset,
+                )
+                break
+
+            # Извлекаем ID с дедупликацией
+            page_new = 0
+            page_dups = 0
+
+            for obj in objects:
+                obj_id = obj.get("id")
+                if obj_id is None:
+                    continue
+                if obj_id in self._seen_ids:
+                    page_dups += 1
+                    self._duplicates_count += 1
+                    continue
+                self._seen_ids.add(obj_id)
+                new_ids.append(obj_id)
+                page_new += 1
+
+            logger.debug(
+                "страница_api_обработана",
+                url_index=url_index,
+                offset=offset,
+                received=len(objects),
+                new=page_new,
+                duplicates=page_dups,
+            )
+
+            # Последняя страница
+            if len(objects) < _API_PAGE_SIZE:
+                break
+
+            offset += _API_PAGE_SIZE
+            await asyncio.sleep(_PAUSE_BETWEEN_API)
+
+        return new_ids, api_headers, current_proxy
+
+    async def _load_page_and_intercept(
+        self,
+        search_url: str,
+        proxy: ProxyConfig | None,
+    ) -> tuple[str, dict[str, str]] | None:
+        """Загружает страницу и перехватывает URL searchObjectsOnMap.
+
+        Args:
+            search_url: URL страницы поиска.
+            proxy: Прокси для браузера (None = без прокси).
+
+        Returns:
+            Кортеж (перехваченный URL API, заголовки) или None при ошибке.
+        """
+        captured: dict = {"url": None, "headers": None}
+
+        try:
+            # Запускаем браузер (или перезапускаем с новой прокси)
+            await self._browser.stop()
+            await self._browser.start(proxy=proxy)
+
+            page = self._browser.page
+
+            # Перехватчик searchObjectsOnMap
+            async def _intercept(route, request):
+                url = request.url
+                if "searchObjectsOnMap" in url and captured["url"] is None:
+                    captured["url"] = url
+                    captured["headers"] = dict(request.headers)
+                await route.continue_()
+
+            await page.route("**/api/json/**", _intercept)
+
+            # Загрузка страницы
+            await page.goto(search_url, wait_until="networkidle")
+
+            try:
+                await page.wait_for_selector(
+                    ".card[data-observe-id]", timeout=30000,
+                )
+            except Exception:
+                pass
+
+            # Ждём пока фронтенд завершит API-запросы
+            await asyncio.sleep(_PAUSE_AFTER_PAGE_LOAD)
+
+            # Снимаем перехватчик (чтобы не мешал fetch)
+            await page.unroute("**/api/json/**")
+
+            if not captured["url"]:
+                logger.warning(
+                    "searchObjectsOnMap_не_перехвачен",
+                    url=search_url[:100],
+                )
+                return None
+
+            # Фильтруем заголовки
+            api_headers = {
+                k: v for k, v in captured["headers"].items()
+                if k.lower() not in _SKIP_HEADERS
+            }
+
+            logger.info(
+                "api_url_перехвачен",
+                api_url=captured["url"][:120],
+            )
+
+            return captured["url"], api_headers
+
+        except Exception as e:
+            logger.warning(
+                "ошибка_загрузки_страницы",
+                error=str(e)[:300],
+                error_type=type(e).__name__,
+            )
             return None
 
-        # Название объявления
-        title_el = await card.query_selector("h2.card-content__object-title")
-        title = await title_el.inner_text() if title_el else None
-        if not title:
-            title_el = await card.query_selector(".card-content__object-title")
-            title = await title_el.inner_text() if title_el else None
-        if not title:
+    async def _switch_to_proxy(
+        self,
+        current_proxy: ProxyConfig | None,
+        url_index: int,
+        proxy_restarts: int,
+    ) -> tuple[ProxyConfig, int] | None:
+        """Переключается на следующую прокси из пула.
+
+        Args:
+            current_proxy: Текущая прокси (None = без прокси).
+            url_index: Номер ссылки (для логов).
+            proxy_restarts: Количество перезапусков для этой ссылки.
+
+        Returns:
+            Кортеж (новая прокси, обновлённый счётчик) или None если исчерпаны.
+        """
+        if proxy_restarts >= _MAX_PROXY_RESTARTS:
+            logger.warning(
+                "лимит_перезапусков_прокси_достигнут",
+                url_index=url_index,
+                restarts=proxy_restarts,
+            )
             return None
 
-        # URL объявления
-        link_el = await card.query_selector("a.card-content")
-        href = await link_el.get_attribute("href") if link_el else None
-        if not href:
-            link_el = await card.query_selector("a.card__link")
-            href = await link_el.get_attribute("href") if link_el else None
-        if not href:
+        next_proxy = self._get_next_proxy(exclude=current_proxy)
+
+        if next_proxy is None:
+            logger.warning(
+                "пул_прокси_пуст",
+                url_index=url_index,
+            )
             return None
 
-        url = href if href.startswith("http") else f"{_BASE_URL}{href}"
+        logger.info(
+            "переключение_на_прокси",
+            url_index=url_index,
+            proxy=str(next_proxy),
+            restart_num=proxy_restarts + 1,
+        )
 
-        # Цена за сутки
-        price_per_night = await self._extract_price(card)
+        await self._browser.stop()
+        await asyncio.sleep(2)
 
-        # Рейтинг
-        rating = await self._extract_rating(card)
+        return next_proxy, proxy_restarts + 1
 
-        # Количество отзывов
-        review_count = await self._extract_review_count(card)
+    async def _ensure_browser_page(
+        self, proxy: ProxyConfig | None,
+    ) -> Page | None:
+        """Проверяет наличие живой страницы, при необходимости перезапускает.
 
-        # Площадь
-        area_m2 = await self._extract_area(card)
+        Args:
+            proxy: Прокси для браузера.
 
-        # Количество гостей
-        guests = await self._extract_guests(card)
+        Returns:
+            Страница Playwright или None при ошибке.
+        """
+        try:
+            if await self._browser.is_alive():
+                return self._browser.page
+        except Exception:
+            pass
 
-        # Адрес
-        address = await self._extract_address(card)
+        try:
+            await self._browser.stop()
+            await self._browser.start(proxy=proxy)
+            return self._browser.page
+        except Exception as e:
+            logger.error(
+                "не_удалось_запустить_браузер",
+                error=str(e)[:300],
+            )
+            return None
 
-        # Метро
-        metro_station = await self._extract_metro(card)
+    # ── Фаза B: Получение полных данных ──────────────────────
 
-        # Быстрое бронирование
-        has_instant_booking = await self._extract_instant_booking(card)
+    async def _fetch_full_listings(
+        self,
+        page: Page,
+        ids: list[int],
+        headers: dict[str, str],
+    ) -> list[RawListing]:
+        """Получает полные данные объявлений пачками по 50 ID.
 
+        Args:
+            page: Страница Playwright для fetch().
+            ids: Список ID объявлений.
+            headers: Заголовки API.
+
+        Returns:
+            Список RawListing с заполненными полями.
+        """
+        listings: list[RawListing] = []
+        total_batches = (len(ids) + _API_PAGE_SIZE - 1) // _API_PAGE_SIZE
+
+        logger.info(
+            "начало_получения_полных_данных",
+            total_ids=len(ids),
+            total_batches=total_batches,
+        )
+
+        for i in range(0, len(ids), _API_PAGE_SIZE):
+            batch = ids[i: i + _API_PAGE_SIZE]
+            batch_num = i // _API_PAGE_SIZE + 1
+
+            ids_params = "&".join(f"ids[]={oid}" for oid in batch)
+            url = (
+                f"{_API_SEARCH_BY_LOCATION}"
+                f"?{ids_params}"
+                f"&max_guests=2&relevance=pairs&currencyId=1"
+            )
+
+            result = await _fetch_get(page, url, headers)
+
+            if _is_error_response(result):
+                error_msg = _extract_error_message(result)
+                logger.warning(
+                    "ошибка_получения_данных_пачки",
+                    batch=f"{batch_num}/{total_batches}",
+                    error=error_msg,
+                )
+                await asyncio.sleep(_PAUSE_BETWEEN_API)
+                continue
+
+            objects = _extract_objects(result.get("data"))
+
+            if not objects:
+                logger.debug(
+                    "пустая_пачка",
+                    batch=f"{batch_num}/{total_batches}",
+                )
+                await asyncio.sleep(_PAUSE_BETWEEN_API)
+                continue
+
+            for obj in objects:
+                listing = _parse_api_object(obj)
+                if listing is not None:
+                    listings.append(listing)
+
+            if batch_num % 50 == 0 or batch_num == total_batches:
+                logger.info(
+                    "прогресс_получения_данных",
+                    batch=f"{batch_num}/{total_batches}",
+                    listings_collected=len(listings),
+                )
+
+            await asyncio.sleep(_PAUSE_BETWEEN_API)
+
+        return listings
+
+
+# ── Вспомогательные функции (модульный уровень) ──────────────
+
+
+def _replace_offset(url: str, new_offset: int) -> str:
+    """Заменяет параметр offset в URL через regex.
+
+    Не перекодирует квадратные скобки и другие параметры —
+    сохраняет оригинальный формат URL от фронтенда.
+
+    Args:
+        url: Исходный URL.
+        new_offset: Новое значение offset.
+
+    Returns:
+        URL с заменённым offset.
+    """
+    result = re.sub(r"offset=\d+", f"offset={new_offset}", url)
+
+    if "offset=" not in result:
+        separator = "&" if "?" in result else "?"
+        result = f"{result}{separator}offset={new_offset}"
+
+    return result
+
+
+async def _fetch_get(page: Page, url: str, headers: dict[str, str]) -> dict:
+    """Выполняет GET-запрос через fetch() в контексте браузера.
+
+    Args:
+        page: Страница Playwright.
+        url: URL запроса.
+        headers: Заголовки запроса.
+
+    Returns:
+        Словарь с ключами success, status, data/error.
+    """
+    try:
+        result = await page.evaluate("""
+            async ({url, headers}) => {
+                try {
+                    const resp = await fetch(url, {
+                        method: 'GET',
+                        headers: headers,
+                        credentials: 'include'
+                    });
+                    const text = await resp.text();
+                    try {
+                        return {
+                            success: true,
+                            status: resp.status,
+                            data: JSON.parse(text)
+                        };
+                    } catch (e) {
+                        return {
+                            success: false,
+                            error: 'JSON parse error',
+                            raw: text.substring(0, 500)
+                        };
+                    }
+                } catch (e) {
+                    return {success: false, error: e.message};
+                }
+            }
+        """, {"url": url, "headers": headers})
+        return result
+    except Exception as e:
+        return {"success": False, "error": str(e)}
+
+
+def _is_error_response(result: dict) -> bool:
+    """Проверяет, является ли ответ ошибочным.
+
+    Args:
+        result: Результат _fetch_get.
+
+    Returns:
+        True если ответ содержит ошибку.
+    """
+    if not result.get("success"):
+        return True
+
+    data = result.get("data")
+    if isinstance(data, dict):
+        if data.get("success") is False:
+            return True
+        errors = data.get("errors")
+        if errors and isinstance(errors, list) and len(errors) > 0:
+            return True
+
+    return False
+
+
+def _extract_error_message(result: dict) -> str:
+    """Извлекает текст ошибки из ответа API.
+
+    Args:
+        result: Результат _fetch_get.
+
+    Returns:
+        Строка с описанием ошибки.
+    """
+    # Ошибка fetch
+    if not result.get("success"):
+        return result.get("error", "неизвестная ошибка fetch")
+
+    # Ошибка API
+    data = result.get("data", {})
+    if isinstance(data, dict):
+        errors = data.get("errors", [])
+        if errors:
+            return str(errors)
+
+    return "неизвестная ошибка API"
+
+
+def _extract_objects(data) -> list[dict] | None:
+    """Извлекает массив объектов из ответа API.
+
+    Пробует разные структуры: data, data.objects, data.data и т.д.
+
+    Args:
+        data: Parsed JSON ответа.
+
+    Returns:
+        Список объектов или None.
+    """
+    if isinstance(data, list) and data:
+        return data
+
+    if not isinstance(data, dict):
+        return None
+
+    for key in ("objects", "items", "results", "list", "data"):
+        val = data.get(key)
+        if isinstance(val, list) and val:
+            return val
+        if isinstance(val, dict):
+            for subkey in ("objects", "items", "results", "list"):
+                subval = val.get(subkey)
+                if isinstance(subval, list) and subval:
+                    return subval
+
+    return None
+
+
+def _parse_api_object(obj: dict) -> RawListing | None:
+    """Преобразует объект из searchObjectsByLocation в RawListing.
+
+    Args:
+        obj: Словарь объекта из API.
+
+    Returns:
+        RawListing или None, если обязательные поля отсутствуют.
+    """
+    external_id = obj.get("id")
+    title = obj.get("title", "")
+
+    if not external_id or not title:
+        return None
+
+    external_id_str = str(external_id)
+
+    # Цена
+    prices = obj.get("prices", {})
+    per_day = prices.get("perDay", {}) if isinstance(prices, dict) else {}
+    price_per_night = per_day.get("value") if isinstance(per_day, dict) else None
+
+    # Рейтинг и отзывы
+    rating_data = obj.get("rating", {})
+    rating: float | None = None
+    review_count: int | None = None
+
+    if isinstance(rating_data, dict):
+        raw_rating = rating_data.get("value")
+        if raw_rating is not None:
+            try:
+                rating = round(float(raw_rating), 1)
+            except (ValueError, TypeError):
+                pass
+        review_count = rating_data.get("count")
+
+    # Свойства объекта
+    props = obj.get("properties", {})
+    area_m2: int | None = None
+    guests: int | None = None
+    has_instant_booking: bool = False
+
+    if isinstance(props, dict):
+        area_m2 = props.get("area")
+        guests = props.get("maxGuests")
+        has_instant_booking = bool(props.get("bookingNow", False))
+
+    # Адрес
+    location = obj.get("location", {})
+    address: str | None = None
+
+    if isinstance(location, dict):
+        addr_data = location.get("address", {})
+        if isinstance(addr_data, dict):
+            address = addr_data.get("title")
+
+    # Метро
+    metro_station: str | None = None
+
+    if isinstance(location, dict):
+        relations = location.get("relations", {})
+        if isinstance(relations, dict):
+            metro_data = relations.get("metro", {})
+            if isinstance(metro_data, dict):
+                metro_title = metro_data.get("title", "")
+                metro_dist = metro_data.get("distance")
+                if metro_title:
+                    metro_station = (
+                        f"{metro_title}, {metro_dist} м"
+                        if metro_dist
+                        else metro_title
+                    )
+
+    # URL
+    url = f"https://sutochno.ru/{external_id_str}"
+
+    try:
         return RawListing(
-            external_id=external_id,
+            external_id=external_id_str,
             title=title.strip(),
             url=url,
             price_per_night=price_per_night,
@@ -1381,330 +834,10 @@ class ScraperService:
             metro_station=metro_station,
             has_instant_booking=has_instant_booking,
         )
-
-    async def _extract_price(self, card: "any") -> int | None:  # type: ignore[name-defined]
-        """Извлекает цену за сутки из карточки.
-
-        Args:
-            card: Элемент карточки.
-
-        Returns:
-            Цена в рублях или None.
-        """
-        price_el = await card.query_selector(".price-total__number")
-        if not price_el:
-            return None
-
-        price_text = await price_el.inner_text()
-        digits = re.sub(r"[^\d]", "", price_text)
-        return int(digits) if digits else None
-
-    async def _extract_rating(self, card: "any") -> float | None:  # type: ignore[name-defined]
-        """Извлекает рейтинг объекта из карточки.
-
-        Args:
-            card: Элемент карточки.
-
-        Returns:
-            Рейтинг как float или None.
-        """
-        rating_el = await card.query_selector(".rating-list__rating")
-        if rating_el:
-            rating_text = await rating_el.inner_text()
-            rating_text = rating_text.replace(",", ".").strip()
-            try:
-                return float(rating_text)
-            except ValueError:
-                pass
-
-        rating_list_el = await card.query_selector(".rating-list[content]")
-        if rating_list_el:
-            content = await rating_list_el.get_attribute("content")
-            if content:
-                content = content.replace(",", ".").strip()
-                try:
-                    return float(content)
-                except ValueError:
-                    pass
-
-        rating_data_el = await card.query_selector("[data-rating]")
-        if rating_data_el:
-            data_rating = await rating_data_el.get_attribute("data-rating")
-            if data_rating:
-                try:
-                    return float(data_rating)
-                except ValueError:
-                    pass
-
-        return None
-
-    async def _extract_review_count(self, card: "any") -> int | None:  # type: ignore[name-defined]
-        """Извлекает количество отзывов из карточки.
-
-        Args:
-            card: Элемент карточки.
-
-        Returns:
-            Количество отзывов или None.
-        """
-        review_el = await card.query_selector(".card-content .rating-list__count")
-        if review_el:
-            text = await review_el.inner_text()
-            digits = re.sub(r"[^\d]", "", text)
-            return int(digits) if digits else None
-
-        review_carousel_el = await card.query_selector(
-            ".carousel__owner-options .rating-list__count"
+    except ValueError as e:
+        logger.debug(
+            "ошибка_создания_listing",
+            external_id=external_id_str,
+            error=str(e),
         )
-        if review_carousel_el:
-            text = await review_carousel_el.inner_text()
-            digits = re.sub(r"[^\d]", "", text)
-            return int(digits) if digits else None
-
         return None
-
-    async def _extract_area(self, card: "any") -> int | None:  # type: ignore[name-defined]
-        """Извлекает площадь объекта из карточки.
-
-        Args:
-            card: Элемент карточки.
-
-        Returns:
-            Площадь в м² или None.
-        """
-        facilities = await card.query_selector_all(".card-content__facility")
-        for facility in facilities:
-            text = await facility.inner_text()
-            match = re.search(r"(\d+)\s*м", text)
-            if match:
-                return int(match.group(1))
-
-        size_el = await card.query_selector(".carousel__size")
-        if size_el:
-            text = await size_el.inner_text()
-            match = re.search(r"(\d+)", text)
-            if match:
-                return int(match.group(1))
-
-        return None
-
-    async def _extract_guests(self, card: "any") -> int | None:  # type: ignore[name-defined]
-        """Извлекает количество гостей из карточки.
-
-        Args:
-            card: Элемент карточки.
-
-        Returns:
-            Количество гостей или None.
-        """
-        facilities = await card.query_selector_all(".card-content__facility")
-        for facility in facilities:
-            text = await facility.inner_text()
-            match = re.search(r"(\d+)\s*гост", text)
-            if match:
-                return int(match.group(1))
-        return None
-
-    async def _extract_address(self, card: "any") -> str | None:  # type: ignore[name-defined]
-        """Извлекает адрес объекта из карточки.
-
-        Args:
-            card: Элемент карточки.
-
-        Returns:
-            Строка адреса или None.
-        """
-        properties = await card.query_selector_all(".card-content__property")
-        for prop in properties:
-            icon = await prop.query_selector(".icon-app-point")
-            if icon:
-                text_el = await prop.query_selector(".card-content__property-text")
-                if text_el:
-                    return (await text_el.inner_text()).strip()
-        return None
-
-    async def _extract_metro(self, card: "any") -> str | None:  # type: ignore[name-defined]
-        """Извлекает ближайшую станцию метро из карточки.
-
-        Args:
-            card: Элемент карточки.
-
-        Returns:
-            Станция метро с расстоянием или None.
-        """
-        properties = await card.query_selector_all(".card-content__property")
-        for prop in properties:
-            icon = await prop.query_selector(".icon-app-navigator")
-            if icon:
-                text_el = await prop.query_selector(".card-content__property-text")
-                if text_el:
-                    return (await text_el.inner_text()).strip()
-        return None
-
-    async def _extract_instant_booking(self, card: "any") -> bool:  # type: ignore[name-defined]
-        """Проверяет наличие быстрого бронирования.
-
-        Args:
-            card: Элемент карточки.
-
-        Returns:
-            True если есть быстрое бронирование.
-        """
-        lightning_el = await card.query_selector(".icon-app-lightning-2")
-        return lightning_el is not None
-
-    async def _go_to_next_page(self, page: Page) -> bool:
-        """Переходит на следующую страницу каталога.
-
-        Находит кнопку «Далее» среди элементов li.navigation
-        и выполняет клик.
-
-        Args:
-            page: Страница Playwright.
-
-        Returns:
-            True если переход выполнен, False если кнопки нет.
-        """
-        # Прокручиваем к пагинации
-        await page.evaluate("""
-            () => {
-                const pagination = document.querySelector('.pagination-wrapper');
-                if (pagination) pagination.scrollIntoView({behavior: 'smooth', block: 'center'});
-            }
-        """)
-        await asyncio.sleep(1)
-
-        # Ищем кнопку «Далее»
-        next_link = await page.evaluate("""
-            () => {
-                const items = document.querySelectorAll('li.navigation');
-                for (const item of items) {
-                    const text = item.querySelector('.pagination-arrow__text');
-                    if (text && text.textContent.trim() === 'Далее') {
-                        return true;
-                    }
-                }
-                return false;
-            }
-        """)
-
-        if not next_link:
-            logger.debug("кнопка_далее_не_найдена")
-            return False
-
-        # Кликаем по кнопке «Далее»
-        clicked = await page.evaluate("""
-            () => {
-                const items = document.querySelectorAll('li.navigation');
-                for (const item of items) {
-                    const text = item.querySelector('.pagination-arrow__text');
-                    if (text && text.textContent.trim() === 'Далее') {
-                        const link = item.querySelector('a');
-                        if (link) {
-                            link.click();
-                            return true;
-                        }
-                    }
-                }
-                return false;
-            }
-        """)
-
-        if not clicked:
-            logger.debug("клик_далее_не_выполнен")
-            return False
-
-        logger.debug("клик_далее_выполнен")
-
-        # Ждём загрузку — domcontentloaded + карточки вместо networkidle
-        await self._wait_for_pagination_load(page)
-
-        # Прокручиваем наверх
-        await page.evaluate("window.scrollTo(0, 0)")
-
-        # Проверяем карточки
-        cards = await page.query_selector_all(".card[data-observe-id]")
-        if not cards:
-            logger.warning("карточки_не_загрузились_после_пагинации")
-            return False
-
-        logger.debug("переход_на_следующую_страницу_выполнен")
-        return True
-
-    async def _go_to_prev_page(self, page: Page) -> bool:
-        """Переходит на предыдущую страницу каталога.
-
-        Находит кнопку «Назад» среди элементов li.navigation
-        и выполняет клик.
-
-        Args:
-            page: Страница Playwright.
-
-        Returns:
-            True если переход выполнен, False если кнопки нет.
-        """
-        # Прокручиваем к пагинации
-        await page.evaluate("""
-            () => {
-                const pagination = document.querySelector('.pagination-wrapper');
-                if (pagination) pagination.scrollIntoView({behavior: 'smooth', block: 'center'});
-            }
-        """)
-        await asyncio.sleep(1)
-
-        # Ищем кнопку «Назад»
-        prev_link = await page.evaluate("""
-            () => {
-                const items = document.querySelectorAll('li.navigation');
-                for (const item of items) {
-                    const text = item.querySelector('.pagination-arrow__text');
-                    if (text && text.textContent.trim() === 'Назад') {
-                        return true;
-                    }
-                }
-                return false;
-            }
-        """)
-
-        if not prev_link:
-            logger.debug("кнопка_назад_не_найдена")
-            return False
-
-        # Кликаем по кнопке «Назад»
-        clicked = await page.evaluate("""
-            () => {
-                const items = document.querySelectorAll('li.navigation');
-                for (const item of items) {
-                    const text = item.querySelector('.pagination-arrow__text');
-                    if (text && text.textContent.trim() === 'Назад') {
-                        const link = item.querySelector('a');
-                        if (link) {
-                            link.click();
-                            return true;
-                        }
-                    }
-                }
-                return false;
-            }
-        """)
-
-        if not clicked:
-            logger.debug("клик_назад_не_выполнен")
-            return False
-
-        logger.debug("клик_назад_выполнен")
-
-        # Ждём загрузку — domcontentloaded + карточки вместо networkidle
-        await self._wait_for_pagination_load(page)
-
-        # Прокручиваем наверх
-        await page.evaluate("window.scrollTo(0, 0)")
-
-        # Проверяем карточки
-        cards = await page.query_selector_all(".card[data-observe-id]")
-        if not cards:
-            logger.warning("карточки_не_загрузились_после_пагинации_назад")
-            return False
-
-        logger.debug("переход_на_предыдущую_страницу_выполнен")
-        return True
