@@ -1,5 +1,6 @@
 """Клиент API sutochno.ru — bulk-запросы и скользящее окно."""
 
+import asyncio
 from datetime import date, timedelta
 
 from playwright.async_api import Page
@@ -15,6 +16,18 @@ from src.services.listing.constants import (
 from src.services.listing.price_parser import PriceParser
 
 logger = get_logger("api_client")
+
+# Таймаут для одного fetch()-запроса внутри браузера (секунды).
+# Если прокси не отвечает за это время — запрос отменяется через AbortController.
+_FETCH_TIMEOUT_SECONDS: int = 240
+
+# Таймаут для всего page.evaluate() вызова (секунды).
+# Страховка на уровне Python — если JavaScript целиком завис.
+# Для bulk-запроса (1 fetch) — 60 секунд.
+_BULK_EVALUATE_TIMEOUT: float = 180.0
+
+# Для скользящего окна (60 запросов пакетами по 5 с паузами) — 300 секунд (5 минут).
+_SLIDING_EVALUATE_TIMEOUT: float = 300.0
 
 
 class ApiClient:
@@ -73,80 +86,108 @@ class ApiClient:
             step=f"id={object_id}, период={start_date}→{end_date}",
         )
 
-        result = await page.evaluate(
-            """
-            async ({apiUrl, objectId, dateBegin, dateEnd, token, guests}) => {
-                try {
-                    const resp = await fetch(apiUrl, {
-                        method: 'POST',
-                        headers: {
-                            'Content-Type': 'application/json',
-                            'Accept': 'application/json',
-                            'token': token,
-                            'platform': 'js',
-                            'api-version': '1.13'
-                        },
-                        body: JSON.stringify({
-                            objects: [parseInt(objectId)],
-                            rooms_cnt: {},
-                            guests: guests,
-                            date_begin: dateBegin,
-                            date_end: dateEnd,
-                            currency_id: 1,
-                            is_pets: 0,
-                            documents: 0,
-                            target: 0,
-                            ages: [],
-                            no_time: 1
-                        })
-                    });
+        try:
+            result = await asyncio.wait_for(
+                page.evaluate(
+                    """
+                    async ({apiUrl, objectId, dateBegin, dateEnd, token, guests, fetchTimeout}) => {
+                        try {
+                            const controller = new AbortController();
+                            const timeoutId = setTimeout(() => controller.abort(), fetchTimeout * 1000);
 
-                    if (!resp.ok) {
-                        return {success: false, error: 'http_' + resp.status};
+                            const resp = await fetch(apiUrl, {
+                                method: 'POST',
+                                headers: {
+                                    'Content-Type': 'application/json',
+                                    'Accept': 'application/json',
+                                    'token': token,
+                                    'platform': 'js',
+                                    'api-version': '1.13'
+                                },
+                                body: JSON.stringify({
+                                    objects: [parseInt(objectId)],
+                                    rooms_cnt: {},
+                                    guests: guests,
+                                    date_begin: dateBegin,
+                                    date_end: dateEnd,
+                                    currency_id: 1,
+                                    is_pets: 0,
+                                    documents: 0,
+                                    target: 0,
+                                    ages: [],
+                                    no_time: 1
+                                }),
+                                signal: controller.signal
+                            });
+
+                            clearTimeout(timeoutId);
+
+                            if (!resp.ok) {
+                                return {success: false, error: 'http_' + resp.status};
+                            }
+
+                            const data = await resp.json();
+
+                            if (!data.success) {
+                                return {success: false, error: 'api_false'};
+                            }
+
+                            if (!data.data || !data.data.objects || !data.data.objects[0]) {
+                                return {success: false, error: 'no_objects'};
+                            }
+
+                            const obj = data.data.objects[0];
+
+                            if (!obj.success) {
+                                return {
+                                    success: false,
+                                    error: 'obj_error',
+                                    errors: obj.errors || []
+                                };
+                            }
+
+                            const objData = obj.data;
+                            return {
+                                success: true,
+                                busy: objData.busy,
+                                detail: objData.detail || [],
+                                rooms_available: objData.rooms_available
+                            };
+
+                        } catch (e) {
+                            if (e.name === 'AbortError') {
+                                return {success: false, error: 'fetch_timeout'};
+                            }
+                            return {success: false, error: 'exception_' + e.message};
+                        }
                     }
-
-                    const data = await resp.json();
-
-                    if (!data.success) {
-                        return {success: false, error: 'api_false'};
-                    }
-
-                    if (!data.data || !data.data.objects || !data.data.objects[0]) {
-                        return {success: false, error: 'no_objects'};
-                    }
-
-                    const obj = data.data.objects[0];
-
-                    if (!obj.success) {
-                        return {
-                            success: false,
-                            error: 'obj_error',
-                            errors: obj.errors || []
-                        };
-                    }
-
-                    const objData = obj.data;
-                    return {
-                        success: true,
-                        busy: objData.busy,
-                        detail: objData.detail || [],
-                        rooms_available: objData.rooms_available
-                    };
-
-                } catch (e) {
-                    return {success: false, error: 'exception_' + e.message};
-                }
-            }
-            """,
-            {
-                "apiUrl": API_PRICES_URL,
-                "objectId": object_id,
-                "dateBegin": date_begin,
-                "dateEnd": date_end,
-                "token": token,
-                "guests": guests,
-            },
-        )
+                    """,
+                    {
+                        "apiUrl": API_PRICES_URL,
+                        "objectId": object_id,
+                        "dateBegin": date_begin,
+                        "dateEnd": date_end,
+                        "token": token,
+                        "guests": guests,
+                        "fetchTimeout": _FETCH_TIMEOUT_SECONDS,
+                    },
+                ),
+                timeout=_BULK_EVALUATE_TIMEOUT,
+            )
+        except asyncio.TimeoutError:
+            logger.warning(
+                "bulk_evaluate_таймаут",
+                step=f"id={object_id}, таймаут={_BULK_EVALUATE_TIMEOUT}с",
+            )
+            return None, [0] * DAYS_COUNT, False
+        except Exception as e:
+            logger.warning(
+                "bulk_evaluate_исключение",
+                error=str(e),
+                error_type=type(e).__name__,
+                step=f"id={object_id}",
+            )
+            return None, [0] * DAYS_COUNT, False
 
         if not result.get("success"):
             error = result.get("error", "unknown")
@@ -213,114 +254,142 @@ class ApiClient:
             step=f"id={object_id}, ночей={nights}, пакет={API_BATCH_SIZE}",
         )
 
-        result = await page.evaluate(
-            """
-            async ({objectId, token, guests, daysData, batchSize, batchDelay, apiUrl}) => {
-                const results = [];
-                const batches = [];
+        try:
+            result = await asyncio.wait_for(
+                page.evaluate(
+                    """
+                    async ({objectId, token, guests, daysData, batchSize, batchDelay, apiUrl, fetchTimeout}) => {
+                        const results = [];
+                        const batches = [];
 
-                for (let i = 0; i < daysData.length; i += batchSize) {
-                    batches.push(daysData.slice(i, i + batchSize));
-                }
+                        for (let i = 0; i < daysData.length; i += batchSize) {
+                            batches.push(daysData.slice(i, i + batchSize));
+                        }
 
-                for (let batchIdx = 0; batchIdx < batches.length; batchIdx++) {
-                    const batch = batches[batchIdx];
+                        for (let batchIdx = 0; batchIdx < batches.length; batchIdx++) {
+                            const batch = batches[batchIdx];
 
-                    const promises = batch.map(async (dayInfo) => {
-                        try {
-                            const resp = await fetch(apiUrl, {
-                                method: 'POST',
-                                headers: {
-                                    'Content-Type': 'application/json',
-                                    'Accept': 'application/json',
-                                    'token': token,
-                                    'platform': 'js',
-                                    'api-version': '1.13'
-                                },
-                                body: JSON.stringify({
-                                    objects: [parseInt(objectId)],
-                                    rooms_cnt: {},
-                                    guests: guests,
-                                    date_begin: dayInfo.date_begin,
-                                    date_end: dayInfo.date_end,
-                                    currency_id: 1,
-                                    is_pets: 0,
-                                    documents: 0,
-                                    target: 0,
-                                    ages: [],
-                                    no_time: 1
-                                })
+                            const promises = batch.map(async (dayInfo) => {
+                                try {
+                                    const controller = new AbortController();
+                                    const timeoutId = setTimeout(() => controller.abort(), fetchTimeout * 1000);
+
+                                    const resp = await fetch(apiUrl, {
+                                        method: 'POST',
+                                        headers: {
+                                            'Content-Type': 'application/json',
+                                            'Accept': 'application/json',
+                                            'token': token,
+                                            'platform': 'js',
+                                            'api-version': '1.13'
+                                        },
+                                        body: JSON.stringify({
+                                            objects: [parseInt(objectId)],
+                                            rooms_cnt: {},
+                                            guests: guests,
+                                            date_begin: dayInfo.date_begin,
+                                            date_end: dayInfo.date_end,
+                                            currency_id: 1,
+                                            is_pets: 0,
+                                            documents: 0,
+                                            target: 0,
+                                            ages: [],
+                                            no_time: 1
+                                        }),
+                                        signal: controller.signal
+                                    });
+
+                                    clearTimeout(timeoutId);
+
+                                    if (!resp.ok) {
+                                        return {status: 'error', error: 'http_' + resp.status};
+                                    }
+
+                                    const data = await resp.json();
+
+                                    if (!data.success) {
+                                        return {status: 'error', error: 'api_false'};
+                                    }
+
+                                    if (!data.data || !data.data.objects || !data.data.objects[0]) {
+                                        return {status: 'error', error: 'no_data'};
+                                    }
+
+                                    const obj = data.data.objects[0];
+
+                                    if (!obj.success) {
+                                        return {
+                                            status: 'obj_error',
+                                            errors: obj.errors || [],
+                                            error_body: JSON.stringify(obj.errors || []).substring(0, 300)
+                                        };
+                                    }
+
+                                    return {
+                                        status: 'ok',
+                                        busy: obj.data.busy === 'busy',
+                                        price: (() => {
+                                            const detail = obj.data.detail || [];
+                                            let seasonPrice = 0;
+                                            let basePrice = 0;
+                                            for (const d of detail) {
+                                                if (d.type === 'season_price' && d.cost && !seasonPrice) {
+                                                    seasonPrice = Math.round(d.cost);
+                                                }
+                                                if (d.type === 1 && d.cost && !basePrice) {
+                                                    basePrice = Math.round(d.cost);
+                                                }
+                                            }
+                                            return seasonPrice || basePrice;
+                                        })()
+                                    };
+
+                                } catch (e) {
+                                    if (e.name === 'AbortError') {
+                                        return {status: 'error', error: 'fetch_timeout'};
+                                    }
+                                    return {status: 'error', error: 'exception_' + e.message};
+                                }
                             });
 
-                            if (!resp.ok) {
-                                return {status: 'error', error: 'http_' + resp.status};
+                            const batchResults = await Promise.all(promises);
+                            results.push(...batchResults);
+
+                            if (batchIdx < batches.length - 1) {
+                                await new Promise(resolve => setTimeout(resolve, batchDelay * 1000));
                             }
-
-                            const data = await resp.json();
-
-                            if (!data.success) {
-                                return {status: 'error', error: 'api_false'};
-                            }
-
-                            if (!data.data || !data.data.objects || !data.data.objects[0]) {
-                                return {status: 'error', error: 'no_data'};
-                            }
-
-                            const obj = data.data.objects[0];
-
-                            if (!obj.success) {
-                                return {
-                                    status: 'obj_error',
-                                    errors: obj.errors || [],
-                                    error_body: JSON.stringify(obj.errors || []).substring(0, 300)
-                                };
-                            }
-
-                            return {
-                                status: 'ok',
-                                busy: obj.data.busy === 'busy',
-                                price: (() => {
-                                    const detail = obj.data.detail || [];
-                                    let seasonPrice = 0;
-                                    let basePrice = 0;
-                                    for (const d of detail) {
-                                        if (d.type === 'season_price' && d.cost && !seasonPrice) {
-                                            seasonPrice = Math.round(d.cost);
-                                        }
-                                        if (d.type === 1 && d.cost && !basePrice) {
-                                            basePrice = Math.round(d.cost);
-                                        }
-                                    }
-                                    return seasonPrice || basePrice;
-                                })()
-                            };
-
-                        } catch (e) {
-                            return {status: 'error', error: 'exception_' + e.message};
                         }
-                    });
 
-                    const batchResults = await Promise.all(promises);
-                    results.push(...batchResults);
-
-                    if (batchIdx < batches.length - 1) {
-                        await new Promise(resolve => setTimeout(resolve, batchDelay * 1000));
+                        return results;
                     }
-                }
-
-                return results;
-            }
-            """,
-            {
-                "objectId": object_id,
-                "token": token,
-                "guests": guests,
-                "daysData": days_data,
-                "batchSize": API_BATCH_SIZE,
-                "batchDelay": API_BATCH_DELAY,
-                "apiUrl": API_PRICES_URL,
-            },
-        )
+                    """,
+                    {
+                        "objectId": object_id,
+                        "token": token,
+                        "guests": guests,
+                        "daysData": days_data,
+                        "batchSize": API_BATCH_SIZE,
+                        "batchDelay": API_BATCH_DELAY,
+                        "apiUrl": API_PRICES_URL,
+                        "fetchTimeout": _FETCH_TIMEOUT_SECONDS,
+                    },
+                ),
+                timeout=_SLIDING_EVALUATE_TIMEOUT,
+            )
+        except asyncio.TimeoutError:
+            logger.warning(
+                "availability_evaluate_таймаут",
+                step=f"id={object_id}, таймаут={_SLIDING_EVALUATE_TIMEOUT}с",
+            )
+            return [-1] * DAYS_COUNT, [{"day": -1, "error": "evaluate_timeout"}]
+        except Exception as e:
+            logger.warning(
+                "availability_evaluate_исключение",
+                error=str(e),
+                error_type=type(e).__name__,
+                step=f"id={object_id}",
+            )
+            return [-1] * DAYS_COUNT, [{"day": -1, "error": f"evaluate_exception_{type(e).__name__}"}]
 
         calendar: list[int] = []
         errors_details: list[dict[str, str | int]] = []
@@ -385,104 +454,132 @@ class ApiClient:
                 "date_end": f"{end_day.isoformat()} 11:00:00",
             })
 
-        result = await page.evaluate(
-            """
-            async ({objectId, token, guests, daysData, batchSize, batchDelay, apiUrl}) => {
-                const results = [];
-                const batches = [];
+        try:
+            result = await asyncio.wait_for(
+                page.evaluate(
+                    """
+                    async ({objectId, token, guests, daysData, batchSize, batchDelay, apiUrl, fetchTimeout}) => {
+                        const results = [];
+                        const batches = [];
 
-                for (let i = 0; i < daysData.length; i += batchSize) {
-                    batches.push(daysData.slice(i, i + batchSize));
-                }
+                        for (let i = 0; i < daysData.length; i += batchSize) {
+                            batches.push(daysData.slice(i, i + batchSize));
+                        }
 
-                for (let batchIdx = 0; batchIdx < batches.length; batchIdx++) {
-                    const batch = batches[batchIdx];
+                        for (let batchIdx = 0; batchIdx < batches.length; batchIdx++) {
+                            const batch = batches[batchIdx];
 
-                    const promises = batch.map(async (dayInfo) => {
-                        try {
-                            const resp = await fetch(apiUrl, {
-                                method: 'POST',
-                                headers: {
-                                    'Content-Type': 'application/json',
-                                    'Accept': 'application/json',
-                                    'token': token,
-                                    'platform': 'js',
-                                    'api-version': '1.13'
-                                },
-                                body: JSON.stringify({
-                                    objects: [parseInt(objectId)],
-                                    rooms_cnt: {},
-                                    guests: guests,
-                                    date_begin: dayInfo.date_begin,
-                                    date_end: dayInfo.date_end,
-                                    currency_id: 1,
-                                    is_pets: 0,
-                                    documents: 0,
-                                    target: 0,
-                                    ages: [],
-                                    no_time: 1
-                                })
+                            const promises = batch.map(async (dayInfo) => {
+                                try {
+                                    const controller = new AbortController();
+                                    const timeoutId = setTimeout(() => controller.abort(), fetchTimeout * 1000);
+
+                                    const resp = await fetch(apiUrl, {
+                                        method: 'POST',
+                                        headers: {
+                                            'Content-Type': 'application/json',
+                                            'Accept': 'application/json',
+                                            'token': token,
+                                            'platform': 'js',
+                                            'api-version': '1.13'
+                                        },
+                                        body: JSON.stringify({
+                                            objects: [parseInt(objectId)],
+                                            rooms_cnt: {},
+                                            guests: guests,
+                                            date_begin: dayInfo.date_begin,
+                                            date_end: dayInfo.date_end,
+                                            currency_id: 1,
+                                            is_pets: 0,
+                                            documents: 0,
+                                            target: 0,
+                                            ages: [],
+                                            no_time: 1
+                                        }),
+                                        signal: controller.signal
+                                    });
+
+                                    clearTimeout(timeoutId);
+
+                                    if (!resp.ok) return {status: 'error'};
+
+                                    const data = await resp.json();
+
+                                    if (!data.success || !data.data || !data.data.objects || !data.data.objects[0]) {
+                                        return {status: 'error'};
+                                    }
+
+                                    const obj = data.data.objects[0];
+                                    if (!obj.success) return {status: 'obj_error'};
+
+                                    const objData = obj.data;
+                                    let price = 0;
+                                    if (objData.detail) {
+                                        let seasonPrice = 0;
+                                        let basePrice = 0;
+                                        for (const d of objData.detail) {
+                                            if (d.type === 'season_price' && d.cost && !seasonPrice) {
+                                                seasonPrice = Math.round(d.cost);
+                                            }
+                                            if (d.type === 1 && d.cost && !basePrice) {
+                                                basePrice = Math.round(d.cost);
+                                            }
+                                        }
+                                        price = seasonPrice || basePrice;
+                                    }
+
+                                    return {
+                                        status: 'ok',
+                                        busy: objData.busy === 'busy',
+                                        price: price
+                                    };
+
+                                } catch (e) {
+                                    if (e.name === 'AbortError') {
+                                        return {status: 'error', error: 'fetch_timeout'};
+                                    }
+                                    return {status: 'error'};
+                                }
                             });
 
-                            if (!resp.ok) return {status: 'error'};
+                            const batchResults = await Promise.all(promises);
+                            results.push(...batchResults);
 
-                            const data = await resp.json();
-
-                            if (!data.success || !data.data || !data.data.objects || !data.data.objects[0]) {
-                                return {status: 'error'};
+                            if (batchIdx < batches.length - 1) {
+                                await new Promise(resolve => setTimeout(resolve, batchDelay * 1000));
                             }
-
-                            const obj = data.data.objects[0];
-                            if (!obj.success) return {status: 'obj_error'};
-
-                            const objData = obj.data;
-                            let price = 0;
-                            if (objData.detail) {
-                                let seasonPrice = 0;
-                                let basePrice = 0;
-                                for (const d of objData.detail) {
-                                    if (d.type === 'season_price' && d.cost && !seasonPrice) {
-                                        seasonPrice = Math.round(d.cost);
-                                    }
-                                    if (d.type === 1 && d.cost && !basePrice) {
-                                        basePrice = Math.round(d.cost);
-                                    }
-                                }
-                                price = seasonPrice || basePrice;
-                            }
-
-                            return {
-                                status: 'ok',
-                                busy: objData.busy === 'busy',
-                                price: price
-                            };
-
-                        } catch (e) {
-                            return {status: 'error'};
                         }
-                    });
 
-                    const batchResults = await Promise.all(promises);
-                    results.push(...batchResults);
-
-                    if (batchIdx < batches.length - 1) {
-                        await new Promise(resolve => setTimeout(resolve, batchDelay * 1000));
+                        return results;
                     }
-                }
-
-                return results;
-            }
-            """,
-            {
-                "objectId": object_id,
-                "token": token,
-                "guests": guests,
-                "daysData": days_data,
-                "batchSize": API_BATCH_SIZE,
-                "batchDelay": API_BATCH_DELAY,
-                "apiUrl": API_PRICES_URL,
-            },
-        )
+                    """,
+                    {
+                        "objectId": object_id,
+                        "token": token,
+                        "guests": guests,
+                        "daysData": days_data,
+                        "batchSize": API_BATCH_SIZE,
+                        "batchDelay": API_BATCH_DELAY,
+                        "apiUrl": API_PRICES_URL,
+                        "fetchTimeout": _FETCH_TIMEOUT_SECONDS,
+                    },
+                ),
+                timeout=_SLIDING_EVALUATE_TIMEOUT,
+            )
+        except asyncio.TimeoutError:
+            logger.warning(
+                "sliding_prices_evaluate_таймаут",
+                step=f"id={object_id}, таймаут={_SLIDING_EVALUATE_TIMEOUT}с",
+            )
+            return [0] * DAYS_COUNT, [0] * DAYS_COUNT
+        except Exception as e:
+            logger.warning(
+                "sliding_prices_evaluate_исключение",
+                error=str(e),
+                error_type=type(e).__name__,
+                step=f"id={object_id}",
+            )
+            return [0] * DAYS_COUNT, [0] * DAYS_COUNT
 
         calendar: list[int] = []
         prices: list[int] = []
