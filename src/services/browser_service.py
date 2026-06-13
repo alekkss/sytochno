@@ -1,9 +1,7 @@
 """Сервис управления браузером — Playwright + stealth-настройки."""
 
 import asyncio
-import os
 import random
-import signal
 
 from playwright.async_api import (
     Browser,
@@ -44,11 +42,6 @@ _SCROLL_STEP_TIMEOUT_SECONDS: float = 10.0
 # 20 шагов × ~500px = ~10000px — достаточно для любой страницы каталога.
 _MAX_SCROLL_STEPS: int = 20
 
-# Таймаут ожидания browser.close() (секунды).
-# Если Playwright не смог штатно закрыть браузер за это время —
-# процесс Chromium убивается принудительно через SIGKILL.
-_BROWSER_CLOSE_TIMEOUT: float = 10.0
-
 # Общие аргументы запуска Chromium — stealth + экономия памяти.
 # Используются и с прокси, и без прокси (единый набор, без дублирования).
 _BROWSER_ARGS: list[str] = [
@@ -60,13 +53,34 @@ _BROWSER_ARGS: list[str] = [
     "--no-sandbox",
 
     # ── Экономия памяти: ограничение ресурсов Chromium ──
+    # Один процесс вместо отдельных renderer'ов на каждую вкладку.
+    # Предотвращает ситуацию, когда OOM-killer убивает отдельный renderer
+    # (Target crashed), оставляя главный процесс живым и неработоспособным.
+    # С --single-process Chromium управляет памятью в рамках одного процесса,
+    # и при нехватке RAM завершается целиком (что обрабатывается retry-логикой).
     "--single-process",
+    # Ограничиваем JS-хип до 256 МБ.
+    # Для парсинга каталога sutochno.ru (не тяжёлое SPA) достаточно с запасом.
+    # С --single-process это единый лимит на весь JS-контекст.
     "--js-flags=--max-old-space-size=256",
+    # Запрещаем фоновую активность неактивных вкладок.
+    # Без этих флагов Chromium продолжает выполнять JS-таймеры,
+    # requestAnimationFrame и сетевые запросы во вкладках,
+    # которые не находятся в фокусе — впустую расходуя CPU и RAM.
     "--disable-renderer-backgrounding",
     "--disable-background-timer-throttling",
     "--disable-backgrounding-occluded-windows",
+    # Отключаем GPU-ускорение — на серверах нет GPU,
+    # а software-рендеринг расходует дополнительную память.
     "--disable-gpu",
+    # Отключаем PaintHolding (буферизация рендеринга до полной загрузки —
+    # расходует RAM на хранение промежуточных фреймов) и ImageDecodeService
+    # (декодирование изображений в отдельных потоках — расходует RAM).
     "--disable-features=PaintHolding,ImageDecodeService",
+    # Полностью отключаем загрузку изображений.
+    # Для парсинга каталога изображения не нужны — данные извлекаются из текста.
+    # Каждая страница содержит ~50 карточек с фото — это основной потребитель
+    # памяти renderer'а. Отключение экономит ~200-400 МБ на страницу.
     "--blink-settings=imagesEnabled=false",
 ]
 
@@ -103,7 +117,6 @@ class BrowserService:
     - Создание дополнительных вкладок для параллельной обработки карточек.
     - Оптимизацию потребления памяти через аргументы Chromium.
     - Отключение загрузки изображений для экономии RAM.
-    - Гарантированное убийство процесса Chromium при остановке.
     """
 
     def __init__(self, settings: Settings) -> None:
@@ -118,7 +131,6 @@ class BrowserService:
         self._context: BrowserContext | None = None
         self._page: Page | None = None
         self._proxy: ProxyConfig | None = None
-        self._browser_pid: int | None = None
 
     @property
     def page(self) -> Page:
@@ -186,11 +198,6 @@ class BrowserService:
 
         self._browser = await self._playwright.chromium.launch(**launch_kwargs)
 
-        # Сохраняем PID процесса Chromium для гарантированного убийства при stop().
-        # Playwright запускает Chromium как дочерний процесс — если browser.close()
-        # не сработает (таймаут, EPIPE, зависание), PID позволяет убить его напрямую.
-        self._browser_pid = self._get_browser_pid()
-
         self._context = await self._browser.new_context(**_CONTEXT_OPTIONS)
 
         # Скрываем признаки автоматизации
@@ -203,35 +210,8 @@ class BrowserService:
 
         logger.info(
             "браузер_запущен",
-            step=f"{proxy_label}, pid={self._browser_pid}",
+            step=proxy_label,
         )
-
-    def _get_browser_pid(self) -> int | None:
-        """Извлекает PID процесса Chromium из внутренних структур Playwright.
-
-        Playwright не предоставляет публичного API для получения PID,
-        но хранит его во внутреннем объекте _impl_obj._process.
-
-        Returns:
-            PID процесса Chromium или None если не удалось извлечь.
-        """
-        if self._browser is None:
-            return None
-
-        try:
-            # Playwright async API → _impl_obj → _process (subprocess.Popen)
-            impl = getattr(self._browser, "_impl_obj", None)
-            if impl is None:
-                return None
-
-            process = getattr(impl, "_process", None)
-            if process is None:
-                return None
-
-            pid = getattr(process, "pid", None)
-            return pid
-        except Exception:
-            return None
 
     async def is_alive(self) -> bool:
         """Проверяет, жив ли renderer процесс страницы.
@@ -348,20 +328,20 @@ class BrowserService:
     async def stop(self) -> None:
         """Останавливает браузер и освобождает все ресурсы.
 
-        Гарантирует убийство процесса Chromium — даже если Playwright
-        не смог штатно закрыть браузер (таймаут, EPIPE, зависание).
+        Последовательность закрытия спроектирована для предотвращения
+        ошибки EPIPE в Node.js v24+. Между каждым шагом выдерживается
+        пауза (_CLOSE_DRAIN_DELAY), чтобы Node.js-драйвер Playwright
+        успел обработать pending dispose/event-сообщения до разрыва pipe.
 
-        Последовательность:
+        Порядок закрытия:
         1. Закрытие всех дополнительных страниц (вкладок).
-        2. Закрытие контекста браузера.
-        3. Закрытие браузера через Playwright (с таймаутом).
-        4. Проверка: если процесс Chromium всё ещё жив — SIGKILL.
-        5. Остановка Playwright (закрытие pipe к Node.js-драйверу).
-
-        Между шагами выдерживается пауза для Node.js-драйвера.
+        2. Пауза — Node.js обрабатывает page dispose-события.
+        3. Закрытие контекста браузера.
+        4. Пауза — Node.js обрабатывает context dispose-события.
+        5. Закрытие браузера (убивает процесс Chromium).
+        6. Пауза — Node.js завершает финализацию процесса.
+        7. Остановка Playwright (закрывает pipe к Node.js-драйверу).
         """
-        pid = self._browser_pid
-
         # Шаг 1: Закрываем все дополнительные страницы
         if self._context is not None:
             try:
@@ -381,6 +361,7 @@ class BrowserService:
                     error_type=type(e).__name__,
                 )
 
+        # Пауза: даём Node.js обработать page dispose-события
         await asyncio.sleep(_CLOSE_DRAIN_DELAY)
 
         # Шаг 2: Закрываем контекст браузера
@@ -397,22 +378,13 @@ class BrowserService:
                 self._context = None
                 self._page = None
 
+        # Пауза: даём Node.js обработать context dispose-события
         await asyncio.sleep(_CLOSE_DRAIN_DELAY)
 
-        # Шаг 3: Закрываем браузер через Playwright (с таймаутом)
-        browser_closed_cleanly = False
+        # Шаг 3: Закрываем браузер (убивает процесс Chromium)
         if self._browser is not None:
             try:
-                await asyncio.wait_for(
-                    self._browser.close(),
-                    timeout=_BROWSER_CLOSE_TIMEOUT,
-                )
-                browser_closed_cleanly = True
-            except asyncio.TimeoutError:
-                logger.warning(
-                    "browser_close_таймаут",
-                    step=f"pid={pid}, лимит={_BROWSER_CLOSE_TIMEOUT}с",
-                )
+                await self._browser.close()
             except Exception as e:
                 logger.debug(
                     "ошибка_при_закрытии_браузера",
@@ -422,25 +394,10 @@ class BrowserService:
             finally:
                 self._browser = None
 
+        # Пауза: даём Node.js завершить финализацию перед разрывом pipe
         await asyncio.sleep(_CLOSE_DRAIN_DELAY)
 
-        # Шаг 4: Гарантированное убийство процесса Chromium.
-        # Если browser.close() не сработал (таймаут, exception) или
-        # процесс всё ещё жив — убиваем через SIGKILL.
-        if pid is not None and not browser_closed_cleanly:
-            self._force_kill_process(pid)
-        elif pid is not None:
-            # Даже при штатном закрытии проверяем — вдруг процесс завис
-            if self._is_process_alive(pid):
-                logger.warning(
-                    "процесс_chromium_жив_после_close",
-                    step=f"pid={pid}, принудительное_убийство",
-                )
-                self._force_kill_process(pid)
-
-        self._browser_pid = None
-
-        # Шаг 5: Останавливаем Playwright с таймаутом
+        # Шаг 4: Останавливаем Playwright с таймаутом
         if self._playwright is not None:
             try:
                 await asyncio.wait_for(
@@ -453,6 +410,8 @@ class BrowserService:
                     step=f"превышен_лимит={_PLAYWRIGHT_STOP_TIMEOUT}с",
                 )
             except Exception as e:
+                # EPIPE или другие ошибки при разрыве соединения —
+                # не критичны, браузер уже закрыт, ресурсы освобождены.
                 logger.debug(
                     "ошибка_при_остановке_playwright",
                     error=str(e),
@@ -461,54 +420,7 @@ class BrowserService:
             finally:
                 self._playwright = None
 
-        logger.info(
-            "браузер_остановлен",
-            step=f"pid={pid}",
-        )
-
-    @staticmethod
-    def _is_process_alive(pid: int) -> bool:
-        """Проверяет, жив ли процесс с данным PID.
-
-        Использует os.kill(pid, 0) — отправляет нулевой сигнал.
-        Не убивает процесс, только проверяет существование.
-
-        Args:
-            pid: ID процесса.
-
-        Returns:
-            True если процесс существует и доступен.
-        """
-        try:
-            os.kill(pid, 0)
-            return True
-        except OSError:
-            return False
-
-    @staticmethod
-    def _force_kill_process(pid: int) -> None:
-        """Принудительно убивает процесс Chromium через SIGKILL.
-
-        SIGKILL не может быть перехвачен или проигнорирован процессом —
-        гарантирует освобождение памяти. Используется как последнее средство,
-        когда штатное browser.close() не сработало.
-
-        Args:
-            pid: ID процесса для убийства.
-        """
-        try:
-            os.kill(pid, signal.SIGKILL)
-            logger.info(
-                "процесс_chromium_убит",
-                step=f"pid={pid}, сигнал=SIGKILL",
-            )
-        except OSError as e:
-            # Процесс уже завершился между проверкой и убийством — нормально
-            logger.debug(
-                "процесс_уже_завершён",
-                step=f"pid={pid}",
-                error=str(e),
-            )
+        logger.info("браузер_остановлен")
 
     async def navigate(self, url: str) -> None:
         """Переходит по URL с ожиданием загрузки DOM.
