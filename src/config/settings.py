@@ -144,6 +144,13 @@ class Settings:
     # Пример: для сервера с 20 ГБ RAM → MEMORY_LIMIT_MB=19000
     memory_limit_mb: int = 0
 
+    # Повторное обогащение — чёрный список
+    # Количество последовательных провалов карточки в цикле повторного
+    # обогащения, после которого она исключается из дальнейших попыток.
+    # Например, 2 означает: если карточка не обогатилась 2 раунда подряд —
+    # она больше не будет обрабатываться в текущем запуске.
+    blacklist_threshold: int = 2
+
     @classmethod
     def load(cls) -> "Settings":
         """Фабричный метод — загружает настройки из переменных окружения.
@@ -177,6 +184,7 @@ class Settings:
             proxies_path=os.getenv("PROXIES_PATH", "data/proxies.txt").strip(),
             max_proxy_workers=_get_int("MAX_PROXY_WORKERS", "5"),
             memory_limit_mb=_get_int("MEMORY_LIMIT_MB", "0"),
+            blacklist_threshold=_get_int("BLACKLIST_THRESHOLD", "2"),
         )
 
         # Валидация диапазонов
@@ -224,6 +232,13 @@ class Settings:
             raise RuntimeError(
                 "MEMORY_LIMIT_MB должен быть не менее 1024 (1 ГБ) или 0 (отключён). "
                 f"Получено: {settings.memory_limit_mb}."
+            )
+
+        # Валидация чёрного списка
+        if settings.blacklist_threshold < 1:
+            raise RuntimeError(
+                "BLACKLIST_THRESHOLD должен быть не менее 1. "
+                f"Получено: {settings.blacklist_threshold}."
             )
 
         return settings

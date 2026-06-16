@@ -23,6 +23,11 @@ class RawListing:
         prices_60_days: Массив цен за сутки на 60 дней (0 — день занят).
         url: Прямая ссылка на объявление.
         snapshot_date: Дата и время сбора данных.
+        enrichment_skip_reason: Причина невозможности обогащения (None = можно обогатить).
+            Заполняется при обнаружении фатальных ошибок:
+            - "min_nights_exceeded" — min_nights объекта превышает окно анализа (60 дней).
+            - "object_not_found" — объявление удалено или заблокировано на сайте.
+            Карточки с заполненным полем мгновенно исключаются из повторного обогащения.
     """
 
     external_id: str
@@ -39,6 +44,7 @@ class RawListing:
     calendar_60_days: list[int] = field(default_factory=list)
     prices_60_days: list[int] = field(default_factory=list)
     snapshot_date: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
+    enrichment_skip_reason: str | None = None
 
     @property
     def occupancy_percent(self) -> float:

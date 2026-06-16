@@ -1,258 +1,359 @@
-"""Сервис обогащения карточек — оркестрация загрузки, токена, стратегии."""
+"""Сервис парсинга карточки объявления — оркестратор.
+
+Делегирует всю логику модулям src/services/listing/:
+- PageLoader — загрузка страницы и перехват токена.
+- TokenManager — валидация и перезагрузка токена.
+- ApiClient — низкоуровневые запросы к API.
+- HybridStrategy — гибридная стратегия (bulk + скользящее окно).
+- EnrichStrategies — параллельная обработка через вкладки и прокси.
+"""
 
 import asyncio
-from datetime import date
+import time
+from typing import TYPE_CHECKING
 
-from playwright.async_api import BrowserContext, Page
+from playwright.async_api import Page
 
 from src.config.logger import get_logger
+from src.config.settings import Settings
+from src.models.listing import RawListing
 from src.services.browser_service import BrowserService
 from src.services.listing.api_client import ApiClient
-from src.services.listing.constants import (
-    DAYS_COUNT,
-    DEFAULT_GUESTS,
-    LISTING_URL_TEMPLATE,
-    MAX_TABS,
-    TAB_DELAY_SECONDS,
-)
+from src.services.listing.connection_monitor import ConnectionMonitor
+from src.services.listing.constants import DAYS_COUNT, DEFAULT_GUESTS, format_duration
+from src.services.listing.enrich_strategies import EnrichStrategies
 from src.services.listing.hybrid_strategy import HybridStrategy
 from src.services.listing.page_loader import PageLoader
 from src.services.listing.price_parser import PriceParser
 from src.services.listing.token_manager import TokenManager
 
-logger = get_logger("listing_service")
+if TYPE_CHECKING:
+    from src.models.proxy import ProxyConfig
+    from src.services.proxy_service import ProxyService
+
+logger = get_logger("listing")
+
+# Максимальное количество попыток обогащения одной карточки
+_MAX_ENRICH_ATTEMPTS = 3
+
+# Пауза перед повторной попыткой (секунды)
+_RETRY_DELAY_SECONDS = 3.0
 
 
 class ListingService:
-    """Сервис обогащения карточек объявлений данными о ценах и занятости.
+    """Оркестратор обогащения карточек объявлений данными о ценах и занятости.
 
-    Оркестрирует:
-    - Загрузку страницы карточки (PageLoader)
-    - Перехват и валидацию токена (TokenManager)
-    - Гибридную стратегию получения данных (HybridStrategy)
-    - Параллельную обработку через вкладки (enrich_listings_tabbed)
+    Публичный API полностью сохранён для обратной совместимости:
+    - enrich_listing(listing, page=None)
+    - enrich_listings(listings)
+    - enrich_listings_tabbed(listings)
+    - enrich_listings_parallel(settings, listings, proxies, proxy_service) — статический
     """
 
-    def __init__(self, browser_service: BrowserService, guests: int = DEFAULT_GUESTS) -> None:
-        """Инициализирует сервис.
+    def __init__(
+        self,
+        settings: Settings,
+        browser_service: BrowserService,
+        monitor: ConnectionMonitor | None = None,
+        proxy_service: "ProxyService | None" = None,
+    ) -> None:
+        """Инициализирует сервис и все вложенные компоненты.
 
         Args:
+            settings: Настройки приложения.
             browser_service: Сервис управления браузером.
-            guests: Количество гостей для запросов цен.
+            monitor: Монитор здоровья соединения (опциональный).
+                Если передан — используется для раннего обнаружения
+                массовых сбоев и остановки бесполезных попыток.
+            proxy_service: Сервис прокси с заполненным пулом (опциональный).
+                Передаётся в EnrichStrategies для проверки/замены прокси
+                при перезапуске браузера.
         """
+        self._settings = settings
         self._browser = browser_service
-        self._guests = guests
+        self._monitor = monitor
+        self._proxy_service = proxy_service
 
-        self._page_loader = PageLoader()
-        self._price_parser = PriceParser()
-        self._api_client = ApiClient(price_parser=self._price_parser)
+        self._page_loader = PageLoader(monitor=monitor)
         self._token_manager = TokenManager(
             page_loader=self._page_loader,
             browser_service=self._browser,
         )
+        self._api_client = ApiClient(price_parser=PriceParser())
         self._strategy = HybridStrategy(
             api_client=self._api_client,
             token_manager=self._token_manager,
-            guests=self._guests,
+            guests=DEFAULT_GUESTS,
+        )
+        self._enrich_strategies = EnrichStrategies(
+            listing_service=self,
+            browser_service=self._browser,
+            settings=self._settings,
+            proxy_service=self._proxy_service,
         )
 
-    async def enrich_listing(
-        self, page: Page, listing: dict
-    ) -> dict:
-        """Обогащает одну карточку данными о ценах и занятости.
-
-        Загружает страницу карточки, перехватывает токен, запускает
-        гибридную стратегию. Результат записывается в listing dict.
-
-        Args:
-            page: Вкладка браузера.
-            listing: Словарь карточки с полем 'id'.
+    @property
+    def monitor(self) -> ConnectionMonitor | None:
+        """Возвращает текущий монитор соединения.
 
         Returns:
-            Обогащённый словарь карточки с полями:
-            - prices_60: список из 60 цен
-            - calendar_60: список из 60 значений занятости (0/1)
-            - price_date: дата начала периода
-            - enriched: True/False
+            Экземпляр ConnectionMonitor или None.
         """
-        object_id = str(listing.get("id", ""))
-        url = LISTING_URL_TEMPLATE.format(object_id=object_id)
+        return self._monitor
 
-        logger.info("обогащение_начало", step=f"id={object_id}", path=url)
+    @monitor.setter
+    def monitor(self, value: ConnectionMonitor | None) -> None:
+        """Устанавливает монитор соединения.
 
-        try:
-            # ── Загрузка страницы и перехват токена ──
-            loaded, token = await self._page_loader.goto_and_capture_token(page, url)
+        Обновляет монитор как в сервисе, так и в PageLoader.
 
-            if not loaded:
-                logger.warning("страница_не_загружена", step=f"id={object_id}")
-                listing["prices_60"] = [0] * DAYS_COUNT
-                listing["calendar_60"] = [0] * DAYS_COUNT
-                listing["price_date"] = date.today().isoformat()
-                listing["enriched"] = False
-                return listing
+        Args:
+            value: Новый монитор или None для отключения.
+        """
+        self._monitor = value
+        self._page_loader.monitor = value
 
-            await self._browser.random_delay()
+    async def enrich_listing(
+        self, listing: RawListing, page: Page | None = None
+    ) -> RawListing:
+        """Обогащает объявление данными календаря занятости и ценами.
 
-            if not token:
+        Выполняет до _MAX_ENRICH_ATTEMPTS попыток. Повторная попытка
+        запускается при трёх сценариях сбоя:
+        - страница не загрузилась;
+        - токен API не перехвачен (частая проблема при параллельных вкладках);
+        - hybrid_strategy вернула нулевой sentinel ([0]*60, [0]*60).
+
+        Если стратегия вернула skip_reason (фатальная ошибка) — повторные
+        попытки не запускаются, карточка сразу помечается как необогащаемая.
+
+        Если монитор соединения сигнализирует о необходимости перезапуска
+        браузера — обработка прерывается досрочно без траты попыток.
+
+        Нулевой sentinel отличается от реально свободного объявления тем,
+        что у свободного объявления цены > 0, а у sentinel все цены = 0.
+
+        asyncio.CancelledError намеренно пробрасывается выше — это штатная
+        отмена задачи, а не сбой обработки. Перед пробросом фиксируется лог,
+        чтобы пустая карточка не оставалась без следов в логах.
+
+        Args:
+            listing: Объявление с базовыми данными из каталога.
+            page: Вкладка для работы. Если None — используется основная страница браузера.
+
+        Returns:
+            Объявление с заполненными calendar_60_days и prices_60_days.
+        """
+        active_page = page if page is not None else self._browser.page
+        start_time = time.perf_counter()
+
+        logger.info(
+            "парсинг_карточки",
+            path=listing.url,
+            step=f"id={listing.external_id}",
+        )
+
+        for attempt in range(1, _MAX_ENRICH_ATTEMPTS + 1):
+            # Проверяем монитор перед каждой попыткой — если перезапуск
+            # браузера уже требуется, не тратим время на бесполезные загрузки
+            if self._monitor and self._monitor.should_skip():
+                logger.debug(
+                    "карточка_пропущена_перезапуск_требуется",
+                    step=f"id={listing.external_id}, попытка={attempt}",
+                )
+                break
+
+            try:
+                # Повторные попытки: пауза перед загрузкой страницы
+                if attempt > 1:
+                    logger.info(
+                        "повтор_карточки",
+                        step=f"id={listing.external_id}, попытка={attempt}/{_MAX_ENRICH_ATTEMPTS}",
+                    )
+                    await asyncio.sleep(_RETRY_DELAY_SECONDS)
+
+                loaded, token = await self._page_loader.goto_and_capture_token(
+                    active_page, listing.url, object_id=listing.external_id
+                )
+
+                if not loaded:
+                    logger.warning(
+                        "страница_не_загрузилась",
+                        step=f"id={listing.external_id}, попытка={attempt}",
+                    )
+                    # Если монитор сработал из-за этого сбоя — прерываем сразу
+                    if self._monitor and self._monitor.should_skip():
+                        logger.debug(
+                            "прерывание_после_сбоя_загрузки",
+                            step=f"id={listing.external_id}",
+                        )
+                        break
+                    continue
+
+                if not token:
+                    logger.warning(
+                        "токен_не_получен_повтор",
+                        step=f"id={listing.external_id}, попытка={attempt}/{_MAX_ENRICH_ATTEMPTS}",
+                    )
+                    continue
+
+                await self._browser.random_delay()
+
+                calendar, prices, skip_reason = await self._strategy.fetch_calendar_and_prices(
+                    active_page, listing.external_id, token, listing.url
+                )
+
+                # ── Фатальная ошибка — повторные попытки бессмысленны ──
+                if skip_reason is not None:
+                    listing.enrichment_skip_reason = skip_reason
+                    logger.info(
+                        "карточка_необогащаема",
+                        step=f"id={listing.external_id}, причина={skip_reason}",
+                    )
+                    break
+
+                # Проверяем: не получили ли мы нулевой sentinel вместо данных.
+                # Реально свободное объявление (busy=unbusy) имеет prices > 0.
+                # Нулевой sentinel возвращается при полном провале стратегии.
+                if self._is_failure_sentinel(calendar, prices):
+                    logger.warning(
+                        "нулевой_результат_повтор",
+                        step=f"id={listing.external_id}, попытка={attempt}/{_MAX_ENRICH_ATTEMPTS}",
+                    )
+                    continue
+
+                # Успех — сохраняем результат и выходим из цикла
+                listing.calendar_60_days = calendar
+                listing.prices_60_days = prices
+
+                logger.info(
+                    "карточка_обогащена",
+                    step=f"id={listing.external_id}",
+                    total=f"свободных={sum(1 for c in calendar if c == 0)}, "
+                          f"занятых={sum(1 for c in calendar if c == 1)}, "
+                          f"цен={sum(1 for p in prices if p > 0)}"
+                          + (f", попытка={attempt}" if attempt > 1 else ""),
+                )
+                break
+
+            except asyncio.CancelledError:
+                # CancelledError — штатная отмена задачи (например, при сбое
+                # другой вкладки в asyncio.gather). Логируем факт отмены,
+                # чтобы пустая карточка не оставалась без следов, и пробрасываем
+                # выше — подавлять отмену нельзя.
                 logger.warning(
-                    "токен_не_перехвачен_пробуем_перезагрузку",
-                    step=f"id={object_id}",
+                    "карточка_отменена",
+                    step=f"id={listing.external_id}, попытка={attempt}",
                 )
-                token = await self._token_manager.reload_and_get_token(
-                    page, url, object_id
+                raise
+
+            except Exception as e:
+                logger.warning(
+                    "ошибка_парсинга_карточки",
+                    error=str(e),
+                    error_type=type(e).__name__,
+                    step=f"id={listing.external_id}, попытка={attempt}",
                 )
+                # Исключение — пробуем ещё раз если есть попытки
+                if attempt < _MAX_ENRICH_ATTEMPTS:
+                    continue
 
-            if not token:
-                logger.warning("нет_токена", step=f"id={object_id}")
-                listing["prices_60"] = [0] * DAYS_COUNT
-                listing["calendar_60"] = [0] * DAYS_COUNT
-                listing["price_date"] = date.today().isoformat()
-                listing["enriched"] = False
-                return listing
-
-            # ── Гибридная стратегия ──
-            calendar_60, prices_60 = await self._strategy.fetch_calendar_and_prices(
-                page, object_id, token, url
+        else:
+            # Все попытки исчерпаны — карточка остаётся пустой
+            logger.warning(
+                "карточка_не_обогащена_все_попытки_исчерпаны",
+                step=f"id={listing.external_id}, попыток={_MAX_ENRICH_ATTEMPTS}",
             )
 
-            listing["prices_60"] = prices_60
-            listing["calendar_60"] = calendar_60
-            listing["price_date"] = date.today().isoformat()
-            listing["enriched"] = True
-
-            free_days = sum(1 for c in calendar_60 if c == 0)
-            priced_days = sum(1 for p in prices_60 if p > 0)
-
-            logger.info(
-                "обогащение_завершено",
-                step=f"id={object_id}",
-                total=f"свободных={free_days}, с_ценой={priced_days}",
-            )
-
-        except Exception as e:
-            logger.error(
-                "обогащение_ошибка",
-                step=f"id={object_id}",
-                error=str(e)[:300],
-                error_type=type(e).__name__,
-            )
-            listing["prices_60"] = [0] * DAYS_COUNT
-            listing["calendar_60"] = [0] * DAYS_COUNT
-            listing["price_date"] = date.today().isoformat()
-            listing["enriched"] = False
+        elapsed = time.perf_counter() - start_time
+        logger.info(
+            "карточка_завершена",
+            step=f"id={listing.external_id}",
+            total=f"{format_duration(elapsed)}",
+        )
 
         return listing
 
-    async def enrich_listings(
-        self, context: BrowserContext, listings: list[dict]
-    ) -> list[dict]:
-        """Обогащает список карточек последовательно (одна вкладка).
+    @staticmethod
+    def _is_failure_sentinel(calendar: list[int], prices: list[int]) -> bool:
+        """Определяет, является ли результат нулевым sentinel'ом сбоя.
+
+        HybridStrategy возвращает [0]*60, [0]*60 при полном провале.
+        Реально свободное объявление (busy=unbusy) всегда имеет prices > 0.
+        Реально занятое объявление (busy=busy) имеет calendar с единицами.
 
         Args:
-            context: Контекст браузера.
-            listings: Список карточек.
+            calendar: Список занятости на 60 дней.
+            prices: Список цен на 60 дней.
 
         Returns:
-            Список обогащённых карточек.
+            True если результат является sentinel'ом сбоя.
         """
-        if not listings:
-            return listings
+        if len(calendar) != DAYS_COUNT or len(prices) != DAYS_COUNT:
+            return True
 
-        page = await context.new_page()
+        # Все нули в обоих списках — признак сбоя, а не реальных данных
+        all_calendar_zero = all(c == 0 for c in calendar)
+        all_prices_zero = all(p == 0 for p in prices)
 
-        try:
-            for listing in listings:
-                await self.enrich_listing(page, listing)
-                await self._browser.random_delay()
-        finally:
-            await page.close()
+        return all_calendar_zero and all_prices_zero
+
+    async def enrich_listings(self, listings: list[RawListing]) -> list[RawListing]:
+        """Обогащает список объявлений последовательно.
+
+        Args:
+            listings: Список объявлений из каталога.
+
+        Returns:
+            Список объявлений с заполненными calendar_60_days и prices_60_days.
+        """
+        total = len(listings)
+        for idx, listing in enumerate(listings, start=1):
+            logger.info(
+                "обработка_карточки",
+                current=idx,
+                total=total,
+            )
+            await self.enrich_listing(listing)
+            await self._browser.random_delay()
 
         return listings
 
     async def enrich_listings_tabbed(
-        self, context: BrowserContext, listings: list[dict],
-        max_tabs: int = MAX_TABS
-    ) -> list[dict]:
-        """Обогащает список карточек параллельно через несколько вкладок.
-
-        Разбивает список на чанки по max_tabs, обрабатывает каждый чанк
-        параллельно (asyncio.gather). Вкладки создаются и закрываются
-        для каждого чанка.
+        self, listings: list[RawListing]
+    ) -> list[RawListing]:
+        """Обогащает карточки параллельно через несколько вкладок.
 
         Args:
-            context: Контекст браузера.
-            listings: Список карточек.
-            max_tabs: Максимальное количество параллельных вкладок.
+            listings: Список объявлений из каталога.
+
+        Returns:
+            Список объявлений с заполненными calendar_60_days и prices_60_days.
+        """
+        return await self._enrich_strategies.enrich_listings_tabbed(listings)
+
+    @staticmethod
+    async def enrich_listings_parallel(
+        settings: Settings,
+        listings: list[RawListing],
+        proxies: list["ProxyConfig"],
+        proxy_service: "ProxyService | None" = None,
+    ) -> list[RawListing]:
+        """Обогащает карточки параллельно через несколько прокси-браузеров.
+
+        Args:
+            settings: Настройки приложения.
+            listings: Полный список карточек.
+            proxies: Список рабочих прокси.
+            proxy_service: Сервис прокси с заполненным пулом (опциональный).
+                Передаётся в воркеры для проверки/замены при перезапуске.
 
         Returns:
             Список обогащённых карточек.
         """
-        if not listings:
-            return listings
-
-        total = len(listings)
-        effective_tabs = min(max_tabs, total)
-
-        logger.info(
-            "обогащение_пакетное_начало",
-            step=f"всего={total}, вкладок={effective_tabs}",
+        return await EnrichStrategies.enrich_listings_parallel(
+            settings=settings,
+            listings=listings,
+            proxies=proxies,
+            proxy_service=proxy_service,
         )
-
-        # Разбиваем на чанки
-        chunks: list[list[dict]] = []
-        for i in range(0, total, effective_tabs):
-            chunks.append(listings[i : i + effective_tabs])
-
-        processed = 0
-
-        for chunk_idx, chunk in enumerate(chunks):
-            pages: list[Page] = []
-
-            try:
-                # Создаём вкладки для чанка
-                for _ in chunk:
-                    page = await context.new_page()
-                    pages.append(page)
-                    await asyncio.sleep(TAB_DELAY_SECONDS)
-
-                # Параллельная обработка
-                tasks = [
-                    self.enrich_listing(pages[i], chunk[i])
-                    for i in range(len(chunk))
-                ]
-                await asyncio.gather(*tasks, return_exceptions=True)
-
-                processed += len(chunk)
-
-                logger.info(
-                    "чанк_завершён",
-                    step=f"чанк={chunk_idx + 1}/{len(chunks)}, "
-                         f"обработано={processed}/{total}",
-                )
-
-            except Exception as e:
-                logger.error(
-                    "чанк_ошибка",
-                    step=f"чанк={chunk_idx + 1}",
-                    error=str(e)[:200],
-                )
-            finally:
-                # Закрываем вкладки
-                for page in pages:
-                    try:
-                        await page.close()
-                    except Exception:
-                        pass
-
-            # Пауза между чанками
-            if chunk_idx < len(chunks) - 1:
-                await self._browser.random_delay()
-
-        enriched_count = sum(1 for l in listings if l.get("enriched"))
-        logger.info(
-            "обогащение_пакетное_завершено",
-            step=f"обогащено={enriched_count}/{total}",
-        )
-
-        return listings

@@ -294,11 +294,22 @@ async def _retry_empty_listings(
     Повторяет обогащение до тех пор, пока:
     - Все карточки заполнены (пустых не осталось).
     - Или прогресс остановился (раунд не обогатил ни одной новой карточки).
+    - Или все оставшиеся пустые карточки попали в чёрный список.
     - Или достигнут лимит раундов (_MAX_RETRY_ROUNDS).
+
+    Механизм чёрного списка (два уровня):
+    1. Мгновенное исключение — карточки с enrichment_skip_reason != None
+       (удалённые объявления, min_nights >= 60) исключаются сразу,
+       без ожидания нескольких раундов.
+    2. Порог провалов — если карточка не обогатилась settings.blacklist_threshold
+       раундов подряд — она исключается из дальнейших попыток.
+
+    При следующем запуске программы оба списка сбрасываются.
 
     После каждого раунда:
     - Обогащённые карточки сохраняются в базу данных.
     - Заново загружается список пустых карточек для следующего раунда.
+    - Карточки из чёрного списка исключаются из этого списка.
 
     Args:
         settings: Настройки приложения.
@@ -308,6 +319,24 @@ async def _retry_empty_listings(
         snapshot_service: Сервис снимков (для сохранения после каждого раунда).
         logger: Логгер.
     """
+    threshold = settings.blacklist_threshold
+
+    # Счётчик последовательных провалов: external_id → количество раундов без успеха
+    fail_counts: dict[str, int] = {}
+
+    # Множество заблокированных карточек (исключённых из дальнейших попыток)
+    blacklisted_ids: set[str] = set()
+
+    # Статистика причин мгновенного исключения
+    skip_reasons_stats: dict[str, int] = {}
+
+    logger.info(
+        "параметры_повторного_обогащения",
+        step=f"порог_чёрного_списка={threshold}, "
+             f"макс_раундов={_MAX_RETRY_ROUNDS}, "
+             f"пауза={_RETRY_ROUND_PAUSE_SECONDS}с",
+    )
+
     for round_num in range(1, _MAX_RETRY_ROUNDS + 1):
         # Получаем карточки с пустыми данными из базы
         empty_listings = repository.get_empty_listings()
@@ -319,26 +348,90 @@ async def _retry_empty_listings(
             )
             return
 
+        # ── Мгновенное исключение карточек с enrichment_skip_reason ──
+        # Карточки, помеченные на предыдущих этапах (основной прогон или
+        # предыдущие раунды) как необогащаемые, сразу идут в чёрный список.
+        instantly_excluded = 0
+        for listing in empty_listings:
+            if (
+                listing.enrichment_skip_reason is not None
+                and listing.external_id not in blacklisted_ids
+            ):
+                blacklisted_ids.add(listing.external_id)
+                instantly_excluded += 1
+
+                # Статистика по причинам
+                reason = listing.enrichment_skip_reason
+                skip_reasons_stats[reason] = skip_reasons_stats.get(reason, 0) + 1
+
+        if instantly_excluded > 0:
+            logger.info(
+                "мгновенное_исключение_необогащаемых",
+                step=f"раунд={round_num}, исключено={instantly_excluded}",
+                total=f"причины={skip_reasons_stats}",
+            )
+
+        # Исключаем карточки из чёрного списка
+        candidates = [
+            listing for listing in empty_listings
+            if listing.external_id not in blacklisted_ids
+        ]
+
+        excluded_count = len(empty_listings) - len(candidates)
+
+        if not candidates:
+            logger.info(
+                "повторное_обогащение_завершено_все_в_чёрном_списке",
+                step=f"пустых={len(empty_listings)}, "
+                     f"в_чёрном_списке={len(blacklisted_ids)}, "
+                     f"причины={skip_reasons_stats}",
+            )
+            return
+
         logger.info(
             "═" * 60,
         )
         logger.info(
             "начало_раунда_повторного_обогащения",
             step=f"раунд={round_num}/{_MAX_RETRY_ROUNDS}",
-            total=f"пустых_карточек={len(empty_listings)}",
+            total=f"пустых={len(empty_listings)}, к_обработке={len(candidates)}, "
+                  f"исключено={excluded_count}",
         )
 
         # Ограничиваем количество воркеров
         max_workers = settings.max_proxy_workers
         proxies_to_use = working_proxies[:max_workers]
 
+        # Запоминаем ID кандидатов этого раунда — для подсчёта провалов
+        candidate_ids = {listing.external_id for listing in candidates}
+
         # Обогащаем через прокси-браузеры
         enriched_listings = await ListingService.enrich_listings_parallel(
             settings=settings,
-            listings=empty_listings,
+            listings=candidates,
             proxies=proxies_to_use,
             proxy_service=proxy_service,
         )
+
+        # ── Мгновенное исключение карточек, помеченных ВО ВРЕМЯ этого раунда ──
+        newly_skipped = 0
+        for listing in enriched_listings:
+            if (
+                listing.enrichment_skip_reason is not None
+                and listing.external_id not in blacklisted_ids
+            ):
+                blacklisted_ids.add(listing.external_id)
+                newly_skipped += 1
+
+                reason = listing.enrichment_skip_reason
+                skip_reasons_stats[reason] = skip_reasons_stats.get(reason, 0) + 1
+
+        if newly_skipped > 0:
+            logger.info(
+                "мгновенное_исключение_после_раунда",
+                step=f"раунд={round_num}, исключено={newly_skipped}",
+                total=f"причины={skip_reasons_stats}",
+            )
 
         # Подсчитываем, сколько карточек были реально обогащены в этом раунде
         newly_enriched = [
@@ -346,10 +439,38 @@ async def _retry_empty_listings(
             if _is_listing_enriched(listing)
         ]
 
+        # ID успешно обогащённых карточек
+        enriched_ids = {listing.external_id for listing in newly_enriched}
+
+        # ID карточек, которые не обогатились в этом раунде
+        # (исключая те, что уже в чёрном списке — их не считаем как провал)
+        failed_ids = candidate_ids - enriched_ids - blacklisted_ids
+
+        # Обновляем счётчики провалов
+        for ext_id in enriched_ids:
+            # Успех — сбрасываем счётчик (на случай если раньше проваливалась)
+            fail_counts.pop(ext_id, None)
+
+        for ext_id in failed_ids:
+            fail_counts[ext_id] = fail_counts.get(ext_id, 0) + 1
+
+            # Проверяем порог — если достигнут, добавляем в чёрный список
+            if fail_counts[ext_id] >= threshold:
+                blacklisted_ids.add(ext_id)
+
+        # Количество новых карточек в чёрном списке по порогу провалов
+        newly_blacklisted_by_threshold = len([
+            ext_id for ext_id in failed_ids
+            if fail_counts.get(ext_id, 0) >= threshold
+        ])
+
         logger.info(
             "раунд_повторного_обогащения_завершён",
             step=f"раунд={round_num}/{_MAX_RETRY_ROUNDS}",
-            total=f"обогащено={len(newly_enriched)} из {len(empty_listings)}",
+            total=f"обогащено={len(newly_enriched)} из {len(candidates)}, "
+                  f"необогащаемых={newly_skipped}, "
+                  f"новых_по_порогу={newly_blacklisted_by_threshold}, "
+                  f"всего_в_чёрном_списке={len(blacklisted_ids)}",
         )
 
         # Сохраняем обогащённые карточки в базу
@@ -361,27 +482,34 @@ async def _retry_empty_listings(
                 step=f"раунд={round_num}",
             )
 
-        # Проверка прогресса — если ни одна карточка не обогащена, прекращаем
-        if not newly_enriched:
+        # Проверка прогресса — если ни одна карточка не обогащена
+        # и нет новых мгновенно исключённых, прекращаем
+        if not newly_enriched and newly_skipped == 0:
             logger.warning(
                 "повторное_обогащение_остановлено_нет_прогресса",
-                step=f"раунд={round_num}, оставшихся={len(empty_listings)}",
+                step=f"раунд={round_num}, "
+                     f"оставшихся={len(failed_ids)}, "
+                     f"в_чёрном_списке={len(blacklisted_ids)}",
             )
             return
 
-        # Проверяем, остались ли ещё пустые карточки
-        remaining_empty = len(empty_listings) - len(newly_enriched)
-        if remaining_empty <= 0:
+        # Проверяем, остались ли ещё кандидаты для следующего раунда
+        remaining_candidates = len(failed_ids) - newly_blacklisted_by_threshold
+        if remaining_candidates <= 0:
+            # Все оставшиеся пустые карточки уже в чёрном списке
             logger.info(
-                "повторное_обогащение_завершено_все_заполнены",
-                step=f"раундов={round_num}",
+                "повторное_обогащение_завершено",
+                step=f"раундов={round_num}, "
+                     f"в_чёрном_списке={len(blacklisted_ids)}, "
+                     f"причины={skip_reasons_stats}",
             )
             return
 
         # Пауза перед следующим раундом — даём антибот-защите «остыть»
         logger.info(
             "пауза_между_раундами",
-            step=f"пауза={_RETRY_ROUND_PAUSE_SECONDS}с, осталось={remaining_empty}",
+            step=f"пауза={_RETRY_ROUND_PAUSE_SECONDS}с, "
+                 f"осталось_кандидатов={remaining_candidates}",
         )
         await asyncio.sleep(_RETRY_ROUND_PAUSE_SECONDS)
 
@@ -390,7 +518,9 @@ async def _retry_empty_listings(
     logger.warning(
         "лимит_раундов_повторного_обогащения_исчерпан",
         step=f"раундов={_MAX_RETRY_ROUNDS}",
-        total=f"осталось_пустых={len(final_empty)}",
+        total=f"осталось_пустых={len(final_empty)}, "
+              f"в_чёрном_списке={len(blacklisted_ids)}, "
+              f"причины={skip_reasons_stats}",
     )
 
 

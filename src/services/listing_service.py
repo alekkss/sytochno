@@ -124,6 +124,9 @@ class ListingService:
         - токен API не перехвачен (частая проблема при параллельных вкладках);
         - hybrid_strategy вернула нулевой sentinel ([0]*60, [0]*60).
 
+        Если стратегия вернула skip_reason (фатальная ошибка) — повторные
+        попытки не запускаются, карточка сразу помечается как необогащаемая.
+
         Если монитор соединения сигнализирует о необходимости перезапуска
         браузера — обработка прерывается досрочно без траты попыток.
 
@@ -196,9 +199,20 @@ class ListingService:
 
                 await self._browser.random_delay()
 
-                calendar, prices = await self._strategy.fetch_calendar_and_prices(
+                calendar, prices, skip_reason = await self._strategy.fetch_calendar_and_prices(
                     active_page, listing.external_id, token, listing.url
                 )
+
+                # ── Фатальная ошибка — повторные попытки бессмысленны ──
+                # Карточка помечается как необогащаемая и не будет повторяться
+                # ни в текущем цикле retry, ни в _retry_empty_listings.
+                if skip_reason is not None:
+                    listing.enrichment_skip_reason = skip_reason
+                    logger.info(
+                        "карточка_необогащаема",
+                        step=f"id={listing.external_id}, причина={skip_reason}",
+                    )
+                    break
 
                 # Проверяем: не получили ли мы нулевой sentinel вместо данных.
                 # Реально свободное объявление (busy=unbusy) имеет prices > 0.
