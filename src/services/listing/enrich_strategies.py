@@ -29,6 +29,13 @@ _RESTART_COOLDOWN_SECONDS: float = 5.0
 # Максимальное количество перезапусков браузера за один прогон воркера
 _MAX_RESTARTS_PER_WORKER: int = 3
 
+# Максимальное количество попыток прогрева браузера (навигация на главную).
+# При каждой неудачной попытке выполняется пауза и проверка/замена прокси.
+_MAX_WARMUP_ATTEMPTS: int = 3
+
+# Пауза между попытками прогрева (секунды)
+_WARMUP_RETRY_DELAY_SECONDS: float = 5.0
+
 # ── Staggered start: поэтапный запуск воркеров ──
 
 # Количество воркеров в одной пачке запуска.
@@ -50,7 +57,7 @@ _WORKER_START_DELAY_SECONDS: float = 2.0
 # Максимальное количество retry-раундов для упавших воркеров.
 # После каждого раунда необработанные карточки перераспределяются
 # между оставшимися рабочими прокси и запускаются повторно.
-_MAX_PARALLEL_RETRY_ROUNDS: int = 2
+_MAX_PARALLEL_RETRY_ROUNDS: int = 3
 
 
 class EnrichStrategies:
@@ -412,6 +419,136 @@ class EnrichStrategies:
         if listing.prices_60_days and any(p > 0 for p in listing.prices_60_days):
             return True
         return False
+
+    @staticmethod
+    async def _warmup_browser(
+        browser_service: BrowserService,
+        proxy: ProxyConfig | None,
+        worker_idx: int,
+        all_proxies: list[ProxyConfig],
+        proxy_service: "ProxyService | None" = None,
+    ) -> tuple[bool, ProxyConfig | None]:
+        """Прогревает браузер с retry и возможной заменой прокси.
+
+        Выполняет до _MAX_WARMUP_ATTEMPTS попыток навигации на главную
+        страницу sutochno.ru. При каждой неудачной попытке:
+        1. Ждёт _WARMUP_RETRY_DELAY_SECONDS.
+        2. Если есть proxy_service — проверяет текущую прокси.
+        3. Если прокси мертва — ищет замену, останавливает старый браузер
+           и запускает новый с новой прокси.
+
+        Args:
+            browser_service: Экземпляр браузера (уже запущенный).
+            proxy: Текущая прокси воркера (может быть None).
+            worker_idx: Номер воркера (для логов).
+            all_proxies: Полный список прокси всех воркеров (для исключения).
+            proxy_service: Сервис прокси (опциональный).
+
+        Returns:
+            Кортеж (success, active_proxy):
+            - success=True если прогрев удался.
+            - active_proxy — прокси, с которой браузер в итоге работает
+              (может отличаться от исходной, если была замена).
+        """
+        current_proxy = proxy
+        in_use_by_others = [p for p in all_proxies if p != proxy]
+
+        for attempt in range(1, _MAX_WARMUP_ATTEMPTS + 1):
+            try:
+                logger.debug(
+                    "прогрев_попытка",
+                    step=f"воркер={worker_idx}, попытка={attempt}/{_MAX_WARMUP_ATTEMPTS}, "
+                         f"прокси={current_proxy or 'без_прокси'}",
+                )
+
+                await browser_service.navigate("https://sutochno.ru")
+                await browser_service.scroll_page()
+                await asyncio.sleep(10)
+
+                logger.info(
+                    "воркер_прогрет",
+                    step=f"воркер={worker_idx}"
+                         + (f", попытка={attempt}" if attempt > 1 else ""),
+                )
+                return (True, current_proxy)
+
+            except Exception as e:
+                logger.warning(
+                    "прогрев_не_удался",
+                    error=str(e),
+                    error_type=type(e).__name__,
+                    step=f"воркер={worker_idx}, попытка={attempt}/{_MAX_WARMUP_ATTEMPTS}",
+                )
+
+                # Последняя попытка — не тратим время на замену
+                if attempt >= _MAX_WARMUP_ATTEMPTS:
+                    break
+
+                # Пауза перед retry
+                await asyncio.sleep(_WARMUP_RETRY_DELAY_SECONDS)
+
+                # Проверяем/заменяем прокси если есть proxy_service
+                if current_proxy is not None and proxy_service is not None:
+                    is_current_ok = await proxy_service.check_single_proxy(
+                        current_proxy
+                    )
+
+                    if not is_current_ok:
+                        logger.warning(
+                            "прогрев_прокси_не_работает_ищем_замену",
+                            step=f"воркер={worker_idx}, прокси={current_proxy}",
+                        )
+
+                        replacement = await proxy_service.get_replacement_proxy(
+                            current_proxy=current_proxy,
+                            in_use_proxies=in_use_by_others,
+                        )
+
+                        if replacement is not None:
+                            logger.info(
+                                "прогрев_замена_прокси",
+                                step=f"воркер={worker_idx}, "
+                                     f"старая={current_proxy}, "
+                                     f"новая={replacement}",
+                            )
+
+                            # Останавливаем текущий браузер и запускаем новый
+                            try:
+                                await browser_service.stop()
+                            except Exception as stop_err:
+                                logger.warning(
+                                    "прогрев_ошибка_остановки",
+                                    error=str(stop_err),
+                                    step=f"воркер={worker_idx}",
+                                )
+
+                            current_proxy = replacement
+                            in_use_by_others = [
+                                p for p in all_proxies if p != current_proxy
+                            ]
+
+                            try:
+                                await browser_service.start(proxy=current_proxy)
+                            except Exception as start_err:
+                                logger.error(
+                                    "прогрев_ошибка_запуска_нового_браузера",
+                                    error=str(start_err),
+                                    step=f"воркер={worker_idx}",
+                                )
+                                return (False, current_proxy)
+
+                        else:
+                            logger.warning(
+                                "прогрев_замена_не_найдена",
+                                step=f"воркер={worker_idx}, "
+                                     f"пробуем_повторно_с_текущей",
+                            )
+
+        logger.error(
+            "прогрев_все_попытки_исчерпаны",
+            step=f"воркер={worker_idx}, попыток={_MAX_WARMUP_ATTEMPTS}",
+        )
+        return (False, current_proxy)
 
     @staticmethod
     async def _launch_workers_staggered(
@@ -798,9 +935,14 @@ class EnrichStrategies:
     ) -> tuple[list[RawListing], float, BrowserService]:
         """Воркер — обрабатывает порцию карточек через один прокси-браузер.
 
-        При срабатывании монитора соединения выполняет перезапуск браузера
-        с проверкой текущей прокси. Если текущая мертва — ищет замену
-        из пула proxy_service (уже проверенных на старте прокси).
+        Этап прогрева защищён retry-циклом (_warmup_browser): при ошибках
+        навигации на главную страницу выполняется до _MAX_WARMUP_ATTEMPTS
+        попыток с возможной заменой прокси. Если прогрев не удался —
+        воркер завершается с пустым результатом (карточки подхватит retry-раунд).
+
+        При срабатывании монитора соединения (во время обработки карточек)
+        выполняет перезапуск браузера с проверкой текущей прокси. Если текущая
+        мертва — ищет замену из пула proxy_service.
 
         При срабатывании монитора памяти (should_reduce_workers) воркер
         досрочно завершает работу, возвращая уже обработанные карточки.
@@ -843,11 +985,27 @@ class EnrichStrategies:
                 total=len(listings),
             )
 
-            await browser_service.navigate("https://sutochno.ru")
-            await browser_service.scroll_page()
-            await asyncio.sleep(10)
+            # ── Прогрев с retry и возможной заменой прокси ──
+            warmup_ok, current_proxy = await EnrichStrategies._warmup_browser(
+                browser_service=browser_service,
+                proxy=current_proxy,
+                worker_idx=worker_idx,
+                all_proxies=all_proxies,
+                proxy_service=proxy_service,
+            )
 
-            logger.info("воркер_прогрет", step=f"воркер={worker_idx}")
+            if not warmup_ok:
+                # Прогрев не удался после всех попыток — воркер завершается.
+                # Карточки остаются необработанными → подхватит retry-раунд.
+                worker_elapsed = time.perf_counter() - worker_start
+                logger.warning(
+                    "воркер_не_прогрелся_завершение",
+                    step=f"воркер={worker_idx}, время={format_duration(worker_elapsed)}",
+                )
+                return (listings, worker_elapsed, browser_service)
+
+            # Обновляем список исключений после возможной замены прокси
+            in_use_by_others = [p for p in all_proxies if p != current_proxy]
 
             from src.services.listing_service import ListingService
 
@@ -964,9 +1122,29 @@ class EnrichStrategies:
                     try:
                         browser_service = BrowserService(settings=settings)
                         await browser_service.start(proxy=current_proxy)
-                        await browser_service.navigate("https://sutochno.ru")
-                        await browser_service.scroll_page()
-                        await asyncio.sleep(5)
+
+                        # Прогрев после перезапуска — тоже с retry
+                        warmup_ok, current_proxy = (
+                            await EnrichStrategies._warmup_browser(
+                                browser_service=browser_service,
+                                proxy=current_proxy,
+                                worker_idx=worker_idx,
+                                all_proxies=all_proxies,
+                                proxy_service=proxy_service,
+                            )
+                        )
+
+                        if not warmup_ok:
+                            logger.error(
+                                "воркер_перезапуск_прогрев_не_удался",
+                                step=f"воркер={worker_idx}",
+                            )
+                            break
+
+                        # Обновляем список исключений после возможной замены
+                        in_use_by_others = [
+                            p for p in all_proxies if p != current_proxy
+                        ]
 
                         # Пересоздаём ListingService с новым браузером и монитором
                         monitor = ConnectionMonitor()
