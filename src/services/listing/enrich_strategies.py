@@ -47,6 +47,11 @@ _BATCH_DELAY_SECONDS: float = 15.0
 # вызов playwright.chromium.launch() и параллельный прогрев на одних прокси.
 _WORKER_START_DELAY_SECONDS: float = 2.0
 
+# Максимальное количество retry-раундов для упавших воркеров.
+# После каждого раунда необработанные карточки перераспределяются
+# между оставшимися рабочими прокси и запускаются повторно.
+_MAX_PARALLEL_RETRY_ROUNDS: int = 2
+
 
 class EnrichStrategies:
     """Параллельные стратегии обогащения карточек.
@@ -409,6 +414,84 @@ class EnrichStrategies:
         return False
 
     @staticmethod
+    async def _launch_workers_staggered(
+        worker_configs: list[tuple[int, list[RawListing], ProxyConfig]],
+        settings: "any",  # type: ignore[name-defined]
+        active_proxies: list[ProxyConfig],
+        proxy_service: "ProxyService | None",
+        memory_monitor: MemoryMonitor,
+    ) -> list[asyncio.Task]:
+        """Создаёт и запускает все воркеры поэтапно (staggered start).
+
+        Воркеры создаются как asyncio.Task пачками по _WORKER_BATCH_SIZE.
+        Между пачками — пауза _BATCH_DELAY_SECONDS.
+        Внутри пачки — задержка _WORKER_START_DELAY_SECONDS между стартами.
+
+        Все Task'и возвращаются сразу после создания — они уже запущены
+        и работают параллельно. Вызывающий код должен выполнить
+        await asyncio.gather(*tasks) для ожидания завершения всех.
+
+        Args:
+            worker_configs: Список (worker_idx, chunk, proxy) для каждого воркера.
+            settings: Настройки приложения.
+            active_proxies: Полный список активных прокси (для исключения занятых).
+            proxy_service: Сервис прокси (опциональный).
+            memory_monitor: Монитор RAM.
+
+        Returns:
+            Список запущенных asyncio.Task.
+        """
+        all_tasks: list[asyncio.Task] = []
+
+        # Разбиваем на пачки
+        total_batches = (
+            (len(worker_configs) + _WORKER_BATCH_SIZE - 1) // _WORKER_BATCH_SIZE
+        )
+
+        for batch_idx in range(total_batches):
+            batch_start = batch_idx * _WORKER_BATCH_SIZE
+            batch_end = min(batch_start + _WORKER_BATCH_SIZE, len(worker_configs))
+            batch = worker_configs[batch_start:batch_end]
+
+            # Пауза между пачками (кроме первой)
+            if batch_idx > 0:
+                logger.info(
+                    "пауза_между_пачками_воркеров",
+                    step=f"ожидание={_BATCH_DELAY_SECONDS}с "
+                         f"перед пачкой {batch_idx + 1}/{total_batches}",
+                )
+                await asyncio.sleep(_BATCH_DELAY_SECONDS)
+
+            logger.info(
+                "запуск_пачки_воркеров",
+                step=f"пачка={batch_idx + 1}/{total_batches}, "
+                     f"воркеров={len(batch)}, "
+                     f"задержка_внутри={_WORKER_START_DELAY_SECONDS}с",
+            )
+
+            # Запускаем воркеры пачки как Task'и с задержкой между стартом
+            for i, (worker_idx, chunk, proxy) in enumerate(batch):
+                # Задержка перед запуском каждого воркера (кроме первого в пачке)
+                if i > 0:
+                    await asyncio.sleep(_WORKER_START_DELAY_SECONDS)
+
+                task = asyncio.create_task(
+                    EnrichStrategies._worker(
+                        settings, chunk, proxy, worker_idx,
+                        active_proxies, proxy_service, memory_monitor,
+                    ),
+                    name=f"worker-{worker_idx}",
+                )
+                all_tasks.append(task)
+
+        logger.info(
+            "все_воркеры_запущены",
+            step=f"всего_задач={len(all_tasks)}, пачек={total_batches}",
+        )
+
+        return all_tasks
+
+    @staticmethod
     async def enrich_listings_parallel(
         settings: "any",  # type: ignore[name-defined]
         listings: list[RawListing],
@@ -420,13 +503,13 @@ class EnrichStrategies:
         Воркеры запускаются ПОЭТАПНО (staggered start) — пачками по
         _WORKER_BATCH_SIZE с паузой _BATCH_DELAY_SECONDS между пачками.
         Внутри пачки каждый воркер стартует с задержкой
-        _WORKER_START_DELAY_SECONDS. Это предотвращает перегрузку
-        прокси-серверов одновременными подключениями Chromium.
+        _WORKER_START_DELAY_SECONDS. После создания всех Task'ов — все
+        воркеры работают параллельно до завершения.
 
-        Перед запуском воркеров выполняет статический расчёт безопасного
-        количества воркеров по доступной RAM. Во время работы запускает
-        фоновый мониторинг — при превышении порога воркеры досрочно
-        завершают текущую порцию и останавливаются.
+        При падении воркера с исключением его карточки считаются
+        необработанными. После основного раунда необработанные карточки
+        перераспределяются между оставшимися рабочими прокси и запускаются
+        повторно (до _MAX_PARALLEL_RETRY_ROUNDS раундов).
 
         Args:
             settings: Настройки приложения.
@@ -465,7 +548,8 @@ class EnrichStrategies:
                  f", вкладок_на_прокси={settings.max_tabs}"
                  f", пачек={total_batches}"
                  f", размер_пачки={_WORKER_BATCH_SIZE}"
-                 f", пауза_между_пачками={_BATCH_DELAY_SECONDS}с",
+                 f", пауза_между_пачками={_BATCH_DELAY_SECONDS}с"
+                 f", задержка_внутри_пачки={_WORKER_START_DELAY_SECONDS}с",
         )
 
         # ── Запуск фонового мониторинга RAM ──
@@ -473,11 +557,11 @@ class EnrichStrategies:
 
         parallel_start = time.perf_counter()
 
-        try:
-            # ── Поэтапный запуск воркеров (staggered start) ──
-            all_results: list[tuple[list[RawListing], float, BrowserService] | BaseException] = []
+        # Отслеживаем прокси, на которых воркеры упали (исключаем из retry)
+        failed_proxies: set[str] = set()
 
-            # Формируем конфигурации воркеров: (worker_idx, chunk, proxy)
+        try:
+            # ── Основной раунд: поэтапный запуск всех воркеров ──
             worker_configs: list[tuple[int, list[RawListing], ProxyConfig]] = [
                 (idx, chunk, proxy)
                 for idx, (chunk, proxy) in enumerate(
@@ -485,56 +569,108 @@ class EnrichStrategies:
                 )
             ]
 
-            # Разбиваем на пачки
-            batches: list[list[tuple[int, list[RawListing], ProxyConfig]]] = []
-            for batch_start in range(0, len(worker_configs), _WORKER_BATCH_SIZE):
-                batch = worker_configs[batch_start: batch_start + _WORKER_BATCH_SIZE]
-                batches.append(batch)
+            all_tasks = await EnrichStrategies._launch_workers_staggered(
+                worker_configs=worker_configs,
+                settings=settings,
+                active_proxies=active_proxies,
+                proxy_service=proxy_service,
+                memory_monitor=memory_monitor,
+            )
 
-            for batch_idx, batch in enumerate(batches, start=1):
-                # Пауза между пачками (кроме первой)
-                if batch_idx > 1:
+            # Ожидаем завершения ВСЕХ воркеров параллельно
+            results = await asyncio.gather(*all_tasks, return_exceptions=True)
+
+            # Обрабатываем результаты основного раунда
+            all_enriched, worker_stats, browsers_to_stop, failed_proxies = (
+                EnrichStrategies._process_worker_results(
+                    results, worker_configs, active_proxies
+                )
+            )
+
+            # Останавливаем браузеры основного раунда
+            await EnrichStrategies._stop_browsers(browsers_to_stop)
+
+            # ── Retry-раунды для необработанных карточек ──
+            for retry_round in range(1, _MAX_PARALLEL_RETRY_ROUNDS + 1):
+                # Собираем необработанные карточки из всех чанков
+                unenriched = [
+                    l for l in listings
+                    if not EnrichStrategies._is_enriched(l)
+                ]
+
+                if not unenriched:
                     logger.info(
-                        "пауза_между_пачками_воркеров",
-                        step=f"ожидание={_BATCH_DELAY_SECONDS}с "
-                             f"перед пачкой {batch_idx}/{total_batches}",
+                        "все_карточки_обогащены_retry_не_нужен",
                     )
-                    await asyncio.sleep(_BATCH_DELAY_SECONDS)
+                    break
+
+                # Отбираем прокси, которые НЕ упали в предыдущих раундах
+                retry_proxies = [
+                    p for p in active_proxies
+                    if str(p) not in failed_proxies
+                ]
+
+                if not retry_proxies:
+                    logger.warning(
+                        "нет_рабочих_прокси_для_retry",
+                        step=f"упавших_прокси={len(failed_proxies)}, "
+                             f"необработано={len(unenriched)}",
+                    )
+                    break
 
                 logger.info(
-                    "запуск_пачки_воркеров",
-                    step=f"пачка={batch_idx}/{total_batches}, "
-                         f"воркеров={len(batch)}, "
-                         f"задержка_внутри={_WORKER_START_DELAY_SECONDS}с",
+                    "retry_раунд_упавших_воркеров",
+                    step=f"раунд={retry_round}/{_MAX_PARALLEL_RETRY_ROUNDS}, "
+                         f"необработано={len(unenriched)}, "
+                         f"прокси_для_retry={len(retry_proxies)}",
                 )
 
-                # Запускаем воркеры пачки как задачи с задержкой между стартом
-                batch_tasks: list[asyncio.Task] = []
+                # Перераспределяем необработанные карточки
+                retry_chunks = ProxyServiceClass.distribute_listings(
+                    unenriched, len(retry_proxies)
+                )
 
-                for i, (worker_idx, chunk, proxy) in enumerate(batch):
-                    # Задержка перед запуском каждого воркера (кроме первого в пачке)
-                    if i > 0:
-                        await asyncio.sleep(_WORKER_START_DELAY_SECONDS)
-
-                    task = asyncio.create_task(
-                        EnrichStrategies._worker(
-                            settings, chunk, proxy, worker_idx,
-                            active_proxies, proxy_service, memory_monitor,
-                        ),
-                        name=f"worker-{worker_idx}",
+                retry_configs: list[tuple[int, list[RawListing], ProxyConfig]] = [
+                    (100 * retry_round + idx, chunk, proxy)
+                    for idx, (chunk, proxy) in enumerate(
+                        zip(retry_chunks, retry_proxies), start=1
                     )
-                    batch_tasks.append(task)
+                ]
 
-                # Ожидаем завершения всех воркеров текущей пачки
-                batch_results = await asyncio.gather(
-                    *batch_tasks, return_exceptions=True
+                # Пауза перед retry — даём сети стабилизироваться
+                await asyncio.sleep(_RESTART_COOLDOWN_SECONDS)
+
+                retry_tasks = await EnrichStrategies._launch_workers_staggered(
+                    worker_configs=retry_configs,
+                    settings=settings,
+                    active_proxies=retry_proxies,
+                    proxy_service=proxy_service,
+                    memory_monitor=memory_monitor,
                 )
-                all_results.extend(batch_results)
+
+                retry_results = await asyncio.gather(
+                    *retry_tasks, return_exceptions=True
+                )
+
+                # Обрабатываем результаты retry
+                retry_enriched, retry_stats, retry_browsers, retry_failed = (
+                    EnrichStrategies._process_worker_results(
+                        retry_results, retry_configs, retry_proxies
+                    )
+                )
+
+                all_enriched.extend(retry_enriched)
+                worker_stats.extend(retry_stats)
+                failed_proxies.update(retry_failed)
+
+                # Останавливаем браузеры retry-раунда
+                await EnrichStrategies._stop_browsers(retry_browsers)
 
                 logger.info(
-                    "пачка_воркеров_завершена",
-                    step=f"пачка={batch_idx}/{total_batches}, "
-                         f"завершено={len(batch_results)}",
+                    "retry_раунд_завершён",
+                    step=f"раунд={retry_round}, "
+                         f"дообогащено={len(retry_enriched)}, "
+                         f"упало_прокси={len(retry_failed)}",
                 )
 
         finally:
@@ -543,32 +679,7 @@ class EnrichStrategies:
 
         parallel_elapsed = time.perf_counter() - parallel_start
 
-        all_enriched: list[RawListing] = []
-        worker_stats: list[tuple[int, int, float]] = []
-        browsers_to_stop: list[tuple[BrowserService, int]] = []
-
-        for worker_idx, result in enumerate(all_results, start=1):
-            if isinstance(result, BaseException):
-                logger.warning(
-                    "воркер_завершился_с_ошибкой",
-                    error=str(result),
-                    error_type=type(result).__name__,
-                    step=f"воркер={worker_idx}",
-                )
-            elif isinstance(result, tuple) and len(result) == 3:
-                enriched_list, duration, browser_svc = result
-                all_enriched.extend(enriched_list)
-                worker_stats.append((worker_idx, len(enriched_list), duration))
-                browsers_to_stop.append((browser_svc, worker_idx))
-
-        # Гарантированная остановка всех браузеров воркеров —
-        # даже при исключениях в отдельных воркерах
-        if browsers_to_stop:
-            logger.info("остановка_прокси_браузеров", total=len(browsers_to_stop))
-            for browser_svc, w_idx in browsers_to_stop:
-                await safe_stop_browser(browser_svc, w_idx)
-            logger.info("все_прокси_браузеры_остановлены")
-
+        # ── Итоговая сводка ──
         if worker_stats:
             logger.info("─" * 50)
             logger.info("сводка_по_воркерам", total=len(worker_stats))
@@ -601,6 +712,79 @@ class EnrichStrategies:
         )
 
         return all_enriched
+
+    @staticmethod
+    def _process_worker_results(
+        results: list,
+        worker_configs: list[tuple[int, list[RawListing], ProxyConfig]],
+        active_proxies: list[ProxyConfig],
+    ) -> tuple[
+        list[RawListing],
+        list[tuple[int, int, float]],
+        list[tuple[BrowserService, int]],
+        set[str],
+    ]:
+        """Обрабатывает результаты завершённых воркеров.
+
+        Разделяет успешные и упавшие воркеры. Для упавших — запоминает
+        прокси, чтобы исключить их из retry-раундов.
+
+        Args:
+            results: Результаты asyncio.gather (tuple или BaseException).
+            worker_configs: Конфигурации воркеров (для определения прокси упавших).
+            active_proxies: Список активных прокси.
+
+        Returns:
+            Кортеж:
+            - all_enriched: карточки из успешных воркеров.
+            - worker_stats: статистика (worker_idx, cards, duration).
+            - browsers_to_stop: браузеры для остановки.
+            - failed_proxies: прокси упавших воркеров (строковое представление).
+        """
+        all_enriched: list[RawListing] = []
+        worker_stats: list[tuple[int, int, float]] = []
+        browsers_to_stop: list[tuple[BrowserService, int]] = []
+        failed_proxies: set[str] = set()
+
+        for idx, result in enumerate(results):
+            worker_idx = worker_configs[idx][0] if idx < len(worker_configs) else idx + 1
+            worker_proxy = worker_configs[idx][2] if idx < len(worker_configs) else None
+
+            if isinstance(result, BaseException):
+                logger.warning(
+                    "воркер_завершился_с_ошибкой",
+                    error=str(result),
+                    error_type=type(result).__name__,
+                    step=f"воркер={worker_idx}",
+                )
+                # Помечаем прокси этого воркера как упавшую
+                if worker_proxy is not None:
+                    failed_proxies.add(str(worker_proxy))
+
+            elif isinstance(result, tuple) and len(result) == 3:
+                enriched_list, duration, browser_svc = result
+                all_enriched.extend(enriched_list)
+                worker_stats.append((worker_idx, len(enriched_list), duration))
+                browsers_to_stop.append((browser_svc, worker_idx))
+
+        return all_enriched, worker_stats, browsers_to_stop, failed_proxies
+
+    @staticmethod
+    async def _stop_browsers(
+        browsers_to_stop: list[tuple[BrowserService, int]],
+    ) -> None:
+        """Останавливает все браузеры из списка.
+
+        Args:
+            browsers_to_stop: Список (browser_service, worker_idx).
+        """
+        if not browsers_to_stop:
+            return
+
+        logger.info("остановка_прокси_браузеров", total=len(browsers_to_stop))
+        for browser_svc, w_idx in browsers_to_stop:
+            await safe_stop_browser(browser_svc, w_idx)
+        logger.info("все_прокси_браузеры_остановлены")
 
     @staticmethod
     async def _worker(
