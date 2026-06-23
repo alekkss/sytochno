@@ -29,6 +29,24 @@ _RESTART_COOLDOWN_SECONDS: float = 5.0
 # Максимальное количество перезапусков браузера за один прогон воркера
 _MAX_RESTARTS_PER_WORKER: int = 3
 
+# ── Staggered start: поэтапный запуск воркеров ──
+
+# Количество воркеров в одной пачке запуска.
+# 10 одновременных Chromium — безопасный предел для большинства прокси-серверов.
+# При 45 прокси запуск разобьётся на 5 пачек по 10 (последняя — 5 воркеров).
+_WORKER_BATCH_SIZE: int = 10
+
+# Пауза между запуском пачек воркеров (секунды).
+# 15 секунд — достаточно, чтобы предыдущая пачка успела пройти прогрев
+# и освободить пиковую нагрузку на сеть. Прокси-серверы восстанавливают
+# пул соединений за 5-10 секунд после пика.
+_BATCH_DELAY_SECONDS: float = 15.0
+
+# Задержка между запуском отдельных воркеров внутри пачки (секунды).
+# 2 секунды между стартом каждого Chromium — предотвращает одновременный
+# вызов playwright.chromium.launch() и параллельный прогрев на одних прокси.
+_WORKER_START_DELAY_SECONDS: float = 2.0
+
 
 class EnrichStrategies:
     """Параллельные стратегии обогащения карточек.
@@ -399,6 +417,12 @@ class EnrichStrategies:
     ) -> list[RawListing]:
         """Обогащает карточки параллельно через несколько прокси-браузеров.
 
+        Воркеры запускаются ПОЭТАПНО (staggered start) — пачками по
+        _WORKER_BATCH_SIZE с паузой _BATCH_DELAY_SECONDS между пачками.
+        Внутри пачки каждый воркер стартует с задержкой
+        _WORKER_START_DELAY_SECONDS. Это предотвращает перегрузку
+        прокси-серверов одновременными подключениями Chromium.
+
         Перед запуском воркеров выполняет статический расчёт безопасного
         количества воркеров по доступной RAM. Во время работы запускает
         фоновый мониторинг — при превышении порога воркеры досрочно
@@ -430,12 +454,18 @@ class EnrichStrategies:
 
         chunks = ProxyServiceClass.distribute_listings(listings, len(active_proxies))
 
+        # Расчёт количества пачек для логирования
+        total_batches = (len(active_proxies) + _WORKER_BATCH_SIZE - 1) // _WORKER_BATCH_SIZE
+
         logger.info(
             "параллельная_обработка",
             total=len(listings),
             step=f"прокси={len(active_proxies)}"
                  f"{f' (ограничено_по_ram из {requested_workers})' if safe_workers < requested_workers else ''}"
-                 f", вкладок_на_прокси={settings.max_tabs}",
+                 f", вкладок_на_прокси={settings.max_tabs}"
+                 f", пачек={total_batches}"
+                 f", размер_пачки={_WORKER_BATCH_SIZE}"
+                 f", пауза_между_пачками={_BATCH_DELAY_SECONDS}с",
         )
 
         # ── Запуск фонового мониторинга RAM ──
@@ -444,17 +474,69 @@ class EnrichStrategies:
         parallel_start = time.perf_counter()
 
         try:
-            tasks = [
-                EnrichStrategies._worker(
-                    settings, chunk, proxy, worker_idx,
-                    active_proxies, proxy_service, memory_monitor,
-                )
-                for worker_idx, (chunk, proxy) in enumerate(
+            # ── Поэтапный запуск воркеров (staggered start) ──
+            all_results: list[tuple[list[RawListing], float, BrowserService] | BaseException] = []
+
+            # Формируем конфигурации воркеров: (worker_idx, chunk, proxy)
+            worker_configs: list[tuple[int, list[RawListing], ProxyConfig]] = [
+                (idx, chunk, proxy)
+                for idx, (chunk, proxy) in enumerate(
                     zip(chunks, active_proxies), start=1
                 )
             ]
 
-            results = await asyncio.gather(*tasks, return_exceptions=True)
+            # Разбиваем на пачки
+            batches: list[list[tuple[int, list[RawListing], ProxyConfig]]] = []
+            for batch_start in range(0, len(worker_configs), _WORKER_BATCH_SIZE):
+                batch = worker_configs[batch_start: batch_start + _WORKER_BATCH_SIZE]
+                batches.append(batch)
+
+            for batch_idx, batch in enumerate(batches, start=1):
+                # Пауза между пачками (кроме первой)
+                if batch_idx > 1:
+                    logger.info(
+                        "пауза_между_пачками_воркеров",
+                        step=f"ожидание={_BATCH_DELAY_SECONDS}с "
+                             f"перед пачкой {batch_idx}/{total_batches}",
+                    )
+                    await asyncio.sleep(_BATCH_DELAY_SECONDS)
+
+                logger.info(
+                    "запуск_пачки_воркеров",
+                    step=f"пачка={batch_idx}/{total_batches}, "
+                         f"воркеров={len(batch)}, "
+                         f"задержка_внутри={_WORKER_START_DELAY_SECONDS}с",
+                )
+
+                # Запускаем воркеры пачки как задачи с задержкой между стартом
+                batch_tasks: list[asyncio.Task] = []
+
+                for i, (worker_idx, chunk, proxy) in enumerate(batch):
+                    # Задержка перед запуском каждого воркера (кроме первого в пачке)
+                    if i > 0:
+                        await asyncio.sleep(_WORKER_START_DELAY_SECONDS)
+
+                    task = asyncio.create_task(
+                        EnrichStrategies._worker(
+                            settings, chunk, proxy, worker_idx,
+                            active_proxies, proxy_service, memory_monitor,
+                        ),
+                        name=f"worker-{worker_idx}",
+                    )
+                    batch_tasks.append(task)
+
+                # Ожидаем завершения всех воркеров текущей пачки
+                batch_results = await asyncio.gather(
+                    *batch_tasks, return_exceptions=True
+                )
+                all_results.extend(batch_results)
+
+                logger.info(
+                    "пачка_воркеров_завершена",
+                    step=f"пачка={batch_idx}/{total_batches}, "
+                         f"завершено={len(batch_results)}",
+                )
+
         finally:
             # Гарантированная остановка мониторинга — даже при исключениях
             await memory_monitor.stop_monitoring()
@@ -465,7 +547,7 @@ class EnrichStrategies:
         worker_stats: list[tuple[int, int, float]] = []
         browsers_to_stop: list[tuple[BrowserService, int]] = []
 
-        for worker_idx, result in enumerate(results, start=1):
+        for worker_idx, result in enumerate(all_results, start=1):
             if isinstance(result, BaseException):
                 logger.warning(
                     "воркер_завершился_с_ошибкой",

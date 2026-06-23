@@ -6,11 +6,13 @@
 3. Читает первые 1000 ссылок из столбца "O" файла data/sutochno_report.xlsx.
 4. Рассчитывает безопасное количество воркеров (MemoryMonitor).
 5. Распределяет ссылки между рабочими прокси (distribute_listings).
-6. Запускает воркеры — каждый открывает Chromium через прокси,
+6. Запускает воркеры ПАЧКАМИ — каждая пачка стартует с задержкой,
+   чтобы не перегружать прокси-серверы одновременными подключениями.
+7. Каждый воркер открывает Chromium через прокси,
    прогревает браузер, затем обрабатывает свою порцию ссылок
    через MAX_TABS параллельных вкладок.
-7. Каждая вкладка выполняет только навигацию (без обогащения).
-8. Логирует каждый этап для диагностики.
+8. Каждая вкладка выполняет только навигацию (без обогащения).
+9. Логирует каждый этап для диагностики.
 
 Запуск:
     python -m scripts.test_proxy_browsers
@@ -47,6 +49,24 @@ _WARMUP_DELAY_SECONDS: float = 10.0
 
 # Пауза между запуском вкладок внутри порции (секунды)
 _TAB_START_DELAY_SECONDS: float = 1.0
+
+# ── Staggered start: поэтапный запуск воркеров ──
+
+# Количество воркеров в одной пачке запуска.
+# 10 одновременных Chromium — безопасный предел для большинства прокси-серверов.
+# При 45 прокси запуск разобьётся на 5 пачек по 10 (последняя — 5 воркеров).
+_WORKER_BATCH_SIZE: int = 10
+
+# Пауза между запуском пачек воркеров (секунды).
+# 15 секунд — достаточно, чтобы предыдущая пачка успела пройти прогрев
+# и освободить пиковую нагрузку на сеть. Прокси-серверы восстанавливают
+# пул соединений за 5-10 секунд после пика.
+_BATCH_DELAY_SECONDS: float = 15.0
+
+# Задержка между запуском отдельных воркеров внутри пачки (секунды).
+# 2 секунды между стартом каждого Chromium — предотвращает одновременный
+# вызов playwright.chromium.launch() и параллельный прогрев на одних прокси.
+_WORKER_START_DELAY_SECONDS: float = 2.0
 
 
 @dataclass
@@ -366,6 +386,77 @@ def distribute_links(links: list[str], worker_count: int) -> list[list[str]]:
     return chunks
 
 
+async def _run_worker_batch(
+    batch_workers: list[tuple[int, list[str], ProxyConfig]],
+    settings: Settings,
+    max_tabs: int,
+    batch_number: int,
+    total_batches: int,
+) -> list[WorkerResult | BaseException]:
+    """Запускает одну пачку воркеров с задержкой между стартом каждого.
+
+    Внутри пачки воркеры запускаются последовательно с задержкой
+    _WORKER_START_DELAY_SECONDS, но работают параллельно (asyncio.Task).
+    Это предотвращает одновременный вызов playwright.chromium.launch()
+    и параллельный прогрев, снижая пиковую нагрузку на прокси.
+
+    Args:
+        batch_workers: Список кортежей (worker_idx, links, proxy) для пачки.
+        settings: Настройки приложения.
+        max_tabs: Количество параллельных вкладок на воркер.
+        batch_number: Номер текущей пачки (для логов).
+        total_batches: Общее количество пачек (для логов).
+
+    Returns:
+        Список результатов (WorkerResult или Exception) для каждого воркера.
+    """
+    logger = get_logger("test_proxy_browsers")
+
+    logger.info(
+        "запуск_пачки_воркеров",
+        step=f"пачка={batch_number}/{total_batches}, "
+             f"воркеров_в_пачке={len(batch_workers)}, "
+             f"задержка_между_стартом={_WORKER_START_DELAY_SECONDS}с",
+    )
+
+    # Запускаем воркеры как задачи с задержкой между стартом
+    tasks: list[asyncio.Task[WorkerResult]] = []
+
+    for i, (worker_idx, links, proxy) in enumerate(batch_workers):
+        # Задержка перед запуском каждого воркера (кроме первого в пачке)
+        if i > 0:
+            await asyncio.sleep(_WORKER_START_DELAY_SECONDS)
+
+        task = asyncio.create_task(
+            test_worker(
+                settings=settings,
+                links=links,
+                proxy=proxy,
+                worker_idx=worker_idx,
+                max_tabs=max_tabs,
+            ),
+            name=f"worker-{worker_idx}",
+        )
+        tasks.append(task)
+
+        logger.debug(
+            "воркер_задача_создана",
+            step=f"пачка={batch_number}, воркер={worker_idx}, "
+                 f"запущено_задач={len(tasks)}/{len(batch_workers)}",
+        )
+
+    # Ожидаем завершения всех воркеров пачки
+    results = await asyncio.gather(*tasks, return_exceptions=True)
+
+    logger.info(
+        "пачка_завершена",
+        step=f"пачка={batch_number}/{total_batches}, "
+             f"завершено={len(results)}",
+    )
+
+    return list(results)
+
+
 async def run() -> None:
     """Основная логика тестового скрипта."""
     # --- Шаг 1: Загрузка настроек ---
@@ -398,6 +489,14 @@ async def run() -> None:
              f"TAB_DELAY_MS={settings.tab_delay_ms}, "
              f"MEMORY_LIMIT_MB={settings.memory_limit_mb}, "
              f"HEADLESS_MODE={settings.headless_mode}",
+    )
+
+    # --- Шаг 3.1: Параметры staggered start ---
+    logger.info(
+        "параметры_staggered_start",
+        step=f"WORKER_BATCH_SIZE={_WORKER_BATCH_SIZE}, "
+             f"BATCH_DELAY_SECONDS={_BATCH_DELAY_SECONDS}, "
+             f"WORKER_START_DELAY_SECONDS={_WORKER_START_DELAY_SECONDS}",
     )
 
     # --- Шаг 4: Проверка USE_PROXY ---
@@ -510,31 +609,57 @@ async def run() -> None:
             step=f"воркер={idx}, ссылок={len(chunk)}, прокси={active_proxies[idx-1]}",
         )
 
-    # --- Шаг 9: Запуск всех воркеров параллельно ---
-    logger.info("=" * 70)
-    logger.info(
-        "ЗАПУСК_ВОРКЕРОВ",
-        total=len(active_proxies),
-        step=f"ссылок={len(links)}, вкладок_на_воркер={settings.max_tabs}",
-    )
-    logger.info("=" * 70)
+    # --- Шаг 9: Поэтапный запуск воркеров (staggered start) ---
 
-    parallel_start = time.perf_counter()
-
-    tasks = [
-        test_worker(
-            settings=settings,
-            links=chunk,
-            proxy=proxy,
-            worker_idx=idx,
-            max_tabs=settings.max_tabs,
-        )
+    # Формируем список воркеров: (worker_idx, links, proxy)
+    all_worker_configs: list[tuple[int, list[str], ProxyConfig]] = [
+        (idx, chunk, proxy)
         for idx, (chunk, proxy) in enumerate(
             zip(chunks, active_proxies), start=1
         )
     ]
 
-    results = await asyncio.gather(*tasks, return_exceptions=True)
+    # Разбиваем на пачки по _WORKER_BATCH_SIZE
+    batches: list[list[tuple[int, list[str], ProxyConfig]]] = []
+    for batch_start in range(0, len(all_worker_configs), _WORKER_BATCH_SIZE):
+        batch = all_worker_configs[batch_start: batch_start + _WORKER_BATCH_SIZE]
+        batches.append(batch)
+
+    total_batches = len(batches)
+
+    logger.info("=" * 70)
+    logger.info(
+        "ЗАПУСК_ВОРКЕРОВ_ПОЭТАПНО",
+        total=len(active_proxies),
+        step=f"ссылок={len(links)}, вкладок_на_воркер={settings.max_tabs}, "
+             f"пачек={total_batches}, размер_пачки={_WORKER_BATCH_SIZE}, "
+             f"пауза_между_пачками={_BATCH_DELAY_SECONDS}с, "
+             f"пауза_внутри_пачки={_WORKER_START_DELAY_SECONDS}с",
+    )
+    logger.info("=" * 70)
+
+    parallel_start = time.perf_counter()
+
+    # Собираем все результаты со всех пачек
+    all_results: list[WorkerResult | BaseException] = []
+
+    for batch_idx, batch in enumerate(batches, start=1):
+        # Пауза между пачками (кроме первой)
+        if batch_idx > 1:
+            logger.info(
+                "пауза_между_пачками",
+                step=f"ожидание={_BATCH_DELAY_SECONDS}с перед пачкой {batch_idx}/{total_batches}",
+            )
+            await asyncio.sleep(_BATCH_DELAY_SECONDS)
+
+        batch_results = await _run_worker_batch(
+            batch_workers=batch,
+            settings=settings,
+            max_tabs=settings.max_tabs,
+            batch_number=batch_idx,
+            total_batches=total_batches,
+        )
+        all_results.extend(batch_results)
 
     parallel_elapsed = time.perf_counter() - parallel_start
 
@@ -548,7 +673,7 @@ async def run() -> None:
     total_successful_navs = 0
     total_failed_navs = 0
 
-    for result in results:
+    for result in all_results:
         if isinstance(result, Exception):
             failed_workers += 1
             logger.error(
@@ -596,7 +721,7 @@ async def run() -> None:
 
     # Вывод в консоль для удобства
     print("\n" + "=" * 70)  # noqa: T201
-    print("РЕЗУЛЬТАТЫ ТЕСТА ПРОКСИ-БРАУЗЕРОВ")  # noqa: T201
+    print("РЕЗУЛЬТАТЫ ТЕСТА ПРОКСИ-БРАУЗЕРОВ (STAGGERED START)")  # noqa: T201
     print("=" * 70)  # noqa: T201
     print(f"  Прокси в файле:          {len(all_proxies)}")  # noqa: T201
     print(f"  Прокси рабочих:          {len(working_proxies)}")  # noqa: T201
@@ -606,9 +731,21 @@ async def run() -> None:
     print(f"  Воркеров успешных:       {successful_workers}")  # noqa: T201
     print(f"  Воркеров с ошибками:     {failed_workers}")  # noqa: T201
     print(f"  MAX_TABS на воркер:      {settings.max_tabs}")  # noqa: T201
+    print(f"  ─── Staggered Start ───")  # noqa: T201
+    print(f"  Размер пачки:            {_WORKER_BATCH_SIZE}")  # noqa: T201
+    print(f"  Количество пачек:        {total_batches}")  # noqa: T201
+    print(f"  Пауза между пачками:    {_BATCH_DELAY_SECONDS}с")  # noqa: T201
+    print(f"  Задержка внутри пачки:   {_WORKER_START_DELAY_SECONDS}с")  # noqa: T201
+    print(f"  ─── Результаты ───")  # noqa: T201
     print(f"  Ссылок обработано:       {total_successful_navs + total_failed_navs}")  # noqa: T201
     print(f"  Навигаций успешных:      {total_successful_navs}")  # noqa: T201
     print(f"  Навигаций с ошибками:    {total_failed_navs}")  # noqa: T201
+    total_navs = total_successful_navs + total_failed_navs
+    success_rate = (
+        f"{total_successful_navs / total_navs * 100:.1f}%"
+        if total_navs > 0 else "N/A"
+    )
+    print(f"  Процент успеха:          {success_rate}")  # noqa: T201
     print(f"  Общее время:             {parallel_elapsed:.1f}с")  # noqa: T201
     print("=" * 70)  # noqa: T201
 
@@ -633,6 +770,25 @@ async def run() -> None:
                 f"   → MemoryMonitor ограничил с {requested_workers} до {safe_workers} "
                 f"(MEMORY_LIMIT_MB={settings.memory_limit_mb})"
             )
+
+    # Рекомендации на основе результатов
+    if total_navs > 0:
+        rate = total_successful_navs / total_navs
+        print()  # noqa: T201
+        if rate < 0.3:
+            print("⚠️  НИЗКИЙ ПРОЦЕНТ УСПЕХА (<30%)!")  # noqa: T201
+            print("   Рекомендации:")  # noqa: T201
+            print(f"   → Уменьшите WORKER_BATCH_SIZE (текущий: {_WORKER_BATCH_SIZE})")  # noqa: T201
+            print(f"   → Увеличьте BATCH_DELAY_SECONDS (текущий: {_BATCH_DELAY_SECONDS}с)")  # noqa: T201
+            print(f"   → Увеличьте WORKER_START_DELAY_SECONDS (текущий: {_WORKER_START_DELAY_SECONDS}с)")  # noqa: T201
+            print("   → Проверьте качество прокси — возможно, они перегружены")  # noqa: T201
+        elif rate < 0.7:
+            print("⚡ СРЕДНИЙ ПРОЦЕНТ УСПЕХА (30-70%).")  # noqa: T201
+            print("   Прокси работают, но есть потери. Попробуйте:")  # noqa: T201
+            print(f"   → Увеличить BATCH_DELAY_SECONDS до {_BATCH_DELAY_SECONDS + 10}с")  # noqa: T201
+            print(f"   → Уменьшить MAX_TABS до {max(1, settings.max_tabs - 1)}")  # noqa: T201
+        else:
+            print("✅ ВЫСОКИЙ ПРОЦЕНТ УСПЕХА (>70%). Прокси работают стабильно.")  # noqa: T201
 
 
 def main() -> None:
