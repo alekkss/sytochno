@@ -40,8 +40,14 @@ _API_PAGE_SIZE: int = 50
 # Пауза между API-запросами fetch() (секунды)
 _PAUSE_BETWEEN_API: float = 0.5
 
-# Пауза после загрузки страницы — ожидание фронтенд API-запросов (секунды)
-_PAUSE_AFTER_PAGE_LOAD: float = 10.0
+# Таймаут ожидания перехвата API-запроса searchObjectsOnMap (секунды).
+# После goto(domcontentloaded) фронтенд отправляет API-запрос
+# в первые 3-10 секунд. 20 секунд — достаточно с запасом.
+# Если за это время API не перехвачен — страница не загрузилась корректно.
+_API_INTERCEPT_TIMEOUT: float = 20.0
+
+# Интервал проверки перехвата API URL (секунды)
+_API_INTERCEPT_POLL_INTERVAL: float = 0.5
 
 # Пауза между обработкой ссылок поиска (секунды)
 _PAUSE_BETWEEN_URLS: float = 3.0
@@ -379,6 +385,15 @@ class ScraperService:
     ) -> tuple[str, dict[str, str]] | None:
         """Загружает страницу и перехватывает URL searchObjectsOnMap.
 
+        Стратегия загрузки оптимизирована для скорости:
+        1. goto с wait_until="domcontentloaded" — не ждёт изображения/шрифты.
+        2. Активное ожидание перехвата API URL с коротким таймаутом
+           (_API_INTERCEPT_TIMEOUT) — если фронтенд не отправил запрос
+           за 20 секунд, страница загрузилась некорректно.
+
+        Это сокращает время одной неудачной попытки с ~60-75 секунд
+        до ~20-25 секунд, что критично при переборе нескольких прокси.
+
         Args:
             search_url: URL страницы поиска.
             proxy: Прокси для браузера (None = без прокси).
@@ -405,18 +420,22 @@ class ScraperService:
 
             await page.route("**/api/json/**", _intercept)
 
-            # Загрузка страницы
-            await page.goto(search_url, wait_until="networkidle")
+            # Загрузка страницы — domcontentloaded: DOM готов, скрипты
+            # начали выполняться. Не ждём загрузки изображений/шрифтов/аналитики.
+            # API-запрос searchObjectsOnMap отправляется фронтендом
+            # через 3-10 секунд после domcontentloaded.
+            await page.goto(search_url, wait_until="domcontentloaded")
 
-            try:
-                await page.wait_for_selector(
-                    ".card[data-observe-id]", timeout=30000,
-                )
-            except Exception:
-                pass
-
-            # Ждём пока фронтенд завершит API-запросы
-            await asyncio.sleep(_PAUSE_AFTER_PAGE_LOAD)
+            # Активное ожидание перехвата API URL с таймаутом.
+            # Вместо фиксированного sleep(15) — проверяем каждые 0.5 секунд,
+            # завершаем сразу после перехвата. Если за _API_INTERCEPT_TIMEOUT
+            # не перехвачен — страница загрузилась некорректно.
+            elapsed = 0.0
+            while elapsed < _API_INTERCEPT_TIMEOUT:
+                if captured["url"] is not None:
+                    break
+                await asyncio.sleep(_API_INTERCEPT_POLL_INTERVAL)
+                elapsed += _API_INTERCEPT_POLL_INTERVAL
 
             # Снимаем перехватчик (чтобы не мешал fetch)
             await page.unroute("**/api/json/**")
@@ -425,6 +444,7 @@ class ScraperService:
                 logger.warning(
                     "searchObjectsOnMap_не_перехвачен",
                     url=search_url[:100],
+                    waited=f"{elapsed:.1f}с",
                 )
                 return None
 
@@ -437,6 +457,7 @@ class ScraperService:
             logger.info(
                 "api_url_перехвачен",
                 api_url=captured["url"][:120],
+                waited=f"{elapsed:.1f}с",
             )
 
             return captured["url"], api_headers
