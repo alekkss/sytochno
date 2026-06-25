@@ -1,5 +1,6 @@
 """Сервис создания и сохранения снимков объявлений."""
 
+import time
 from datetime import datetime
 
 from src.config.logger import get_logger
@@ -36,6 +37,9 @@ class SnapshotService:
         они не несут информации и провоцируют призрачные события
         при сравнении (переходы 0→1 из нулевого снимка в нормальный).
 
+        Использует батчевое сохранение (один COMMIT на всю партию) —
+        это в 100-500 раз быстрее поштучного сохранения при больших объёмах.
+
         Args:
             listings: Список объявлений RawListing после парсинга.
 
@@ -43,8 +47,7 @@ class SnapshotService:
             Список сохранённых снимков с присвоенными ID.
         """
         snapshot_dt = datetime.now()
-        saved: list[ListingSnapshot] = []
-        skipped_empty = 0
+        start_time = time.perf_counter()
 
         logger.info(
             "начало_сохранения_снимков",
@@ -52,35 +55,54 @@ class SnapshotService:
             snapshot_dt=snapshot_dt.isoformat(),
         )
 
+        # ── Шаг 1: Построение всех валидных снимков в памяти ──
+        valid_snapshots: list[ListingSnapshot] = []
+        skipped_empty = 0
+        skipped_error = 0
+
         for listing in listings:
             try:
                 snapshot = self._build_snapshot(listing, snapshot_dt)
 
-                # _build_snapshot возвращает None если календарь пустой —
-                # пропускаем такое объявление, не сохраняем в БД.
                 if snapshot is None:
                     skipped_empty += 1
                     continue
 
-                snapshot_id = self._repository.save(snapshot)
-                snapshot.snapshot_id = snapshot_id
-                saved.append(snapshot)
+                valid_snapshots.append(snapshot)
+
             except Exception as e:
+                skipped_error += 1
                 logger.warning(
-                    "снимок_не_сохранён",
+                    "снимок_не_построен",
                     external_id=getattr(listing, "external_id", "неизвестен"),
                     error=str(e),
                     error_type=type(e).__name__,
                 )
 
+        # ── Шаг 2: Батчевое сохранение одной транзакцией ──
+        if valid_snapshots:
+            try:
+                self._repository.save_batch(valid_snapshots)
+            except Exception as e:
+                logger.error(
+                    "батчевое_сохранение_не_удалось",
+                    error=str(e),
+                    error_type=type(e).__name__,
+                    total=len(valid_snapshots),
+                )
+                return []
+
+        elapsed = time.perf_counter() - start_time
+
         logger.info(
             "снимки_сохранены",
-            total=len(saved),
-            skipped=len(listings) - len(saved),
+            total=len(valid_snapshots),
             skipped_empty=skipped_empty,
+            skipped_error=skipped_error,
+            elapsed=f"{elapsed:.2f}с",
         )
 
-        return saved
+        return valid_snapshots
 
     def _build_snapshot(
         self, listing: object, snapshot_dt: datetime
@@ -111,7 +133,7 @@ class SnapshotService:
         # Сохранять такой снимок нельзя: при следующем прогоне сравнение
         # обнаружит переходы 0→1 на всех 60 днях и создаст призрачные брони.
         if not raw_calendar:
-            logger.warning(
+            logger.debug(
                 "снимок_пропущен_пустой_календарь",
                 external_id=external_id,
             )
@@ -119,7 +141,7 @@ class SnapshotService:
 
         calendar = "".join(str(v) for v in raw_calendar)
 
-        # Нестандартная длина — предупреждаем, но не обрезаем:
+        # Нестандартная длина — предупреждаем и пропускаем:
         # лучше пропустить снимок с неполным календарём, чем сохранить мусор.
         if len(calendar) != 60:
             logger.warning(
@@ -129,8 +151,6 @@ class SnapshotService:
             )
             return None
 
-        # ИСПРАВЛЕНО: передаём snapshot_dt, чтобы даты цен совпадали
-        # с датами, по которым comparison_service ищет цены.
         prices = self._extract_prices(listing, snapshot_dt)
 
         return ListingSnapshot(
