@@ -1045,10 +1045,14 @@ class EnrichStrategies:
 
             from src.services.listing_service import ListingService
 
+            # ── ИСПРАВЛЕНИЕ: пробрасываем controller в ListingService ──
+            # Без этого PageLoader и HybridStrategy внутри ListingService
+            # не получают контроллер и не вызывают report_success/failure.
             listing_service = ListingService(
                 settings=settings,
                 browser_service=browser_service,
                 monitor=monitor,
+                concurrency_controller=controller,
             )
 
             # ── Обработка карточек по одной с контролем параллелизма ──
@@ -1186,12 +1190,13 @@ class EnrichStrategies:
                             p for p in all_proxies if p != current_proxy
                         ]
 
-                        # Пересоздаём ListingService с новым браузером и монитором
+                        # ── ИСПРАВЛЕНИЕ: пробрасываем controller при пересоздании ──
                         monitor = ConnectionMonitor()
                         listing_service = ListingService(
                             settings=settings,
                             browser_service=browser_service,
                             monitor=monitor,
+                            concurrency_controller=controller,
                         )
 
                         logger.info(
