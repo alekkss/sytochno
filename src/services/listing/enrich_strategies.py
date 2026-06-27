@@ -1279,6 +1279,7 @@ class EnrichStrategies:
         max_tabs = settings.max_tabs
         tab_delay_ms = settings.tab_delay_ms
         total = len(listings)
+        processed_count = 0
 
         for chunk_start in range(0, total, max_tabs):
             # Проверяем монитор перед каждой порцией
@@ -1319,8 +1320,19 @@ class EnrichStrategies:
                         step=f"воркер={worker_idx}, id={listing_id}",
                     )
 
+            processed_count += len(chunk)
+
             # Закрываем вкладки после порции
             await browser_service.close_all_pages()
+
+            # Логируем прогресс воркера после каждой порции
+            if not monitor.should_skip():
+                logger.info(
+                    "прогресс_воркера",
+                    current=min(processed_count, total),
+                    total=total,
+                    step=f"воркер={worker_idx}",
+                )
 
     @staticmethod
     async def _process_worker_one_tab(
