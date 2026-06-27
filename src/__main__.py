@@ -17,6 +17,7 @@ from src.services.browser_service import BrowserService
 from src.services.comparison_export_service import ComparisonExportService
 from src.services.comparison_service import ComparisonService
 from src.services.export_service import ExportService
+from src.services.listing.concurrency_controller import ConcurrencyController
 from src.services.listing_service import ListingService
 from src.services.proxy_service import ProxyService
 from src.services.scraper_service import ScraperService
@@ -30,6 +31,57 @@ _MAX_RETRY_ROUNDS: int = 50
 _RETRY_ROUND_PAUSE_SECONDS: float = 30.0
 
 
+def _create_concurrency_controller(
+    settings: Settings,
+    working_proxies: list[ProxyConfig],
+) -> ConcurrencyController | None:
+    """Создаёт контроллер адаптивного параллелизма.
+
+    Контроллер создаётся только если есть прокси (параллельный режим).
+    В последовательном режиме или режиме вкладок без прокси —
+    контроллер не нужен (нечего адаптировать).
+
+    Расчёт ceiling:
+    - Если CONCURRENCY_MAX задан явно (> 0) — используется как есть.
+    - Если 0 (автоматически) — ceiling = количество_прокси × max_tabs.
+
+    Расчёт start:
+    - Если CONCURRENCY_START задан явно (> 0) — используется как есть.
+    - Если 0 (автоматически) — start = ceiling // 2 (безопасный рампинг).
+
+    Args:
+        settings: Настройки приложения.
+        working_proxies: Список рабочих прокси.
+
+    Returns:
+        Экземпляр ConcurrencyController или None если параллелизм не используется.
+    """
+    if not settings.use_proxy or not working_proxies:
+        return None
+
+    # Расчёт максимального параллелизма
+    max_workers = min(len(working_proxies), settings.max_proxy_workers)
+
+    if settings.concurrency_max > 0:
+        ceiling = settings.concurrency_max
+    else:
+        ceiling = max_workers * settings.max_tabs
+
+    floor = settings.concurrency_min
+
+    # Гарантируем: floor <= ceiling
+    if floor > ceiling:
+        floor = ceiling
+
+    start = settings.concurrency_start if settings.concurrency_start > 0 else None
+
+    return ConcurrencyController(
+        floor=floor,
+        ceiling=ceiling,
+        start=start,
+    )
+
+
 async def run() -> None:
     """Основной асинхронный pipeline приложения.
 
@@ -37,17 +89,18 @@ async def run() -> None:
     1. Загрузку конфигурации.
     2. Инициализацию базы данных.
     3. Загрузку и проверку прокси (если USE_PROXY=true).
-    4. Парсинг каталога через API (searchObjectsOnMap → searchObjectsByLocation).
+    4. Создание контроллера адаптивного параллелизма.
+    5. Парсинг каталога через API (searchObjectsOnMap → searchObjectsByLocation).
        При блокировке IP — автоматическое переключение на прокси.
-    5. Запуск браузера для обогащения карточек.
-    6. Обогащение объявлений данными календаря.
-    7. Сохранение результатов в SQLite.
-    8. Сохранение снимков текущего прогона.
-    9. Сравнение с предыдущими снимками и экспорт отчёта изменений.
-    10. Экспорт основного отчёта в Excel (перезаписывается).
-    11. Экспорт датированного снимка Excel (накапливается).
-    12. Повторное обогащение необработанных карточек через прокси.
-    13. Корректное завершение работы.
+    6. Запуск браузера для обогащения карточек.
+    7. Обогащение объявлений данными календаря.
+    8. Сохранение результатов в SQLite.
+    9. Сохранение снимков текущего прогона.
+    10. Сравнение с предыдущими снимками и экспорт отчёта изменений.
+    11. Экспорт основного отчёта в Excel (перезаписывается).
+    12. Экспорт датированного снимка Excel (накапливается).
+    13. Повторное обогащение необработанных карточек через прокси.
+    14. Корректное завершение работы.
     """
     # --- Шаг 1: Загрузка конфигурации ---
     try:
@@ -106,7 +159,18 @@ async def run() -> None:
                 step="proxy",
             )
 
-    # --- Шаг 5: Создание сервисов (Dependency Injection) ---
+    # --- Шаг 5: Создание контроллера адаптивного параллелизма ---
+    concurrency_controller = _create_concurrency_controller(settings, working_proxies)
+
+    if concurrency_controller is not None:
+        logger.info(
+            "контроллер_параллелизма_готов",
+            step=f"floor={concurrency_controller.floor}, "
+                 f"ceiling={concurrency_controller.ceiling}, "
+                 f"start={concurrency_controller.current_limit}",
+        )
+
+    # --- Шаг 6: Создание сервисов (Dependency Injection) ---
     browser_service = BrowserService(settings=settings)
     scraper_service = ScraperService(
         settings=settings,
@@ -117,6 +181,7 @@ async def run() -> None:
         settings=settings,
         browser_service=browser_service,
         proxy_service=proxy_service,
+        concurrency_controller=concurrency_controller,
     )
     export_service = ExportService(settings=settings)
 
@@ -131,7 +196,7 @@ async def run() -> None:
     enrichment_browser_started = False
 
     try:
-        # --- Шаг 6: Парсинг каталога через API (Этап 1) ---
+        # --- Шаг 7: Парсинг каталога через API (Этап 1) ---
         # ScraperService сам управляет браузером: запускает для каждой ссылки,
         # перехватывает API URL, собирает ID через fetch(), получает полные данные.
         # При блокировке IP — переключается на прокси из пула.
@@ -154,18 +219,19 @@ async def run() -> None:
             step="scraping",
         )
 
-        # --- Шаг 7: Запуск браузера для обогащения (Этап 2) ---
+        # --- Шаг 8: Запуск браузера для обогащения (Этап 2) ---
         # Браузер после Этапа 1 закрыт — запускаем новый для обогащения.
         await browser_service.start()
         enrichment_browser_started = True
 
-        # --- Шаг 8: Обогащение — парсинг карточек (календарь + цены) ---
+        # --- Шаг 9: Обогащение — парсинг карточек (календарь + цены) ---
         listings = await _enrich_with_proxy_or_sequential(
             settings=settings,
             listings=listings,
             listing_service=listing_service,
             working_proxies=working_proxies,
             proxy_service=proxy_service,
+            concurrency_controller=concurrency_controller,
             logger=logger,
         )
 
@@ -175,7 +241,7 @@ async def run() -> None:
             step="enrichment",
         )
 
-        # --- Шаг 9: Сохранение в базу данных ---
+        # --- Шаг 10: Сохранение в базу данных ---
         logger.info("сохранение_в_бд", step="storage")
         saved_count = repository.upsert_many(listings)
         logger.info(
@@ -184,12 +250,12 @@ async def run() -> None:
             step="storage",
         )
 
-        # --- Шаг 10: Остановка основного браузера (перед повторным обогащением) ---
+        # --- Шаг 11: Остановка основного браузера (перед повторным обогащением) ---
         if enrichment_browser_started:
             await browser_service.stop()
             enrichment_browser_started = False
 
-        # --- Шаг 11: Повторное обогащение необработанных карточек через прокси ---
+        # --- Шаг 12: Повторное обогащение необработанных карточек через прокси ---
         if working_proxies:
             await _retry_empty_listings(
                 settings=settings,
@@ -197,6 +263,7 @@ async def run() -> None:
                 working_proxies=working_proxies,
                 proxy_service=proxy_service,
                 snapshot_service=snapshot_service,
+                concurrency_controller=concurrency_controller,
                 logger=logger,
             )
         else:
@@ -207,12 +274,12 @@ async def run() -> None:
                     step=f"пустых_карточек={empty_count}",
                 )
 
-        # --- Шаг 12: Сохранение снимков текущего прогона ---
+        # --- Шаг 13: Сохранение снимков текущего прогона ---
         logger.info("сохранение_снимков", step="snapshots")
         all_listings = repository.get_all()
         snapshot_service.save_snapshots(all_listings)
 
-        # --- Шаг 13: Сравнение снимков и экспорт отчёта изменений ---
+        # --- Шаг 14: Сравнение снимков и экспорт отчёта изменений ---
         all_events = _run_comparison(
             listings=all_listings,
             snapshot_repository=snapshot_repository,
@@ -238,7 +305,7 @@ async def run() -> None:
                 step="comparison_export",
             )
 
-        # --- Шаг 14: Экспорт отчётов в Excel ---
+        # --- Шаг 15: Экспорт отчётов в Excel ---
         logger.info("экспорт_в_excel", step="export")
 
         # Основной отчёт — перезаписывается при каждом запуске
@@ -274,9 +341,17 @@ async def run() -> None:
         )
         sys.exit(1)
     finally:
-        # --- Шаг 15: Корректное завершение ---
+        # --- Шаг 16: Корректное завершение ---
         if enrichment_browser_started:
             await browser_service.stop()
+
+        # Финальная статистика контроллера параллелизма
+        if concurrency_controller is not None:
+            logger.info("─" * 50)
+            logger.info("финальная_статистика_контроллера_параллелизма")
+            concurrency_controller.log_stats()
+            logger.info("─" * 50)
+
         repository.close()
         snapshot_repository.close()
         logger.info("приложение_завершено", step="shutdown")
@@ -288,6 +363,7 @@ async def _retry_empty_listings(
     working_proxies: list[ProxyConfig],
     proxy_service: ProxyService | None,
     snapshot_service: SnapshotService,
+    concurrency_controller: ConcurrencyController | None,
     logger: "any",  # type: ignore[name-defined]
 ) -> None:
     """Цикл повторного обогащения карточек с пустыми данными через прокси.
@@ -318,6 +394,8 @@ async def _retry_empty_listings(
         working_proxies: Список проверенных рабочих прокси.
         proxy_service: Сервис прокси (для передачи в воркеры).
         snapshot_service: Сервис снимков (для сохранения после каждого раунда).
+        concurrency_controller: Глобальный контроллер параллелизма (опциональный).
+            Переиспользуется между раундами — адаптация продолжается непрерывно.
         logger: Логгер.
     """
     threshold = settings.blacklist_threshold
@@ -406,12 +484,13 @@ async def _retry_empty_listings(
         # Запоминаем ID кандидатов этого раунда — для подсчёта провалов
         candidate_ids = {listing.external_id for listing in candidates}
 
-        # Обогащаем через прокси-браузеры
+        # Обогащаем через прокси-браузеры с тем же контроллером
         enriched_listings = await ListingService.enrich_listings_parallel(
             settings=settings,
             listings=candidates,
             proxies=proxies_to_use,
             proxy_service=proxy_service,
+            concurrency_controller=concurrency_controller,
         )
 
         # ── Мгновенное исключение карточек, помеченных ВО ВРЕМЯ этого раунда ──
@@ -647,6 +726,7 @@ async def _enrich_with_proxy_or_sequential(
     listing_service: ListingService,
     working_proxies: list[ProxyConfig],
     proxy_service: ProxyService | None,
+    concurrency_controller: ConcurrencyController | None,
     logger: "any",  # type: ignore[name-defined]
 ) -> list:
     """Обогащает карточки: параллельно через прокси, через вкладки или последовательно.
@@ -665,6 +745,7 @@ async def _enrich_with_proxy_or_sequential(
         listing_service: Сервис парсинга карточек.
         working_proxies: Список проверенных рабочих прокси.
         proxy_service: Сервис прокси с заполненным пулом (для передачи в воркеры).
+        concurrency_controller: Глобальный контроллер параллелизма (опциональный).
         logger: Логгер.
 
     Returns:
@@ -692,6 +773,7 @@ async def _enrich_with_proxy_or_sequential(
             listings=listings,
             proxies=proxies_to_use,
             proxy_service=proxy_service,
+            concurrency_controller=concurrency_controller,
         )
 
     return await _enrich_without_proxy(settings, listings, listing_service, logger)

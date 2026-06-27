@@ -10,6 +10,7 @@ from src.config.logger import get_logger
 from src.models.listing import RawListing
 from src.models.proxy import ProxyConfig
 from src.services.browser_service import BrowserService
+from src.services.listing.concurrency_controller import ConcurrencyController
 from src.services.listing.connection_monitor import ConnectionMonitor
 from src.services.listing.constants import (
     format_duration,
@@ -36,28 +37,19 @@ _MAX_WARMUP_ATTEMPTS: int = 3
 # Пауза между попытками прогрева (секунды)
 _WARMUP_RETRY_DELAY_SECONDS: float = 5.0
 
-# ── Staggered start: поэтапный запуск воркеров ──
-
-# Количество воркеров в одной пачке запуска.
-# 10 одновременных Chromium — безопасный предел для большинства прокси-серверов.
-# При 45 прокси запуск разобьётся на 5 пачек по 10 (последняя — 5 воркеров).
-_WORKER_BATCH_SIZE: int = 10
-
-# Пауза между запуском пачек воркеров (секунды).
-# 15 секунд — достаточно, чтобы предыдущая пачка успела пройти прогрев
-# и освободить пиковую нагрузку на сеть. Прокси-серверы восстанавливают
-# пул соединений за 5-10 секунд после пика.
-_BATCH_DELAY_SECONDS: float = 15.0
-
-# Задержка между запуском отдельных воркеров внутри пачки (секунды).
-# 2 секунды между стартом каждого Chromium — предотвращает одновременный
-# вызов playwright.chromium.launch() и параллельный прогрев на одних прокси.
+# Задержка между стартом воркеров (секунды).
+# Предотвращает одновременный вызов playwright.chromium.launch()
+# и параллельный прогрев на всех прокси сразу.
 _WORKER_START_DELAY_SECONDS: float = 2.0
 
 # Максимальное количество retry-раундов для упавших воркеров.
 # После каждого раунда необработанные карточки перераспределяются
 # между оставшимися рабочими прокси и запускаются повторно.
 _MAX_PARALLEL_RETRY_ROUNDS: int = 3
+
+# Интервал логирования статистики контроллера (секунды).
+# Каждые N секунд в лог выводится текущее состояние адаптации.
+_STATS_LOG_INTERVAL_SECONDS: float = 60.0
 
 
 class EnrichStrategies:
@@ -75,6 +67,7 @@ class EnrichStrategies:
         browser_service: BrowserService,
         settings: "any",  # type: ignore[name-defined]
         proxy_service: "ProxyService | None" = None,
+        concurrency_controller: ConcurrencyController | None = None,
     ) -> None:
         """Инициализирует стратегии.
 
@@ -85,11 +78,14 @@ class EnrichStrategies:
             proxy_service: Сервис прокси с заполненным списком рабочих прокси
                 (опциональный). Если передан — используется при перезапуске
                 браузера для проверки и замены прокси.
+            concurrency_controller: Глобальный контроллер параллелизма (опциональный).
+                Если передан — вкладки запрашивают разрешение перед каждой карточкой.
         """
         self._listing_service = listing_service
         self._browser = browser_service
         self._settings = settings
         self._proxy_service = proxy_service
+        self._controller = concurrency_controller
 
     async def enrich_listings_tabbed(
         self, listings: list[RawListing]
@@ -202,6 +198,9 @@ class EnrichStrategies:
         Вкладки проверяют monitor.should_skip() — при срабатывании
         монитора новые загрузки не начинаются.
 
+        Если передан concurrency_controller — каждая вкладка дополнительно
+        запрашивает разрешение перед обработкой карточки.
+
         Args:
             listings: Карточки для обработки.
             max_tabs: Максимум параллельных вкладок.
@@ -271,6 +270,9 @@ class EnrichStrategies:
     ) -> None:
         """Обрабатывает одну карточку в отдельной вкладке.
 
+        Если передан concurrency_controller — запрашивает разрешение
+        перед началом обработки и освобождает после завершения.
+
         Args:
             listing: Объявление для обогащения.
             tab_delay_ms: Задержка перед стартом (мс).
@@ -297,10 +299,16 @@ class EnrichStrategies:
         if monitor.should_skip():
             return
 
+        # Если есть контроллер — ждём разрешения (глобальный троттлинг)
+        if self._controller is not None:
+            await self._controller.acquire()
+
         try:
             page = await self._browser.create_page()
             await self._listing_service.enrich_listing(listing, page)
         finally:
+            if self._controller is not None:
+                self._controller.release()
             if page is not None:
                 await self._browser.close_page(page)
 
@@ -551,82 +559,22 @@ class EnrichStrategies:
         return (False, current_proxy)
 
     @staticmethod
-    async def _launch_workers_staggered(
-        worker_configs: list[tuple[int, list[RawListing], ProxyConfig]],
-        settings: "any",  # type: ignore[name-defined]
-        active_proxies: list[ProxyConfig],
-        proxy_service: "ProxyService | None",
-        memory_monitor: MemoryMonitor,
-    ) -> list[asyncio.Task]:
-        """Создаёт и запускает все воркеры поэтапно (staggered start).
+    async def _stats_logger(controller: ConcurrencyController) -> None:
+        """Фоновая задача — периодическое логирование статистики контроллера.
 
-        Воркеры создаются как asyncio.Task пачками по _WORKER_BATCH_SIZE.
-        Между пачками — пауза _BATCH_DELAY_SECONDS.
-        Внутри пачки — задержка _WORKER_START_DELAY_SECONDS между стартами.
-
-        Все Task'и возвращаются сразу после создания — они уже запущены
-        и работают параллельно. Вызывающий код должен выполнить
-        await asyncio.gather(*tasks) для ожидания завершения всех.
+        Выводит текущее состояние адаптации каждые _STATS_LOG_INTERVAL_SECONDS.
+        Завершается при отмене задачи (CancelledError).
 
         Args:
-            worker_configs: Список (worker_idx, chunk, proxy) для каждого воркера.
-            settings: Настройки приложения.
-            active_proxies: Полный список активных прокси (для исключения занятых).
-            proxy_service: Сервис прокси (опциональный).
-            memory_monitor: Монитор RAM.
-
-        Returns:
-            Список запущенных asyncio.Task.
+            controller: Глобальный контроллер параллелизма.
         """
-        all_tasks: list[asyncio.Task] = []
-
-        # Разбиваем на пачки
-        total_batches = (
-            (len(worker_configs) + _WORKER_BATCH_SIZE - 1) // _WORKER_BATCH_SIZE
-        )
-
-        for batch_idx in range(total_batches):
-            batch_start = batch_idx * _WORKER_BATCH_SIZE
-            batch_end = min(batch_start + _WORKER_BATCH_SIZE, len(worker_configs))
-            batch = worker_configs[batch_start:batch_end]
-
-            # Пауза между пачками (кроме первой)
-            if batch_idx > 0:
-                logger.info(
-                    "пауза_между_пачками_воркеров",
-                    step=f"ожидание={_BATCH_DELAY_SECONDS}с "
-                         f"перед пачкой {batch_idx + 1}/{total_batches}",
-                )
-                await asyncio.sleep(_BATCH_DELAY_SECONDS)
-
-            logger.info(
-                "запуск_пачки_воркеров",
-                step=f"пачка={batch_idx + 1}/{total_batches}, "
-                     f"воркеров={len(batch)}, "
-                     f"задержка_внутри={_WORKER_START_DELAY_SECONDS}с",
-            )
-
-            # Запускаем воркеры пачки как Task'и с задержкой между стартом
-            for i, (worker_idx, chunk, proxy) in enumerate(batch):
-                # Задержка перед запуском каждого воркера (кроме первого в пачке)
-                if i > 0:
-                    await asyncio.sleep(_WORKER_START_DELAY_SECONDS)
-
-                task = asyncio.create_task(
-                    EnrichStrategies._worker(
-                        settings, chunk, proxy, worker_idx,
-                        active_proxies, proxy_service, memory_monitor,
-                    ),
-                    name=f"worker-{worker_idx}",
-                )
-                all_tasks.append(task)
-
-        logger.info(
-            "все_воркеры_запущены",
-            step=f"всего_задач={len(all_tasks)}, пачек={total_batches}",
-        )
-
-        return all_tasks
+        try:
+            while True:
+                await asyncio.sleep(_STATS_LOG_INTERVAL_SECONDS)
+                controller.log_stats()
+        except asyncio.CancelledError:
+            # Финальный вывод статистики при завершении
+            controller.log_stats()
 
     @staticmethod
     async def enrich_listings_parallel(
@@ -634,14 +582,14 @@ class EnrichStrategies:
         listings: list[RawListing],
         proxies: list[ProxyConfig],
         proxy_service: "ProxyService | None" = None,
+        concurrency_controller: ConcurrencyController | None = None,
     ) -> list[RawListing]:
         """Обогащает карточки параллельно через несколько прокси-браузеров.
 
-        Воркеры запускаются ПОЭТАПНО (staggered start) — пачками по
-        _WORKER_BATCH_SIZE с паузой _BATCH_DELAY_SECONDS между пачками.
-        Внутри пачки каждый воркер стартует с задержкой
-        _WORKER_START_DELAY_SECONDS. После создания всех Task'ов — все
-        воркеры работают параллельно до завершения.
+        Все воркеры стартуют с задержкой _WORKER_START_DELAY_SECONDS
+        между ними, но работают параллельно. Реальный параллелизм
+        контролируется ConcurrencyController — воркеры запрашивают
+        разрешение (acquire) перед каждой карточкой.
 
         При падении воркера с исключением его карточки считаются
         необработанными. После основного раунда необработанные карточки
@@ -654,6 +602,8 @@ class EnrichStrategies:
             proxies: Список рабочих прокси.
             proxy_service: Сервис прокси с заполненным пулом рабочих прокси
                 (опциональный). Передаётся в воркеры для проверки/замены.
+            concurrency_controller: Глобальный контроллер параллелизма
+                (опциональный). Если не передан — создаётся внутри.
 
         Returns:
             Список обогащённых карточек.
@@ -674,8 +624,21 @@ class EnrichStrategies:
 
         chunks = ProxyServiceClass.distribute_listings(listings, len(active_proxies))
 
-        # Расчёт количества пачек для логирования
-        total_batches = (len(active_proxies) + _WORKER_BATCH_SIZE - 1) // _WORKER_BATCH_SIZE
+        # ── Создание или использование контроллера параллелизма ──
+        controller = concurrency_controller
+        if controller is None:
+            # Автоматический расчёт ceiling и start
+            ceiling = settings.concurrency_max if settings.concurrency_max > 0 else (
+                len(active_proxies) * settings.max_tabs
+            )
+            floor = settings.concurrency_min
+            start = settings.concurrency_start if settings.concurrency_start > 0 else None
+
+            controller = ConcurrencyController(
+                floor=floor,
+                ceiling=ceiling,
+                start=start,
+            )
 
         logger.info(
             "параллельная_обработка",
@@ -683,14 +646,19 @@ class EnrichStrategies:
             step=f"прокси={len(active_proxies)}"
                  f"{f' (ограничено_по_ram из {requested_workers})' if safe_workers < requested_workers else ''}"
                  f", вкладок_на_прокси={settings.max_tabs}"
-                 f", пачек={total_batches}"
-                 f", размер_пачки={_WORKER_BATCH_SIZE}"
-                 f", пауза_между_пачками={_BATCH_DELAY_SECONDS}с"
-                 f", задержка_внутри_пачки={_WORKER_START_DELAY_SECONDS}с",
+                 f", контроллер: floor={controller.floor}"
+                 f", ceiling={controller.ceiling}"
+                 f", start={controller.current_limit}",
         )
 
         # ── Запуск фонового мониторинга RAM ──
         await memory_monitor.start_monitoring()
+
+        # ── Запуск фонового логирования статистики контроллера ──
+        stats_task = asyncio.create_task(
+            EnrichStrategies._stats_logger(controller),
+            name="stats-logger",
+        )
 
         parallel_start = time.perf_counter()
 
@@ -698,7 +666,7 @@ class EnrichStrategies:
         failed_proxies: set[str] = set()
 
         try:
-            # ── Основной раунд: поэтапный запуск всех воркеров ──
+            # ── Основной раунд: запуск всех воркеров с задержкой ──
             worker_configs: list[tuple[int, list[RawListing], ProxyConfig]] = [
                 (idx, chunk, proxy)
                 for idx, (chunk, proxy) in enumerate(
@@ -706,12 +674,13 @@ class EnrichStrategies:
                 )
             ]
 
-            all_tasks = await EnrichStrategies._launch_workers_staggered(
+            all_tasks = await EnrichStrategies._launch_workers(
                 worker_configs=worker_configs,
                 settings=settings,
                 active_proxies=active_proxies,
                 proxy_service=proxy_service,
                 memory_monitor=memory_monitor,
+                controller=controller,
             )
 
             # Ожидаем завершения ВСЕХ воркеров параллельно
@@ -777,12 +746,13 @@ class EnrichStrategies:
                 # Пауза перед retry — даём сети стабилизироваться
                 await asyncio.sleep(_RESTART_COOLDOWN_SECONDS)
 
-                retry_tasks = await EnrichStrategies._launch_workers_staggered(
+                retry_tasks = await EnrichStrategies._launch_workers(
                     worker_configs=retry_configs,
                     settings=settings,
                     active_proxies=retry_proxies,
                     proxy_service=proxy_service,
                     memory_monitor=memory_monitor,
+                    controller=controller,
                 )
 
                 retry_results = await asyncio.gather(
@@ -814,6 +784,13 @@ class EnrichStrategies:
             # Гарантированная остановка мониторинга — даже при исключениях
             await memory_monitor.stop_monitoring()
 
+            # Остановка логирования статистики
+            stats_task.cancel()
+            try:
+                await stats_task
+            except asyncio.CancelledError:
+                pass
+
         parallel_elapsed = time.perf_counter() - parallel_start
 
         # ── Итоговая сводка ──
@@ -843,12 +820,71 @@ class EnrichStrategies:
             )
             logger.info("─" * 50)
 
+        # Финальная статистика контроллера
+        controller.log_stats()
+
         logger.info(
             "параллельная_обработка_завершена",
             total=len(all_enriched),
         )
 
         return all_enriched
+
+    @staticmethod
+    async def _launch_workers(
+        worker_configs: list[tuple[int, list[RawListing], ProxyConfig]],
+        settings: "any",  # type: ignore[name-defined]
+        active_proxies: list[ProxyConfig],
+        proxy_service: "ProxyService | None",
+        memory_monitor: MemoryMonitor,
+        controller: ConcurrencyController,
+    ) -> list[asyncio.Task]:
+        """Создаёт и запускает все воркеры с задержкой между стартами.
+
+        Все воркеры стартуют последовательно с задержкой
+        _WORKER_START_DELAY_SECONDS. После создания — работают параллельно.
+        Реальный параллелизм контролируется ConcurrencyController.
+
+        Args:
+            worker_configs: Список (worker_idx, chunk, proxy) для каждого воркера.
+            settings: Настройки приложения.
+            active_proxies: Полный список активных прокси (для исключения занятых).
+            proxy_service: Сервис прокси (опциональный).
+            memory_monitor: Монитор RAM.
+            controller: Глобальный контроллер параллелизма.
+
+        Returns:
+            Список запущенных asyncio.Task.
+        """
+        all_tasks: list[asyncio.Task] = []
+
+        logger.info(
+            "запуск_воркеров",
+            step=f"всего={len(worker_configs)}, "
+                 f"задержка_между_стартами={_WORKER_START_DELAY_SECONDS}с",
+        )
+
+        for i, (worker_idx, chunk, proxy) in enumerate(worker_configs):
+            # Задержка перед запуском каждого воркера (кроме первого)
+            if i > 0:
+                await asyncio.sleep(_WORKER_START_DELAY_SECONDS)
+
+            task = asyncio.create_task(
+                EnrichStrategies._worker(
+                    settings, chunk, proxy, worker_idx,
+                    active_proxies, proxy_service, memory_monitor,
+                    controller,
+                ),
+                name=f"worker-{worker_idx}",
+            )
+            all_tasks.append(task)
+
+        logger.info(
+            "все_воркеры_запущены",
+            step=f"всего_задач={len(all_tasks)}",
+        )
+
+        return all_tasks
 
     @staticmethod
     def _process_worker_results(
@@ -932,8 +968,13 @@ class EnrichStrategies:
         all_proxies: list[ProxyConfig],
         proxy_service: "ProxyService | None" = None,
         memory_monitor: MemoryMonitor | None = None,
+        controller: ConcurrencyController | None = None,
     ) -> tuple[list[RawListing], float, BrowserService]:
         """Воркер — обрабатывает порцию карточек через один прокси-браузер.
+
+        Перед каждой карточкой запрашивает разрешение у контроллера
+        параллелизма (acquire). Это обеспечивает глобальное ограничение
+        нагрузки на сайт — если контроллер снизил лимит, воркер ждёт.
 
         Этап прогрева защищён retry-циклом (_warmup_browser): при ошибках
         навигации на главную страницу выполняется до _MAX_WARMUP_ATTEMPTS
@@ -946,12 +987,6 @@ class EnrichStrategies:
 
         При срабатывании монитора памяти (should_reduce_workers) воркер
         досрочно завершает работу, возвращая уже обработанные карточки.
-        Необработанные остаются в списке — их подхватит retry-цикл
-        в __main__.py на следующем раунде.
-
-        Гарантирует остановку старого браузера при перезапуске — даже
-        если stop() бросит исключение, ссылка на старый экземпляр
-        не сохраняется и ресурсы будут освобождены.
 
         Args:
             settings: Настройки приложения.
@@ -961,6 +996,7 @@ class EnrichStrategies:
             all_proxies: Полный список прокси всех воркеров (для исключения занятых).
             proxy_service: Сервис прокси с заполненным пулом (опциональный).
             memory_monitor: Монитор RAM (опциональный). Общий для всех воркеров.
+            controller: Глобальный контроллер параллелизма (опциональный).
 
         Returns:
             Кортеж (список карточек, время работы, browser_service).
@@ -1015,14 +1051,12 @@ class EnrichStrategies:
                 monitor=monitor,
             )
 
-            # Обработка с возможностью перезапуска при массовых сбоях
+            # ── Обработка карточек по одной с контролем параллелизма ──
             remaining = list(listings)
             restart_count = 0
 
             while remaining and restart_count <= _MAX_RESTARTS_PER_WORKER:
                 # ── Проверка монитора памяти перед каждой итерацией ──
-                # Если RAM превышает порог — воркер досрочно завершается,
-                # освобождая память для оставшихся воркеров.
                 if memory_monitor is not None and memory_monitor.should_reduce_workers:
                     enriched_in_worker = sum(
                         1 for l in listings if EnrichStrategies._is_enriched(l)
@@ -1036,7 +1070,18 @@ class EnrichStrategies:
                     break
 
                 await monitor.reset()
-                await listing_service.enrich_listings_tabbed(remaining)
+
+                # Обрабатываем карточки порциями по max_tabs вкладок.
+                # Перед каждой карточкой — acquire() у контроллера.
+                await EnrichStrategies._process_worker_cards(
+                    listings=remaining,
+                    listing_service=listing_service,
+                    browser_service=browser_service,
+                    monitor=monitor,
+                    controller=controller,
+                    settings=settings,
+                    worker_idx=worker_idx,
+                )
 
                 # ── Проверка памяти после обработки порции ──
                 if memory_monitor is not None and memory_monitor.should_reduce_workers:
@@ -1068,8 +1113,7 @@ class EnrichStrategies:
                              f"перезапуск={restart_count}/{_MAX_RESTARTS_PER_WORKER}",
                     )
 
-                    # Гарантированная остановка старого браузера —
-                    # даже при исключении в stop() переходим к созданию нового
+                    # Гарантированная остановка старого браузера
                     old_browser = browser_service
                     try:
                         await old_browser.stop()
@@ -1092,7 +1136,6 @@ class EnrichStrategies:
                                 step=f"воркер={worker_idx}, прокси={current_proxy}",
                             )
                         else:
-                            # Ищем замену из уже проверенного пула
                             replacement = await proxy_service.get_replacement_proxy(
                                 current_proxy=current_proxy,
                                 in_use_proxies=in_use_by_others,
@@ -1106,7 +1149,6 @@ class EnrichStrategies:
                                          f"новая={replacement}",
                                 )
                                 current_proxy = replacement
-                                # Обновляем список исключений
                                 in_use_by_others = [
                                     p for p in all_proxies if p != current_proxy
                                 ]
@@ -1118,12 +1160,11 @@ class EnrichStrategies:
                                 )
                                 current_proxy = None
 
-                    # Создаём НОВЫЙ browser_service — старый уже остановлен
+                    # Создаём НОВЫЙ browser_service
                     try:
                         browser_service = BrowserService(settings=settings)
                         await browser_service.start(proxy=current_proxy)
 
-                        # Прогрев после перезапуска — тоже с retry
                         warmup_ok, current_proxy = (
                             await EnrichStrategies._warmup_browser(
                                 browser_service=browser_service,
@@ -1141,7 +1182,6 @@ class EnrichStrategies:
                             )
                             break
 
-                        # Обновляем список исключений после возможной замены
                         in_use_by_others = [
                             p for p in all_proxies if p != current_proxy
                         ]
@@ -1204,3 +1244,123 @@ class EnrichStrategies:
                 step=f"воркер={worker_idx}",
             )
             return (listings, worker_elapsed, browser_service)
+
+    @staticmethod
+    async def _process_worker_cards(
+        listings: list[RawListing],
+        listing_service: "ListingService",
+        browser_service: BrowserService,
+        monitor: ConnectionMonitor,
+        controller: ConcurrencyController | None,
+        settings: "any",  # type: ignore[name-defined]
+        worker_idx: int,
+    ) -> None:
+        """Обрабатывает карточки воркера порциями по max_tabs вкладок.
+
+        Каждая вкладка перед обработкой карточки запрашивает разрешение
+        у контроллера (acquire). Это обеспечивает глобальный контроль:
+        даже если у воркера max_tabs=5, реально одновременно будет
+        работать только столько вкладок, сколько разрешает контроллер.
+
+        Args:
+            listings: Карточки для обработки (in-place модификация).
+            listing_service: Сервис обогащения.
+            browser_service: Сервис браузера.
+            monitor: Локальный монитор соединения.
+            controller: Глобальный контроллер параллелизма.
+            settings: Настройки приложения.
+            worker_idx: Номер воркера (для логов).
+        """
+        max_tabs = settings.max_tabs
+        tab_delay_ms = settings.tab_delay_ms
+        total = len(listings)
+
+        for chunk_start in range(0, total, max_tabs):
+            # Проверяем монитор перед каждой порцией
+            if monitor.should_skip():
+                logger.debug(
+                    "воркер_порция_пропущена",
+                    step=f"воркер={worker_idx}, позиция={chunk_start}",
+                )
+                break
+
+            chunk = listings[chunk_start : chunk_start + max_tabs]
+
+            # Создаём задачи для текущей порции
+            tasks = [
+                EnrichStrategies._process_worker_one_tab(
+                    listing=listing,
+                    listing_service=listing_service,
+                    browser_service=browser_service,
+                    monitor=monitor,
+                    controller=controller,
+                    tab_delay_ms=tab_delay_ms,
+                    tab_index=idx,
+                    worker_idx=worker_idx,
+                )
+                for idx, listing in enumerate(chunk)
+            ]
+
+            results = await asyncio.gather(*tasks, return_exceptions=True)
+
+            # Логируем ошибки
+            for idx, result in enumerate(results):
+                if isinstance(result, BaseException):
+                    listing_id = chunk[idx].external_id if idx < len(chunk) else "?"
+                    logger.warning(
+                        "воркер_ошибка_вкладки",
+                        error=str(result),
+                        error_type=type(result).__name__,
+                        step=f"воркер={worker_idx}, id={listing_id}",
+                    )
+
+            # Закрываем вкладки после порции
+            await browser_service.close_all_pages()
+
+    @staticmethod
+    async def _process_worker_one_tab(
+        listing: RawListing,
+        listing_service: "ListingService",
+        browser_service: BrowserService,
+        monitor: ConnectionMonitor,
+        controller: ConcurrencyController | None,
+        tab_delay_ms: int,
+        tab_index: int,
+        worker_idx: int,
+    ) -> None:
+        """Обрабатывает одну карточку в вкладке воркера с контролем параллелизма.
+
+        Args:
+            listing: Объявление для обогащения.
+            listing_service: Сервис обогащения.
+            browser_service: Сервис браузера.
+            monitor: Локальный монитор соединения.
+            controller: Глобальный контроллер параллелизма.
+            tab_delay_ms: Задержка между вкладками (мс).
+            tab_index: Порядковый номер вкладки в порции.
+            worker_idx: Номер воркера (для логов).
+        """
+        page: Page | None = None
+
+        if monitor.should_skip():
+            return
+
+        # Задержка между стартом вкладок внутри порции
+        if tab_index > 0:
+            await asyncio.sleep(tab_delay_ms / 1000.0)
+
+        if monitor.should_skip():
+            return
+
+        # ── Глобальный контроль: ждём разрешения от контроллера ──
+        if controller is not None:
+            await controller.acquire()
+
+        try:
+            page = await browser_service.create_page()
+            await listing_service.enrich_listing(listing, page)
+        finally:
+            if controller is not None:
+                controller.release()
+            if page is not None:
+                await browser_service.close_page(page)

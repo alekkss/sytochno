@@ -151,6 +151,21 @@ class Settings:
     # она больше не будет обрабатываться в текущем запуске.
     blacklist_threshold: int = 2
 
+    # Адаптивный контроль параллелизма (AIMD)
+    # Минимальное количество одновременных операций. Ниже этого значения
+    # лимит не опустится даже при 100% ошибок. Рекомендуется 3–5.
+    concurrency_min: int = 5
+
+    # Максимальное количество одновременных операций. Выше этого значения
+    # лимит не поднимется. 0 = автоматически (прокси × вкладки).
+    # Рекомендуется: количество прокси × MAX_TABS, но не более 100.
+    concurrency_max: int = 0
+
+    # Стартовое количество одновременных операций. С этого значения
+    # начинается адаптация. 0 = автоматически (ceiling // 2).
+    # Рекомендуется: 50% от максимума для безопасного рампинга.
+    concurrency_start: int = 0
+
     @classmethod
     def load(cls) -> "Settings":
         """Фабричный метод — загружает настройки из переменных окружения.
@@ -185,6 +200,9 @@ class Settings:
             max_proxy_workers=_get_int("MAX_PROXY_WORKERS", "5"),
             memory_limit_mb=_get_int("MEMORY_LIMIT_MB", "0"),
             blacklist_threshold=_get_int("BLACKLIST_THRESHOLD", "2"),
+            concurrency_min=_get_int("CONCURRENCY_MIN", "5"),
+            concurrency_max=_get_int("CONCURRENCY_MAX", "0"),
+            concurrency_start=_get_int("CONCURRENCY_START", "0"),
         )
 
         # Валидация диапазонов
@@ -239,6 +257,39 @@ class Settings:
             raise RuntimeError(
                 "BLACKLIST_THRESHOLD должен быть не менее 1. "
                 f"Получено: {settings.blacklist_threshold}."
+            )
+
+        # Валидация адаптивного контроля параллелизма
+        if settings.concurrency_min < 1:
+            raise RuntimeError(
+                "CONCURRENCY_MIN должен быть не менее 1. "
+                f"Получено: {settings.concurrency_min}."
+            )
+        if settings.concurrency_max < 0:
+            raise RuntimeError(
+                "CONCURRENCY_MAX не может быть отрицательным. "
+                f"Получено: {settings.concurrency_max}."
+            )
+        if settings.concurrency_max > 0 and settings.concurrency_max < settings.concurrency_min:
+            raise RuntimeError(
+                "CONCURRENCY_MAX не может быть меньше CONCURRENCY_MIN. "
+                f"CONCURRENCY_MIN={settings.concurrency_min}, "
+                f"CONCURRENCY_MAX={settings.concurrency_max}."
+            )
+        if settings.concurrency_start < 0:
+            raise RuntimeError(
+                "CONCURRENCY_START не может быть отрицательным. "
+                f"Получено: {settings.concurrency_start}."
+            )
+        if (
+            settings.concurrency_start > 0
+            and settings.concurrency_max > 0
+            and settings.concurrency_start > settings.concurrency_max
+        ):
+            raise RuntimeError(
+                "CONCURRENCY_START не может быть больше CONCURRENCY_MAX. "
+                f"CONCURRENCY_START={settings.concurrency_start}, "
+                f"CONCURRENCY_MAX={settings.concurrency_max}."
             )
 
         return settings

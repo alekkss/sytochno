@@ -15,9 +15,24 @@ from src.services.listing.constants import (
 )
 
 if TYPE_CHECKING:
+    from src.services.listing.concurrency_controller import ConcurrencyController
     from src.services.listing.connection_monitor import ConnectionMonitor
 
 logger = get_logger("page_loader")
+
+# Сетевые ошибки, при которых навигация считается провалом нагрузки.
+# Эти ошибки репортятся в ConcurrencyController для адаптации лимита.
+_NETWORK_ERROR_MARKERS: tuple[str, ...] = (
+    "ERR_EMPTY_RESPONSE",
+    "ERR_TIMED_OUT",
+    "ERR_CONNECTION_RESET",
+    "ERR_CONNECTION_CLOSED",
+    "ERR_CONNECTION_REFUSED",
+    "ERR_PROXY_CONNECTION_FAILED",
+    "ERR_TUNNEL_CONNECTION_FAILED",
+    "NS_ERROR_NET_RESET",
+    "Timeout",
+)
 
 
 class PageLoader:
@@ -26,16 +41,27 @@ class PageLoader:
     При наличии ConnectionMonitor репортит результаты загрузки —
     это позволяет централизованно детектировать массовые сбои
     соединения/прокси и инициировать перезапуск браузера.
+
+    При наличии ConcurrencyController репортит успехи и провалы —
+    это позволяет глобально адаптировать параллелизм по обратной связи.
     """
 
-    def __init__(self, monitor: "ConnectionMonitor | None" = None) -> None:
+    def __init__(
+        self,
+        monitor: "ConnectionMonitor | None" = None,
+        concurrency_controller: "ConcurrencyController | None" = None,
+    ) -> None:
         """Инициализирует загрузчик страниц.
 
         Args:
             monitor: Монитор здоровья соединения (опциональный).
                 Если передан — результаты загрузки репортятся в монитор.
+            concurrency_controller: Глобальный контроллер параллелизма
+                (опциональный). Если передан — успехи и провалы навигации
+                репортятся для адаптации лимита.
         """
         self._monitor = monitor
+        self._controller = concurrency_controller
 
     @property
     def monitor(self) -> "ConnectionMonitor | None":
@@ -54,6 +80,24 @@ class PageLoader:
             value: Новый монитор или None для отключения.
         """
         self._monitor = value
+
+    @property
+    def concurrency_controller(self) -> "ConcurrencyController | None":
+        """Возвращает текущий контроллер параллелизма.
+
+        Returns:
+            Экземпляр ConcurrencyController или None.
+        """
+        return self._controller
+
+    @concurrency_controller.setter
+    def concurrency_controller(self, value: "ConcurrencyController | None") -> None:
+        """Устанавливает контроллер параллелизма.
+
+        Args:
+            value: Новый контроллер или None для отключения.
+        """
+        self._controller = value
 
     async def goto_and_capture_token(
         self, page: Page, url: str, object_id: str = ""
@@ -132,8 +176,15 @@ class PageLoader:
         пытается дождаться networkidle (мягкий таймаут), затем проверяет
         наличие ключевых элементов.
 
+        Репортит результаты в два компонента:
+        - ConnectionMonitor: для детектирования массовых локальных сбоев
+          (2 подряд → перезапуск браузера).
+        - ConcurrencyController: для глобальной адаптации параллелизма
+          (>30% ошибок → снижение лимита + cooldown).
+
         После полного провала (все попытки исчерпаны) репортит сбой
-        в монитор соединения. При успехе — сбрасывает счётчик.
+        в оба компонента. При успехе — сбрасывает счётчик монитора
+        и репортит успех в контроллер.
 
         Args:
             page: Вкладка браузера.
@@ -183,9 +234,11 @@ class PageLoader:
                 page_ready = await self.wait_for_page_ready(page)
                 if page_ready:
                     logger.debug("страница_готова", step=f"попытка={attempt}")
-                    # Успех — сбрасываем счётчик сбоев в мониторе
+                    # Успех — репортим в монитор и контроллер
                     if self._monitor:
                         await self._monitor.report_success(object_id)
+                    if self._controller:
+                        self._controller.report_success()
                     return True
 
                 # Ключевые элементы не найдены — возможна CAPTCHA, редирект
@@ -198,6 +251,9 @@ class PageLoader:
                         path=current_url,
                         step=f"попытка={attempt}",
                     )
+                    # Редирект — это признак блокировки, репортим провал
+                    if self._controller:
+                        self._controller.report_failure()
                     if attempt < MAX_GOTO_RETRIES:
                         await asyncio.sleep(GOTO_RETRY_DELAY)
                         continue
@@ -216,32 +272,31 @@ class PageLoader:
                 # Считаем частичным успехом — страница загрузилась
                 if self._monitor:
                     await self._monitor.report_success(object_id)
+                if self._controller:
+                    self._controller.report_success()
                 return True
 
             except Exception as e:
                 error_msg = str(e)
                 is_network_error = any(
-                    err in error_msg
-                    for err in [
-                        "ERR_TIMED_OUT",
-                        "ERR_CONNECTION_RESET",
-                        "ERR_CONNECTION_CLOSED",
-                        "ERR_CONNECTION_REFUSED",
-                        "ERR_PROXY_CONNECTION_FAILED",
-                        "ERR_TUNNEL_CONNECTION_FAILED",
-                        "NS_ERROR_NET_RESET",
-                        "Timeout",
-                    ]
+                    err in error_msg for err in _NETWORK_ERROR_MARKERS
                 )
 
-                if is_network_error and attempt < MAX_GOTO_RETRIES:
-                    logger.warning(
-                        "сетевая_ошибка_повтор",
-                        error=error_msg[:200],
-                        step=f"попытка={attempt}/{MAX_GOTO_RETRIES}",
-                    )
-                    await asyncio.sleep(GOTO_RETRY_DELAY)
-                    continue
+                if is_network_error:
+                    # Сетевая ошибка — репортим в контроллер для адаптации.
+                    # Репортим КАЖДУЮ попытку, а не только финальный провал —
+                    # это даёт контроллеру более быструю обратную связь.
+                    if self._controller:
+                        self._controller.report_failure()
+
+                    if attempt < MAX_GOTO_RETRIES:
+                        logger.warning(
+                            "сетевая_ошибка_повтор",
+                            error=error_msg[:200],
+                            step=f"попытка={attempt}/{MAX_GOTO_RETRIES}",
+                        )
+                        await asyncio.sleep(GOTO_RETRY_DELAY)
+                        continue
 
                 logger.warning(
                     "goto_не_удался",
@@ -252,11 +307,17 @@ class PageLoader:
                 # Все попытки исчерпаны — репортим сбой в монитор
                 if self._monitor:
                     await self._monitor.report_failure(object_id)
+                # Если последняя попытка не была сетевой ошибкой —
+                # репортим и в контроллер (неизвестная ошибка тоже сигнал)
+                if self._controller and not is_network_error:
+                    self._controller.report_failure()
                 return False
 
         # Сюда попадаем если цикл завершился без return (теоретически не должно)
         if self._monitor:
             await self._monitor.report_failure(object_id)
+        if self._controller:
+            self._controller.report_failure()
         return False
 
     async def wait_for_page_ready(self, page: Page) -> bool:

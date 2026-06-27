@@ -2,6 +2,7 @@
 
 import re
 from datetime import date
+from typing import TYPE_CHECKING
 
 from playwright.async_api import Page
 
@@ -15,6 +16,9 @@ from src.services.listing.constants import (
     MIN_NIGHTS_VARIANTS,
 )
 from src.services.listing.token_manager import TokenManager
+
+if TYPE_CHECKING:
+    from src.services.listing.concurrency_controller import ConcurrencyController
 
 logger = get_logger("hybrid_strategy")
 
@@ -46,6 +50,12 @@ class HybridStrategy:
     - no_objects — объявление удалено или заблокировано.
     В этих случаях третий элемент возврата содержит причину.
 
+    При наличии ConcurrencyController репортит результаты API-запросов:
+    - Успешный bulk/скользящее окно → report_success().
+    - 100% ошибок (не min_nights) → report_failure() — признак перегрузки.
+    - Протухший токен после перезагрузки → report_failure().
+    Логические ошибки (min_nights, not_found) НЕ репортятся — это не нагрузка.
+
     Дата начала календаря (today) фиксируется один раз в начале
     fetch_calendar_and_prices и передаётся во все методы api_client —
     это гарантирует согласованность данных при прогонах, пересекающих полночь.
@@ -56,6 +66,7 @@ class HybridStrategy:
         api_client: ApiClient,
         token_manager: TokenManager,
         guests: int = DEFAULT_GUESTS,
+        concurrency_controller: "ConcurrencyController | None" = None,
     ) -> None:
         """Инициализирует стратегию.
 
@@ -63,10 +74,32 @@ class HybridStrategy:
             api_client: Клиент API.
             token_manager: Менеджер токенов.
             guests: Количество гостей для запросов.
+            concurrency_controller: Глобальный контроллер параллелизма
+                (опциональный). Если передан — результаты API-запросов
+                репортятся для адаптации лимита.
         """
         self._api = api_client
         self._token_manager = token_manager
         self._guests = guests
+        self._controller = concurrency_controller
+
+    @property
+    def concurrency_controller(self) -> "ConcurrencyController | None":
+        """Возвращает текущий контроллер параллелизма.
+
+        Returns:
+            Экземпляр ConcurrencyController или None.
+        """
+        return self._controller
+
+    @concurrency_controller.setter
+    def concurrency_controller(self, value: "ConcurrencyController | None") -> None:
+        """Устанавливает контроллер параллелизма.
+
+        Args:
+            value: Новый контроллер или None для отключения.
+        """
+        self._controller = value
 
     async def fetch_calendar_and_prices(
         self, page: Page, object_id: str, token: str, url: str
@@ -110,6 +143,8 @@ class HybridStrategy:
                     "не_удалось_получить_валидный_токен",
                     step=f"id={object_id}",
                 )
+                # Не удалось получить токен — возможно перегрузка
+                self._report_failure()
                 return [0] * DAYS_COUNT, [0] * DAYS_COUNT, None
 
             current_token = new_token
@@ -129,6 +164,8 @@ class HybridStrategy:
             )
 
             if skip_reason is not None:
+                # Фатальная ошибка — НЕ репортим в контроллер,
+                # это не проблема нагрузки
                 return [0] * DAYS_COUNT, [0] * DAYS_COUNT, skip_reason
 
             logger.info(
@@ -146,6 +183,9 @@ class HybridStrategy:
                 )
 
             if not bulk_success:
+                # Bulk окончательно не удался — репортим как нагрузочную проблему
+                self._report_failure()
+
                 logger.info(
                     "bulk_окончательно_не_удался_скользящее_окно",
                     step=f"id={object_id}",
@@ -154,6 +194,9 @@ class HybridStrategy:
                     page, object_id, current_token, url, today=today
                 )
                 return calendar, prices, sw_reason
+
+        # Bulk успешен — репортим успех
+        self._report_success()
 
         # ── Шаг 2: Определение занятости ──
         if busy_status == "unbusy":
@@ -409,9 +452,13 @@ class HybridStrategy:
                 best_error_days = error_days
 
             if error_days == 0:
+                # Полный успех скользящего окна — репортим
+                self._report_success()
                 return calendar, None
 
             if error_days <= 5:
+                # Почти успех — репортим как успех
+                self._report_success()
                 return [0 if c == -1 else c for c in calendar], None
 
             detected = self._detect_min_nights(errors_details)
@@ -424,6 +471,7 @@ class HybridStrategy:
                     step=f"id={object_id}, min_nights={detected}, "
                          f"порог={_MIN_NIGHTS_SKIP_THRESHOLD}",
                 )
+                # НЕ репортим failure — это логическая ошибка, не нагрузка
                 return [0] * DAYS_COUNT, "min_nights_exceeded"
 
             # ── Раннее прерывание при 100% ошибках ──
@@ -458,8 +506,10 @@ class HybridStrategy:
                             best_error_days = error_days_retry
 
                         if best_error_days == 0:
+                            self._report_success()
                             return best_calendar, None
                         if best_error_days <= 5:
+                            self._report_success()
                             return [
                                 0 if c == -1 else c for c in best_calendar
                             ], None
@@ -471,6 +521,8 @@ class HybridStrategy:
                                 step=f"id={object_id}, ночей={nights}, "
                                      f"ошибок_после_перезагрузки={error_days_retry}",
                             )
+                            # 100% ошибок после перезагрузки — нагрузочная проблема
+                            self._report_failure()
                             break
                     else:
                         # Не удалось получить новый токен — выходим
@@ -479,6 +531,7 @@ class HybridStrategy:
                             step=f"id={object_id}, ночей={nights}, "
                                  f"ошибок={error_days}, новый_токен=нет",
                         )
+                        self._report_failure()
                         break
                 else:
                     # Уже перезагружали — повторная перезагрузка не поможет
@@ -487,6 +540,7 @@ class HybridStrategy:
                         step=f"id={object_id}, ночей={nights}, "
                              f"ошибок={error_days}, перезагрузка_была={reloaded_for_nights}",
                     )
+                    self._report_failure()
                     break
 
             if detected is not None and detected > nights:
@@ -519,8 +573,10 @@ class HybridStrategy:
                         best_error_days = error_days_retry
 
                     if best_error_days == 0:
+                        self._report_success()
                         return best_calendar, None
                     if best_error_days <= 5:
+                        self._report_success()
                         return [0 if c == -1 else c for c in best_calendar], None
 
             logger.debug(
@@ -581,6 +637,7 @@ class HybridStrategy:
             error_days = sum(1 for c in calendar if c == -1)
 
             if error_days == 0:
+                self._report_success()
                 busy_status, prices_60, bulk_ok = await self._api.fetch_bulk_prices(
                     page, object_id, current_token, guests=self._guests, today=today
                 )
@@ -598,6 +655,7 @@ class HybridStrategy:
                 return cal, prices, None
 
             if error_days < ERROR_THRESHOLD:
+                self._report_success()
                 calendar_norm = [0 if c == -1 else c for c in calendar]
                 _, prices_60, bulk_ok = await self._api.fetch_bulk_prices(
                     page, object_id, current_token, guests=self._guests, today=today
@@ -651,6 +709,7 @@ class HybridStrategy:
                         )
 
                         if error_days_retry == 0:
+                            self._report_success()
                             _, prices_60, bulk_ok = (
                                 await self._api.fetch_bulk_prices(
                                     page, object_id, current_token,
@@ -672,6 +731,7 @@ class HybridStrategy:
                             return cal, prices, None
 
                         if error_days_retry < ERROR_THRESHOLD:
+                            self._report_success()
                             calendar_norm = [
                                 0 if c == -1 else c for c in calendar_retry
                             ]
@@ -702,6 +762,7 @@ class HybridStrategy:
                                 step=f"id={object_id}, ночей={nights}, "
                                      f"ошибок_после_перезагрузки={error_days_retry}",
                             )
+                            self._report_failure()
                             break
                     else:
                         logger.warning(
@@ -709,6 +770,7 @@ class HybridStrategy:
                             step=f"id={object_id}, ночей={nights}, "
                                  f"ошибок={error_days}, новый_токен=нет",
                         )
+                        self._report_failure()
                         break
                 else:
                     # Уже перезагружали — выходим
@@ -717,6 +779,7 @@ class HybridStrategy:
                         step=f"id={object_id}, ночей={nights}, "
                              f"ошибок={error_days}, перезагрузка_была=да",
                     )
+                    self._report_failure()
                     break
 
             if detected is not None and detected > nights:
@@ -787,3 +850,26 @@ class HybridStrategy:
                 return 2
 
         return None
+
+    def _report_success(self) -> None:
+        """Репортит успешную операцию в контроллер параллелизма.
+
+        Вызывается при успешном bulk-запросе или скользящем окне
+        с приемлемым количеством ошибок (< ERROR_THRESHOLD).
+        """
+        if self._controller:
+            self._controller.report_success()
+
+    def _report_failure(self) -> None:
+        """Репортит провал операции в контроллер параллелизма.
+
+        Вызывается при:
+        - 100% ошибках скользящего окна (не min_nights) — блокировка/протухший токен.
+        - Неудачном bulk-запросе после перезагрузки токена.
+        - Невозможности получить валидный токен.
+
+        НЕ вызывается при логических ошибках (min_nights, not_found) —
+        это не проблема нагрузки, а особенность конкретной карточки.
+        """
+        if self._controller:
+            self._controller.report_failure()

@@ -19,6 +19,7 @@ from src.config.settings import Settings
 from src.models.listing import RawListing
 from src.services.browser_service import BrowserService
 from src.services.listing.api_client import ApiClient
+from src.services.listing.concurrency_controller import ConcurrencyController
 from src.services.listing.connection_monitor import ConnectionMonitor
 from src.services.listing.constants import DAYS_COUNT, DEFAULT_GUESTS, format_duration
 from src.services.listing.enrich_strategies import EnrichStrategies
@@ -47,7 +48,7 @@ class ListingService:
     - enrich_listing(listing, page=None)
     - enrich_listings(listings)
     - enrich_listings_tabbed(listings)
-    - enrich_listings_parallel(settings, listings, proxies, proxy_service) — статический
+    - enrich_listings_parallel(settings, listings, proxies, proxy_service, controller) — статический
     """
 
     def __init__(
@@ -56,6 +57,7 @@ class ListingService:
         browser_service: BrowserService,
         monitor: ConnectionMonitor | None = None,
         proxy_service: "ProxyService | None" = None,
+        concurrency_controller: ConcurrencyController | None = None,
     ) -> None:
         """Инициализирует сервис и все вложенные компоненты.
 
@@ -68,13 +70,20 @@ class ListingService:
             proxy_service: Сервис прокси с заполненным пулом (опциональный).
                 Передаётся в EnrichStrategies для проверки/замены прокси
                 при перезапуске браузера.
+            concurrency_controller: Глобальный контроллер параллелизма
+                (опциональный). Пробрасывается в PageLoader, HybridStrategy
+                и EnrichStrategies для адаптивного управления нагрузкой.
         """
         self._settings = settings
         self._browser = browser_service
         self._monitor = monitor
         self._proxy_service = proxy_service
+        self._controller = concurrency_controller
 
-        self._page_loader = PageLoader(monitor=monitor)
+        self._page_loader = PageLoader(
+            monitor=monitor,
+            concurrency_controller=concurrency_controller,
+        )
         self._token_manager = TokenManager(
             page_loader=self._page_loader,
             browser_service=self._browser,
@@ -84,12 +93,14 @@ class ListingService:
             api_client=self._api_client,
             token_manager=self._token_manager,
             guests=DEFAULT_GUESTS,
+            concurrency_controller=concurrency_controller,
         )
         self._enrich_strategies = EnrichStrategies(
             listing_service=self,
             browser_service=self._browser,
             settings=self._settings,
             proxy_service=self._proxy_service,
+            concurrency_controller=concurrency_controller,
         )
 
     @property
@@ -112,6 +123,28 @@ class ListingService:
         """
         self._monitor = value
         self._page_loader.monitor = value
+
+    @property
+    def concurrency_controller(self) -> ConcurrencyController | None:
+        """Возвращает текущий контроллер параллелизма.
+
+        Returns:
+            Экземпляр ConcurrencyController или None.
+        """
+        return self._controller
+
+    @concurrency_controller.setter
+    def concurrency_controller(self, value: ConcurrencyController | None) -> None:
+        """Устанавливает контроллер параллелизма.
+
+        Обновляет контроллер во всех вложенных компонентах.
+
+        Args:
+            value: Новый контроллер или None для отключения.
+        """
+        self._controller = value
+        self._page_loader.concurrency_controller = value
+        self._strategy.concurrency_controller = value
 
     async def enrich_listing(
         self, listing: RawListing, page: Page | None = None
@@ -340,6 +373,7 @@ class ListingService:
         listings: list[RawListing],
         proxies: list["ProxyConfig"],
         proxy_service: "ProxyService | None" = None,
+        concurrency_controller: ConcurrencyController | None = None,
     ) -> list[RawListing]:
         """Обогащает карточки параллельно через несколько прокси-браузеров.
 
@@ -349,6 +383,9 @@ class ListingService:
             proxies: Список рабочих прокси.
             proxy_service: Сервис прокси с заполненным пулом (опциональный).
                 Передаётся в воркеры для проверки/замены при перезапуске.
+            concurrency_controller: Глобальный контроллер параллелизма
+                (опциональный). Если не передан — создаётся автоматически
+                внутри EnrichStrategies с параметрами из settings.
 
         Returns:
             Список обогащённых карточек.
@@ -358,4 +395,5 @@ class ListingService:
             listings=listings,
             proxies=proxies,
             proxy_service=proxy_service,
+            concurrency_controller=concurrency_controller,
         )
