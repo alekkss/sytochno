@@ -40,6 +40,11 @@ PAGE_READY_TIMEOUT_MS: int = 15000
 # Количество гостей по умолчанию (используется в API-запросе)
 DEFAULT_GUESTS: int = 2
 
+# Количество гостей для fallback при ошибке «вмещает N гостей».
+# Используется когда объект рассчитан на меньшее число гостей,
+# чем DEFAULT_GUESTS.
+FALLBACK_GUESTS: int = 1
+
 # Максимальное количество retry при полном провале
 MAX_API_RETRIES: int = 2
 
@@ -71,6 +76,18 @@ MIN_NIGHTS_ERROR_KEYWORDS: list[str] = [
     "minimalnoe_kolichestvo",
     "minimum_stay",
     "min_stay",
+]
+
+# Ключевые слова в ответе API, указывающие на превышение вместимости гостей.
+# API возвращает ошибку вида «Жильё вмещает 1 гостя» когда запрошенное
+# количество гостей (guests) превышает max_guests объекта.
+GUESTS_ERROR_KEYWORDS: list[str] = [
+    "вмещает",
+    "гост",
+    "max_guests",
+    "максимальное количество гостей",
+    "guests_exceeded",
+    "too_many_guests",
 ]
 
 # Типы записей detail[], содержащие базовую цену за сутки.

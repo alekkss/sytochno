@@ -12,6 +12,8 @@ from src.services.listing.constants import (
     DAYS_COUNT,
     DEFAULT_GUESTS,
     ERROR_THRESHOLD,
+    FALLBACK_GUESTS,
+    GUESTS_ERROR_KEYWORDS,
     MIN_NIGHTS_ERROR_KEYWORDS,
     MIN_NIGHTS_VARIANTS,
 )
@@ -37,11 +39,12 @@ class HybridStrategy:
        Приоритет: type="season_price" → type=1 (базовая цена).
        Если busy="unbusy" → все дни свободны, готово за 1 запрос.
     3. Если bulk вернул busy="busy" → скользящее окно для занятости.
-    4. Если bulk вернул api_false → токен протух или аномалия.
+    4. Если bulk вернул ошибку «вмещает N гостей» → повтор с guests=1.
+    5. Если bulk вернул api_false → токен протух или аномалия.
        Перезагрузка страницы + повтор с новым токеном.
-    5. При массовых ошибках в скользящем окне (>30 из 60) →
+    6. При массовых ошибках в скользящем окне (>30 из 60) →
        перезагрузка страницы + повтор (НЕ нормализация как "свободен").
-    6. При 100% ошибках (60 из 60), не связанных с min_nights →
+    7. При 100% ошибках (60 из 60), не связанных с min_nights →
        немедленное прерывание: токен протух или IP заблокирован.
        Карточка уходит на retry верхнего уровня с новым токеном.
 
@@ -54,7 +57,8 @@ class HybridStrategy:
     - Успешный bulk/скользящее окно → report_success().
     - 100% ошибок (не min_nights) → report_failure() — признак перегрузки.
     - Протухший токен после перезагрузки → report_failure().
-    Логические ошибки (min_nights, not_found) НЕ репортятся — это не нагрузка.
+    Логические ошибки (min_nights, not_found, guests) НЕ репортятся —
+    это не нагрузка.
 
     Дата начала календаря (today) фиксируется один раз в начале
     fetch_calendar_and_prices и передаётся во все методы api_client —
@@ -124,10 +128,12 @@ class HybridStrategy:
         today = date.today()
 
         current_token = token
+        # Текущее количество гостей — может быть снижено при ошибке вместимости
+        effective_guests = self._guests
 
         # ── Валидация токена ──
         token_valid = await self._token_manager.validate_token(
-            page, object_id, current_token, guests=self._guests
+            page, object_id, current_token, guests=effective_guests
         )
 
         if not token_valid:
@@ -151,49 +157,66 @@ class HybridStrategy:
 
         # ── Шаг 1: Bulk-запрос на 60 ночей → цены ──
         bulk_result = await self._api.fetch_bulk_prices(
-            page, object_id, current_token, guests=self._guests, today=today
+            page, object_id, current_token, guests=effective_guests, today=today
         )
         busy_status, prices_60, bulk_success = bulk_result
 
         if not bulk_success:
-            # Проверяем: не является ли ошибка фатальной (удалённое объявление
-            # или слишком большой min_nights). Для этого делаем повторный
-            # bulk-запрос после перезагрузки токена и анализируем результат.
-            skip_reason = await self._check_fatal_bulk_error(
-                page, object_id, current_token, url, today
+            # ── Проверяем ошибку вместимости гостей ──
+            guests_retry_result = await self._retry_bulk_with_reduced_guests(
+                page, object_id, current_token, today
             )
 
-            if skip_reason is not None:
-                # Фатальная ошибка — НЕ репортим в контроллер,
-                # это не проблема нагрузки
-                return [0] * DAYS_COUNT, [0] * DAYS_COUNT, skip_reason
-
-            logger.info(
-                "bulk_не_удался_пробуем_перезагрузку",
-                step=f"id={object_id}",
-            )
-
-            new_token = await self._token_manager.reload_and_get_token(
-                page, url, object_id
-            )
-            if new_token:
-                current_token = new_token
-                busy_status, prices_60, bulk_success = await self._api.fetch_bulk_prices(
-                    page, object_id, current_token, guests=self._guests, today=today
+            if guests_retry_result is not None:
+                # Retry с уменьшенным guests успешен
+                busy_status, prices_60, effective_guests = guests_retry_result
+                bulk_success = True
+                logger.info(
+                    "bulk_успешен_с_уменьшенным_guests",
+                    step=f"id={object_id}, guests={effective_guests}, "
+                         f"busy={busy_status}",
+                )
+            else:
+                # Не ошибка guests — проверяем фатальные ошибки
+                skip_reason = await self._check_fatal_bulk_error(
+                    page, object_id, current_token, url, today
                 )
 
-            if not bulk_success:
-                # Bulk окончательно не удался — репортим как нагрузочную проблему
-                self._report_failure()
+                if skip_reason is not None:
+                    # Фатальная ошибка — НЕ репортим в контроллер,
+                    # это не проблема нагрузки
+                    return [0] * DAYS_COUNT, [0] * DAYS_COUNT, skip_reason
 
                 logger.info(
-                    "bulk_окончательно_не_удался_скользящее_окно",
+                    "bulk_не_удался_пробуем_перезагрузку",
                     step=f"id={object_id}",
                 )
-                calendar, prices, sw_reason = await self._full_sliding_window(
-                    page, object_id, current_token, url, today=today
+
+                new_token = await self._token_manager.reload_and_get_token(
+                    page, url, object_id
                 )
-                return calendar, prices, sw_reason
+                if new_token:
+                    current_token = new_token
+                    busy_status, prices_60, bulk_success = (
+                        await self._api.fetch_bulk_prices(
+                            page, object_id, current_token,
+                            guests=effective_guests, today=today,
+                        )
+                    )
+
+                if not bulk_success:
+                    # Bulk окончательно не удался — репортим как нагрузочную проблему
+                    self._report_failure()
+
+                    logger.info(
+                        "bulk_окончательно_не_удался_скользящее_окно",
+                        step=f"id={object_id}",
+                    )
+                    calendar, prices, sw_reason = await self._full_sliding_window(
+                        page, object_id, current_token, url,
+                        today=today, guests=effective_guests,
+                    )
+                    return calendar, prices, sw_reason
 
         # Bulk успешен — репортим успех
         self._report_success()
@@ -209,7 +232,8 @@ class HybridStrategy:
 
         # busy="busy" — нужно определить какие дни заняты
         calendar_60, avail_reason = await self._determine_availability(
-            page, object_id, current_token, url, today=today
+            page, object_id, current_token, url,
+            today=today, guests=effective_guests,
         )
 
         if avail_reason is not None:
@@ -235,35 +259,87 @@ class HybridStrategy:
 
         return calendar_60, final_prices, None
 
-    async def _check_fatal_bulk_error(
+    async def _retry_bulk_with_reduced_guests(
         self,
         page: Page,
         object_id: str,
         token: str,
-        url: str,
         today: date,
-    ) -> str | None:
-        """Проверяет, является ли ошибка bulk-запроса фатальной.
+    ) -> tuple[str | None, list[int], int] | None:
+        """Повторяет bulk-запрос с уменьшенным количеством гостей.
 
-        Выполняет дополнительный диагностический bulk-запрос и анализирует
-        текст ошибки. Фатальные ошибки — те, при которых повторные попытки
-        бессмысленны:
-        - "no_objects" → объявление удалено/заблокировано.
-        - min_nights >= 60 → объект для долгосрочной аренды.
+        Выполняет диагностический запрос, проверяет текст ошибки на паттерн
+        «вмещает N гостей». Если обнаружено — повторяет bulk с guests=1
+        (или с числом из ошибки, если оно меньше текущего guests).
 
         Args:
             page: Вкладка браузера.
             object_id: ID объявления.
-            token: Текущий токен.
-            url: URL карточки.
+            token: Сессионный токен API.
             today: Дата начала календаря.
 
         Returns:
-            Причина пропуска или None если ошибка не фатальная.
+            Кортеж (busy_status, prices_60, effective_guests) при успехе.
+            None если ошибка не связана с guests или retry не помог.
         """
-        # Для диагностики используем evaluate с прямым доступом к raw-ответу API.
-        # Стандартный fetch_bulk_prices не возвращает текст ошибки —
-        # поэтому выполняем отдельный диагностический запрос.
+        # Выполняем диагностический запрос для получения текста ошибки
+        detected_max_guests = await self._diagnose_guests_error(
+            page, object_id, token, today
+        )
+
+        if detected_max_guests is None:
+            # Ошибка не связана с количеством гостей
+            return None
+
+        # Определяем количество гостей для retry
+        retry_guests = min(detected_max_guests, FALLBACK_GUESTS)
+        if retry_guests >= self._guests:
+            # Нет смысла повторять с тем же или бо́льшим значением
+            return None
+
+        logger.info(
+            "обнаружена_ошибка_вместимости_retry",
+            step=f"id={object_id}, max_guests_объекта={detected_max_guests}, "
+                 f"было={self._guests}, retry_с={retry_guests}",
+        )
+
+        # Повторяем bulk с уменьшенным guests
+        busy_status, prices_60, bulk_success = await self._api.fetch_bulk_prices(
+            page, object_id, token, guests=retry_guests, today=today
+        )
+
+        if bulk_success:
+            return busy_status, prices_60, retry_guests
+
+        # Retry не помог — возможно другая причина
+        logger.debug(
+            "retry_guests_не_помог",
+            step=f"id={object_id}, guests={retry_guests}",
+        )
+        return None
+
+    async def _diagnose_guests_error(
+        self,
+        page: Page,
+        object_id: str,
+        token: str,
+        today: date,
+    ) -> int | None:
+        """Диагностирует ошибку вместимости гостей из ответа API.
+
+        Выполняет диагностический запрос и анализирует текст ошибки
+        на наличие паттерна «вмещает N гостей».
+
+        Args:
+            page: Вкладка браузера.
+            object_id: ID объявления.
+            token: Сессионный токен API.
+            today: Дата начала календаря.
+
+        Returns:
+            Количество гостей, которое вмещает объект (из текста ошибки).
+            None если ошибка не связана с guests.
+        """
         from datetime import timedelta
 
         from src.services.listing.constants import API_PRICES_URL
@@ -335,6 +411,154 @@ class HybridStrategy:
                     "dateEnd": date_end,
                     "token": token,
                     "guests": self._guests,
+                },
+            )
+        except Exception as e:
+            logger.debug(
+                "диагностика_guests_ошибка",
+                step=f"id={object_id}, error={e}",
+            )
+            return None
+
+        error_type = result.get("error_type")
+
+        if error_type != "obj_error":
+            return None
+
+        error_text = result.get("error_text", "").lower()
+        return self._extract_max_guests_from_error(error_text)
+
+    def _extract_max_guests_from_error(self, error_text: str) -> int | None:
+        """Извлекает значение max_guests из текста ошибки API.
+
+        Ищет паттерн «вмещает N гостей/гостя» в тексте ошибки.
+
+        Args:
+            error_text: Текст ошибки (в нижнем регистре).
+
+        Returns:
+            Значение max_guests или None если не найдено.
+        """
+        if not error_text:
+            return None
+
+        # Проверяем, содержит ли текст ключевые слова о вместимости
+        is_guests_error = any(
+            keyword in error_text
+            for keyword in GUESTS_ERROR_KEYWORDS
+        )
+
+        if not is_guests_error:
+            return None
+
+        # Извлекаем число из текста — ищем паттерн «вмещает N гост»
+        numbers = re.findall(r"(\d+)", error_text)
+        for num_str in numbers:
+            num = int(num_str)
+            # Разумный диапазон для max_guests (1–50)
+            if 1 <= num <= 50:
+                return num
+
+        # Ключевые слова есть, но число не найдено — предполагаем 1 гость
+        return FALLBACK_GUESTS
+
+    async def _check_fatal_bulk_error(
+        self,
+        page: Page,
+        object_id: str,
+        token: str,
+        url: str,
+        today: date,
+    ) -> str | None:
+        """Проверяет, является ли ошибка bulk-запроса фатальной.
+
+        Выполняет дополнительный диагностический bulk-запрос и анализирует
+        текст ошибки. Фатальные ошибки — те, при которых повторные попытки
+        бессмысленны:
+        - "no_objects" → объявление удалено/заблокировано.
+        - min_nights >= 60 → объект для долгосрочной аренды.
+
+        Args:
+            page: Вкладка браузера.
+            object_id: ID объявления.
+            token: Текущий токен.
+            url: URL карточки.
+            today: Дата начала календаря.
+
+        Returns:
+            Причина пропуска или None если ошибка не фатальная.
+        """
+        from datetime import timedelta
+
+        from src.services.listing.constants import API_PRICES_URL
+
+        start_date = today
+        end_date = start_date + timedelta(days=DAYS_COUNT)
+        date_begin = f"{start_date.isoformat()} 14:00:00"
+        date_end = f"{end_date.isoformat()} 11:00:00"
+
+        try:
+            result = await page.evaluate(
+                """
+                async ({apiUrl, objectId, dateBegin, dateEnd, token, guests}) => {
+                    try {
+                        const resp = await fetch(apiUrl, {
+                            method: 'POST',
+                            headers: {
+                                'Content-Type': 'application/json',
+                                'Accept': 'application/json',
+                                'token': token,
+                                'platform': 'js',
+                                'api-version': '1.13'
+                            },
+                            body: JSON.stringify({
+                                objects: [parseInt(objectId)],
+                                rooms_cnt: {},
+                                guests: guests,
+                                date_begin: dateBegin,
+                                date_end: dateEnd,
+                                currency_id: 1,
+                                is_pets: 0,
+                                documents: 0,
+                                target: 0,
+                                ages: [],
+                                no_time: 1
+                            })
+                        });
+
+                        if (!resp.ok) return {error_type: 'http', status: resp.status};
+
+                        const data = await resp.json();
+
+                        if (!data.success) return {error_type: 'api_false'};
+
+                        if (!data.data || !data.data.objects || !data.data.objects[0]) {
+                            return {error_type: 'no_objects'};
+                        }
+
+                        const obj = data.data.objects[0];
+                        if (!obj.success) {
+                            return {
+                                error_type: 'obj_error',
+                                errors: obj.errors || [],
+                                error_text: JSON.stringify(obj.errors || [])
+                            };
+                        }
+
+                        return {error_type: null};
+
+                    } catch (e) {
+                        return {error_type: 'exception', message: e.message};
+                    }
+                }
+                """,
+                {
+                    "apiUrl": API_PRICES_URL,
+                    "objectId": object_id,
+                    "dateBegin": date_begin,
+                    "dateEnd": date_end,
+                    "token": token,
+                    "guests": FALLBACK_GUESTS,
                 },
             )
         except Exception as e:
@@ -414,6 +638,7 @@ class HybridStrategy:
         token: str,
         url: str,
         today: date | None = None,
+        guests: int | None = None,
     ) -> tuple[list[int], str | None]:
         """Определяет занятость каждого дня с адаптацией min_nights и retry.
 
@@ -427,6 +652,7 @@ class HybridStrategy:
             token: Токен API.
             url: URL карточки.
             today: Дата начала календаря.
+            guests: Количество гостей (если None — используется self._guests).
 
         Returns:
             Кортеж (calendar_60_days, skip_reason).
@@ -434,6 +660,7 @@ class HybridStrategy:
                 "min_nights_exceeded" — все варианты nights исчерпаны и
                 обнаружен min_nights >= 60.
         """
+        effective_guests = guests if guests is not None else self._guests
         current_token = token
         best_calendar: list[int] = [-1] * DAYS_COUNT
         best_error_days: int = DAYS_COUNT
@@ -442,7 +669,7 @@ class HybridStrategy:
         for nights in MIN_NIGHTS_VARIANTS:
             calendar, errors_details = await self._api.fetch_availability(
                 page, object_id, current_token,
-                nights=nights, guests=self._guests, today=today,
+                nights=nights, guests=effective_guests, today=today,
             )
 
             error_days = sum(1 for c in calendar if c == -1)
@@ -462,6 +689,43 @@ class HybridStrategy:
                 return [0 if c == -1 else c for c in calendar], None
 
             detected = self._detect_min_nights(errors_details)
+
+            # ── Проверка ошибки вместимости в скользящем окне ──
+            # Если все ошибки — про гостей, снижаем guests и повторяем
+            if error_days >= DAYS_COUNT and detected is None:
+                guests_detected = self._detect_guests_error_in_sliding(
+                    errors_details
+                )
+                if guests_detected is not None and effective_guests > FALLBACK_GUESTS:
+                    effective_guests = min(guests_detected, FALLBACK_GUESTS)
+                    logger.info(
+                        "скользящее_окно_ошибка_вместимости_retry",
+                        step=f"id={object_id}, снижаем_guests_до={effective_guests}, "
+                             f"ночей={nights}",
+                    )
+                    # Повторяем тот же nights с уменьшенным guests
+                    calendar_retry, _ = await self._api.fetch_availability(
+                        page, object_id, current_token,
+                        nights=nights, guests=effective_guests, today=today,
+                    )
+                    error_days_retry = sum(
+                        1 for c in calendar_retry if c == -1
+                    )
+                    if error_days_retry < best_error_days:
+                        best_calendar = calendar_retry
+                        best_error_days = error_days_retry
+
+                    if best_error_days == 0:
+                        self._report_success()
+                        return best_calendar, None
+                    if best_error_days <= 5:
+                        self._report_success()
+                        return [
+                            0 if c == -1 else c for c in best_calendar
+                        ], None
+                    # Если помогло частично — продолжаем с уменьшенным guests
+                    if error_days_retry < error_days:
+                        continue
 
             # ── Проверка фатального min_nights ──
             # Если детектирован min_nights >= порога — карточка необогащаема
@@ -495,7 +759,7 @@ class HybridStrategy:
 
                         calendar_retry, _ = await self._api.fetch_availability(
                             page, object_id, current_token,
-                            nights=nights, guests=self._guests, today=today,
+                            nights=nights, guests=effective_guests, today=today,
                         )
                         error_days_retry = sum(
                             1 for c in calendar_retry if c == -1
@@ -564,7 +828,7 @@ class HybridStrategy:
 
                     calendar_retry, _ = await self._api.fetch_availability(
                         page, object_id, current_token,
-                        nights=nights, guests=self._guests, today=today,
+                        nights=nights, guests=effective_guests, today=today,
                     )
                     error_days_retry = sum(1 for c in calendar_retry if c == -1)
 
@@ -603,6 +867,7 @@ class HybridStrategy:
         token: str,
         url: str,
         today: date | None = None,
+        guests: int | None = None,
     ) -> tuple[list[int], list[int], str | None]:
         """Получает и цены, и занятость через скользящее окно (fallback).
 
@@ -616,10 +881,12 @@ class HybridStrategy:
             token: Токен API.
             url: URL карточки.
             today: Дата начала календаря.
+            guests: Количество гостей (если None — используется self._guests).
 
         Returns:
             Кортеж (calendar_60_days, prices_60_days, skip_reason).
         """
+        effective_guests = guests if guests is not None else self._guests
         current_token = token
         reloaded_in_full_sw: bool = False
 
@@ -631,7 +898,7 @@ class HybridStrategy:
 
             calendar, errors_details = await self._api.fetch_availability(
                 page, object_id, current_token,
-                nights=nights, guests=self._guests, today=today,
+                nights=nights, guests=effective_guests, today=today,
             )
 
             error_days = sum(1 for c in calendar if c == -1)
@@ -639,7 +906,8 @@ class HybridStrategy:
             if error_days == 0:
                 self._report_success()
                 busy_status, prices_60, bulk_ok = await self._api.fetch_bulk_prices(
-                    page, object_id, current_token, guests=self._guests, today=today
+                    page, object_id, current_token,
+                    guests=effective_guests, today=today,
                 )
                 if bulk_ok and sum(1 for p in prices_60 if p > 0) > 0:
                     final_prices = [
@@ -650,7 +918,7 @@ class HybridStrategy:
 
                 cal, prices = await self._api.sliding_window_with_prices(
                     page, object_id, current_token,
-                    nights=nights, guests=self._guests, today=today,
+                    nights=nights, guests=effective_guests, today=today,
                 )
                 return cal, prices, None
 
@@ -658,7 +926,8 @@ class HybridStrategy:
                 self._report_success()
                 calendar_norm = [0 if c == -1 else c for c in calendar]
                 _, prices_60, bulk_ok = await self._api.fetch_bulk_prices(
-                    page, object_id, current_token, guests=self._guests, today=today
+                    page, object_id, current_token,
+                    guests=effective_guests, today=today,
                 )
                 if bulk_ok:
                     final_prices = [
@@ -669,7 +938,7 @@ class HybridStrategy:
 
                 cal, prices = await self._api.sliding_window_with_prices(
                     page, object_id, current_token,
-                    nights=nights, guests=self._guests, today=today,
+                    nights=nights, guests=effective_guests, today=today,
                 )
                 return cal, prices, None
 
@@ -683,6 +952,72 @@ class HybridStrategy:
                          f"порог={_MIN_NIGHTS_SKIP_THRESHOLD}",
                 )
                 return [0] * DAYS_COUNT, [0] * DAYS_COUNT, "min_nights_exceeded"
+
+            # ── Проверка ошибки вместимости в скользящем окне ──
+            if error_days >= DAYS_COUNT and detected is None:
+                guests_detected = self._detect_guests_error_in_sliding(
+                    errors_details
+                )
+                if guests_detected is not None and effective_guests > FALLBACK_GUESTS:
+                    effective_guests = min(guests_detected, FALLBACK_GUESTS)
+                    logger.info(
+                        "скользящее_окно_полное_ошибка_вместимости_retry",
+                        step=f"id={object_id}, снижаем_guests_до={effective_guests}, "
+                             f"ночей={nights}",
+                    )
+                    # Повторяем тот же nights с уменьшенным guests
+                    calendar_retry, _ = await self._api.fetch_availability(
+                        page, object_id, current_token,
+                        nights=nights, guests=effective_guests, today=today,
+                    )
+                    error_days_retry = sum(
+                        1 for c in calendar_retry if c == -1
+                    )
+
+                    if error_days_retry == 0:
+                        self._report_success()
+                        _, prices_60, bulk_ok = await self._api.fetch_bulk_prices(
+                            page, object_id, current_token,
+                            guests=effective_guests, today=today,
+                        )
+                        if bulk_ok and sum(1 for p in prices_60 if p > 0) > 0:
+                            final_prices = [
+                                0 if calendar_retry[i] == 1 else prices_60[i]
+                                for i in range(DAYS_COUNT)
+                            ]
+                            return calendar_retry, final_prices, None
+
+                        cal, prices = await self._api.sliding_window_with_prices(
+                            page, object_id, current_token,
+                            nights=nights, guests=effective_guests, today=today,
+                        )
+                        return cal, prices, None
+
+                    if error_days_retry < ERROR_THRESHOLD:
+                        self._report_success()
+                        calendar_norm = [
+                            0 if c == -1 else c for c in calendar_retry
+                        ]
+                        _, prices_60, bulk_ok = await self._api.fetch_bulk_prices(
+                            page, object_id, current_token,
+                            guests=effective_guests, today=today,
+                        )
+                        if bulk_ok:
+                            final_prices = [
+                                0 if calendar_norm[i] == 1 else prices_60[i]
+                                for i in range(DAYS_COUNT)
+                            ]
+                            return calendar_norm, final_prices, None
+
+                        cal, prices = await self._api.sliding_window_with_prices(
+                            page, object_id, current_token,
+                            nights=nights, guests=effective_guests, today=today,
+                        )
+                        return cal, prices, None
+
+                    # Частично помогло — продолжаем с уменьшенным guests
+                    if error_days_retry < error_days:
+                        continue
 
             # ── Раннее прерывание при 100% ошибках ──
             # Аналогично _determine_availability: если ВСЕ 60 дней — ошибки
@@ -702,7 +1037,7 @@ class HybridStrategy:
 
                         calendar_retry, _ = await self._api.fetch_availability(
                             page, object_id, current_token,
-                            nights=nights, guests=self._guests, today=today,
+                            nights=nights, guests=effective_guests, today=today,
                         )
                         error_days_retry = sum(
                             1 for c in calendar_retry if c == -1
@@ -713,7 +1048,7 @@ class HybridStrategy:
                             _, prices_60, bulk_ok = (
                                 await self._api.fetch_bulk_prices(
                                     page, object_id, current_token,
-                                    guests=self._guests, today=today,
+                                    guests=effective_guests, today=today,
                                 )
                             )
                             if bulk_ok and sum(1 for p in prices_60 if p > 0) > 0:
@@ -726,7 +1061,7 @@ class HybridStrategy:
 
                             cal, prices = await self._api.sliding_window_with_prices(
                                 page, object_id, current_token,
-                                nights=nights, guests=self._guests, today=today,
+                                nights=nights, guests=effective_guests, today=today,
                             )
                             return cal, prices, None
 
@@ -738,7 +1073,7 @@ class HybridStrategy:
                             _, prices_60, bulk_ok = (
                                 await self._api.fetch_bulk_prices(
                                     page, object_id, current_token,
-                                    guests=self._guests, today=today,
+                                    guests=effective_guests, today=today,
                                 )
                             )
                             if bulk_ok:
@@ -751,7 +1086,7 @@ class HybridStrategy:
 
                             cal, prices = await self._api.sliding_window_with_prices(
                                 page, object_id, current_token,
-                                nights=nights, guests=self._guests, today=today,
+                                nights=nights, guests=effective_guests, today=today,
                             )
                             return cal, prices, None
 
@@ -809,6 +1144,50 @@ class HybridStrategy:
             step=f"id={object_id}",
         )
         return [0] * DAYS_COUNT, [0] * DAYS_COUNT, None
+
+    def _detect_guests_error_in_sliding(
+        self, errors_details: list[dict[str, str | int]]
+    ) -> int | None:
+        """Определяет ошибку вместимости гостей из ошибок скользящего окна.
+
+        Анализирует первые несколько ошибок — если они содержат ключевые
+        слова о вместимости, возвращает max_guests из текста.
+
+        Args:
+            errors_details: Список ошибок из скользящего окна.
+
+        Returns:
+            Значение max_guests из текста ошибки или None.
+        """
+        if not errors_details:
+            return None
+
+        # Проверяем первые 3 ошибки — если хотя бы одна про гостей,
+        # считаем что все ошибки по этой причине
+        for error_info in errors_details[:3]:
+            error_body = str(error_info.get("error_body", "")).lower()
+            errors_list = str(error_info.get("errors", "")).lower()
+            combined_text = f"{error_body} {errors_list}"
+
+            is_guests_error = any(
+                keyword in combined_text
+                for keyword in GUESTS_ERROR_KEYWORDS
+            )
+
+            if is_guests_error:
+                # Извлекаем число — max_guests объекта
+                numbers = re.findall(r"(\d+)", combined_text)
+                for num_str in numbers:
+                    num = int(num_str)
+                    if 1 <= num <= 50:
+                        logger.debug(
+                            "guests_ошибка_обнаружена_в_окне",
+                            step=f"max_guests={num}",
+                        )
+                        return num
+                return FALLBACK_GUESTS
+
+        return None
 
     def _detect_min_nights(
         self, errors_details: list[dict[str, str | int]]
@@ -868,7 +1247,7 @@ class HybridStrategy:
         - Неудачном bulk-запросе после перезагрузки токена.
         - Невозможности получить валидный токен.
 
-        НЕ вызывается при логических ошибках (min_nights, not_found) —
+        НЕ вызывается при логических ошибках (min_nights, not_found, guests) —
         это не проблема нагрузки, а особенность конкретной карточки.
         """
         if self._controller:
