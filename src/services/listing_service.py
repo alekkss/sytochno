@@ -80,6 +80,10 @@ class ListingService:
         self._proxy_service = proxy_service
         self._controller = concurrency_controller
 
+        # Таймаут обработки одной карточки (все попытки суммарно).
+        # 0 = отключён (без ограничения времени).
+        self._enrich_timeout_seconds: float = float(settings.enrich_timeout_seconds)
+
         self._page_loader = PageLoader(
             monitor=monitor,
             concurrency_controller=concurrency_controller,
@@ -163,6 +167,11 @@ class ListingService:
         Если монитор соединения сигнализирует о необходимости перезапуска
         браузера — обработка прерывается досрочно без траты попыток.
 
+        Если суммарное время обработки превысило enrich_timeout_seconds —
+        обработка прерывается досрочно. Карточка остаётся необогащённой
+        (без enrichment_skip_reason) и попадёт в retry-раунды как обычная.
+        Это предотвращает «зависание» на проблемных карточках (25+ минут).
+
         Нулевой sentinel отличается от реально свободного объявления тем,
         что у свободного объявления цены > 0, а у sentinel все цены = 0.
 
@@ -187,6 +196,12 @@ class ListingService:
         )
 
         for attempt in range(1, _MAX_ENRICH_ATTEMPTS + 1):
+            # ── Проверка таймаута перед каждой попыткой ──
+            # Если суммарное время обработки карточки превысило порог —
+            # прерываем досрочно. Карточка остаётся пустой → retry-раунды.
+            if self._is_timeout_exceeded(start_time, listing.external_id):
+                break
+
             # Проверяем монитор перед каждой попыткой — если перезапуск
             # браузера уже требуется, не тратим время на бесполезные загрузки
             if self._monitor and self._monitor.should_skip():
@@ -231,6 +246,12 @@ class ListingService:
                     continue
 
                 await self._browser.random_delay()
+
+                # ── Проверка таймаута перед тяжёлой операцией ──
+                # fetch_calendar_and_prices может занять 30–60 секунд.
+                # Проверяем перед запуском, чтобы не тратить время впустую.
+                if self._is_timeout_exceeded(start_time, listing.external_id):
+                    break
 
                 calendar, prices, skip_reason = await self._strategy.fetch_calendar_and_prices(
                     active_page, listing.external_id, token, listing.url
@@ -308,6 +329,41 @@ class ListingService:
         )
 
         return listing
+
+    def _is_timeout_exceeded(self, start_time: float, object_id: str) -> bool:
+        """Проверяет, превышен ли таймаут обработки карточки.
+
+        Если enrich_timeout_seconds = 0 — таймаут отключён, всегда False.
+        Если время с момента start_time превысило порог — логирует
+        предупреждение и возвращает True.
+
+        Карточка при этом НЕ помечается как фатальная (без skip_reason) —
+        она остаётся «пустой» и попадёт в retry-раунды как обычная
+        необогащённая. На следующем раунде (или следующем запуске)
+        проблема может разрешиться сама (блокировка прошла, прокси сменилась).
+
+        Args:
+            start_time: Время начала обработки (perf_counter).
+            object_id: ID объявления (для логов).
+
+        Returns:
+            True если таймаут превышен и обработку следует прервать.
+        """
+        if self._enrich_timeout_seconds <= 0:
+            return False
+
+        elapsed = time.perf_counter() - start_time
+
+        if elapsed >= self._enrich_timeout_seconds:
+            logger.warning(
+                "карточка_прервана_по_таймауту",
+                step=f"id={object_id}, "
+                     f"время={format_duration(elapsed)}, "
+                     f"лимит={format_duration(self._enrich_timeout_seconds)}",
+            )
+            return True
+
+        return False
 
     @staticmethod
     def _is_failure_sentinel(calendar: list[int], prices: list[int]) -> bool:

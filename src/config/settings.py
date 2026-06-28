@@ -166,6 +166,14 @@ class Settings:
     # Рекомендуется: 50% от максимума для безопасного рампинга.
     concurrency_start: int = 0
 
+    # Таймаут обработки одной карточки (секунды, все попытки суммарно).
+    # Если карточка не обогатилась за это время — обработка прерывается,
+    # карточка остаётся пустой и попадает в retry-раунды.
+    # 0 = таймаут отключён (без ограничения времени).
+    # Рекомендуется 240 (4 минуты) — достаточно для bulk + скользящего окна,
+    # но предотвращает «зависание» на проблемных карточках.
+    enrich_timeout_seconds: int = 240
+
     @classmethod
     def load(cls) -> "Settings":
         """Фабричный метод — загружает настройки из переменных окружения.
@@ -203,6 +211,7 @@ class Settings:
             concurrency_min=_get_int("CONCURRENCY_MIN", "5"),
             concurrency_max=_get_int("CONCURRENCY_MAX", "0"),
             concurrency_start=_get_int("CONCURRENCY_START", "0"),
+            enrich_timeout_seconds=_get_int("ENRICH_TIMEOUT_SECONDS", "240"),
         )
 
         # Валидация диапазонов
@@ -290,6 +299,13 @@ class Settings:
                 "CONCURRENCY_START не может быть больше CONCURRENCY_MAX. "
                 f"CONCURRENCY_START={settings.concurrency_start}, "
                 f"CONCURRENCY_MAX={settings.concurrency_max}."
+            )
+
+        # Валидация таймаута обогащения
+        if settings.enrich_timeout_seconds < 0:
+            raise RuntimeError(
+                "ENRICH_TIMEOUT_SECONDS не может быть отрицательным. "
+                f"Получено: {settings.enrich_timeout_seconds}."
             )
 
         return settings
