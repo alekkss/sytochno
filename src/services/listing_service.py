@@ -40,6 +40,12 @@ _MAX_ENRICH_ATTEMPTS = 3
 # Пауза перед повторной попыткой (секунды)
 _RETRY_DELAY_SECONDS = 3.0
 
+# Минимальный остаток времени, при котором имеет смысл запускать
+# тяжёлую операцию (fetch_calendar_and_prices). Если осталось меньше —
+# лучше прервать сразу, чем запускать операцию, которая гарантированно
+# не успеет завершиться.
+_MIN_REMAINING_SECONDS = 10.0
+
 
 class ListingService:
     """Оркестратор обогащения карточек объявлений данными о ценах и занятости.
@@ -168,9 +174,9 @@ class ListingService:
         браузера — обработка прерывается досрочно без траты попыток.
 
         Если суммарное время обработки превысило enrich_timeout_seconds —
-        обработка прерывается досрочно. Карточка остаётся необогащённой
-        (без enrichment_skip_reason) и попадёт в retry-раунды как обычная.
-        Это предотвращает «зависание» на проблемных карточках (25+ минут).
+        обработка прерывается принудительно через asyncio.wait_for().
+        Карточка остаётся необогащённой (без enrichment_skip_reason) и
+        попадёт в retry-раунды как обычная.
 
         Нулевой sentinel отличается от реально свободного объявления тем,
         что у свободного объявления цены > 0, а у sentinel все цены = 0.
@@ -197,8 +203,6 @@ class ListingService:
 
         for attempt in range(1, _MAX_ENRICH_ATTEMPTS + 1):
             # ── Проверка таймаута перед каждой попыткой ──
-            # Если суммарное время обработки карточки превысило порог —
-            # прерываем досрочно. Карточка остаётся пустой → retry-раунды.
             if self._is_timeout_exceeded(start_time, listing.external_id):
                 break
 
@@ -247,15 +251,43 @@ class ListingService:
 
                 await self._browser.random_delay()
 
-                # ── Проверка таймаута перед тяжёлой операцией ──
-                # fetch_calendar_and_prices может занять 30–60 секунд.
-                # Проверяем перед запуском, чтобы не тратить время впустую.
-                if self._is_timeout_exceeded(start_time, listing.external_id):
+                # ── Вызов стратегии с принудительным таймаутом ──
+                # asyncio.wait_for прерывает операцию ровно по лимиту,
+                # а не ждёт завершения текущего шага внутри стратегии.
+                remaining = self._remaining_timeout(start_time)
+                if remaining is not None and remaining < _MIN_REMAINING_SECONDS:
+                    logger.warning(
+                        "карточка_прервана_по_таймауту",
+                        step=f"id={listing.external_id}, "
+                             f"осталось={format_duration(remaining)}, "
+                             f"минимум={format_duration(_MIN_REMAINING_SECONDS)}",
+                    )
                     break
 
-                calendar, prices, skip_reason = await self._strategy.fetch_calendar_and_prices(
-                    active_page, listing.external_id, token, listing.url
-                )
+                try:
+                    if remaining is not None:
+                        calendar, prices, skip_reason = await asyncio.wait_for(
+                            self._strategy.fetch_calendar_and_prices(
+                                active_page, listing.external_id, token, listing.url
+                            ),
+                            timeout=remaining,
+                        )
+                    else:
+                        # Таймаут отключён — вызов без ограничения
+                        calendar, prices, skip_reason = (
+                            await self._strategy.fetch_calendar_and_prices(
+                                active_page, listing.external_id, token, listing.url
+                            )
+                        )
+                except asyncio.TimeoutError:
+                    elapsed = time.perf_counter() - start_time
+                    logger.warning(
+                        "карточка_прервана_по_таймауту",
+                        step=f"id={listing.external_id}, "
+                             f"время={format_duration(elapsed)}, "
+                             f"лимит={format_duration(self._enrich_timeout_seconds)}",
+                    )
+                    break
 
                 # ── Фатальная ошибка — повторные попытки бессмысленны ──
                 # Карточка помечается как необогащаемая и не будет повторяться
@@ -329,6 +361,24 @@ class ListingService:
         )
 
         return listing
+
+    def _remaining_timeout(self, start_time: float) -> float | None:
+        """Вычисляет оставшееся время до таймаута обработки карточки.
+
+        Args:
+            start_time: Время начала обработки (perf_counter).
+
+        Returns:
+            Оставшееся время в секундах или None если таймаут отключён.
+        """
+        if self._enrich_timeout_seconds <= 0:
+            return None
+
+        elapsed = time.perf_counter() - start_time
+        remaining = self._enrich_timeout_seconds - elapsed
+
+        # Не возвращаем отрицательное значение — 0.0 означает «время вышло»
+        return max(remaining, 0.0)
 
     def _is_timeout_exceeded(self, start_time: float, object_id: str) -> bool:
         """Проверяет, превышен ли таймаут обработки карточки.
