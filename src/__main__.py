@@ -25,7 +25,7 @@ from src.services.snapshot_service import SnapshotService
 
 
 # Максимальное количество раундов повторного обогащения
-_MAX_RETRY_ROUNDS: int = 50
+_MAX_RETRY_ROUNDS: int = 3
 
 # Пауза между раундами повторного обогащения (секунды)
 _RETRY_ROUND_PAUSE_SECONDS: float = 30.0
