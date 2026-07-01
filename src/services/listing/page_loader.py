@@ -1,7 +1,6 @@
 """Загрузка страницы карточки и перехват токена API."""
 
 import asyncio
-import re
 from typing import TYPE_CHECKING
 
 from playwright.async_api import Page
@@ -25,7 +24,6 @@ logger = get_logger("page_loader")
 # Эти ошибки репортятся в ConcurrencyController для адаптации лимита.
 _NETWORK_ERROR_MARKERS: tuple[str, ...] = (
     "ERR_EMPTY_RESPONSE",
-    "ERR_SOCKET_NOT_CONNECTED",
     "ERR_TIMED_OUT",
     "ERR_CONNECTION_RESET",
     "ERR_CONNECTION_CLOSED",
@@ -35,34 +33,6 @@ _NETWORK_ERROR_MARKERS: tuple[str, ...] = (
     "NS_ERROR_NET_RESET",
     "Timeout",
 )
-
-# Шаблон альтернативного URL карточки через фронтенд-роутер sutochno.ru.
-# Используется как fallback при сетевых ошибках на прямом URL.
-_FALLBACK_URL_TEMPLATE: str = "https://sutochno.ru/front/searchapp/detail/{object_id}"
-
-# Паттерн для извлечения числового ID из URL карточки.
-# Примеры: https://sutochno.ru/1519545, https://spb.sutochno.ru/1257263
-_LISTING_ID_PATTERN: re.Pattern[str] = re.compile(r"/(\d{4,})$")
-
-
-def _build_fallback_url(original_url: str) -> str | None:
-    """Формирует альтернативный URL карточки для fallback при сетевых ошибках.
-
-    Извлекает числовой ID объявления из оригинального URL и подставляет
-    его в шаблон /front/searchapp/detail/{id}.
-
-    Args:
-        original_url: Оригинальный URL карточки
-            (например, https://sutochno.ru/1519545).
-
-    Returns:
-        Альтернативный URL или None, если ID не удалось извлечь.
-    """
-    match = _LISTING_ID_PATTERN.search(original_url)
-    if not match:
-        return None
-    object_id = match.group(1)
-    return _FALLBACK_URL_TEMPLATE.format(object_id=object_id)
 
 
 class PageLoader:
@@ -206,10 +176,6 @@ class PageLoader:
         пытается дождаться networkidle (мягкий таймаут), затем проверяет
         наличие ключевых элементов.
 
-        При первой сетевой ошибке пробует альтернативный URL
-        (/front/searchapp/detail/{id}) — один раз. Если он тоже
-        не сработал — продолжает retry на оригинальном URL.
-
         Репортит результаты в два компонента:
         - ConnectionMonitor: для детектирования массовых локальных сбоев
           (2 подряд → перезапуск браузера).
@@ -235,9 +201,6 @@ class PageLoader:
                 step=f"id={object_id}",
             )
             return False
-
-        # Флаг: альтернативный URL уже был опробован
-        fallback_attempted: bool = False
 
         for attempt in range(1, MAX_GOTO_RETRIES + 1):
             # Проверяем перед каждой попыткой — другая вкладка могла
@@ -325,77 +288,6 @@ class PageLoader:
                     # это даёт контроллеру более быструю обратную связь.
                     if self._controller:
                         self._controller.report_failure()
-
-                    # --- Fallback на альтернативный URL (одна попытка) ---
-                    # При первой сетевой ошибке пробуем /front/searchapp/detail/{id}.
-                    # Если он тоже не сработал — продолжаем retry на оригинальном.
-                    if not fallback_attempted:
-                        fallback_attempted = True
-                        fallback_url = _build_fallback_url(url)
-
-                        if fallback_url:
-                            logger.info(
-                                "fallback_альтернативный_url",
-                                path=fallback_url,
-                                step=f"id={object_id}, после_попытки={attempt}",
-                            )
-                            try:
-                                await page.goto(
-                                    fallback_url,
-                                    wait_until="domcontentloaded",
-                                    timeout=30000,
-                                )
-
-                                try:
-                                    await page.wait_for_load_state(
-                                        "networkidle",
-                                        timeout=NETWORKIDLE_SOFT_TIMEOUT_MS,
-                                    )
-                                except Exception:
-                                    pass
-
-                                page_ready = await self.wait_for_page_ready(page)
-                                if page_ready:
-                                    logger.info(
-                                        "fallback_успех",
-                                        path=fallback_url,
-                                        step=f"id={object_id}",
-                                    )
-                                    if self._monitor:
-                                        await self._monitor.report_success(object_id)
-                                    if self._controller:
-                                        self._controller.report_success()
-                                    return True
-
-                                # Элементы не найдены, но URL на sutochno.ru
-                                current_url = page.url
-                                if "sutochno.ru" in current_url:
-                                    logger.warning(
-                                        "fallback_элементы_не_найдены",
-                                        path=current_url,
-                                        step=f"id={object_id}",
-                                    )
-                                    if self._monitor:
-                                        await self._monitor.report_success(object_id)
-                                    if self._controller:
-                                        self._controller.report_success()
-                                    return True
-
-                                logger.warning(
-                                    "fallback_редирект",
-                                    path=current_url,
-                                    step=f"id={object_id}",
-                                )
-
-                            except Exception as fallback_err:
-                                fallback_error_msg = str(fallback_err)
-                                logger.warning(
-                                    "fallback_не_удался",
-                                    error=fallback_error_msg[:200],
-                                    step=f"id={object_id}",
-                                )
-
-                    # --- Конец fallback-логики ---
 
                     if attempt < MAX_GOTO_RETRIES:
                         logger.warning(
