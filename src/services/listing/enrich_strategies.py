@@ -28,11 +28,11 @@ logger = get_logger("enrich_strategies")
 _RESTART_COOLDOWN_SECONDS: float = 5.0
 
 # Максимальное количество перезапусков браузера за один прогон воркера
-_MAX_RESTARTS_PER_WORKER: int = 3
+_MAX_RESTARTS_PER_WORKER: int = 2
 
 # Максимальное количество попыток прогрева браузера (навигация на главную).
 # При каждой неудачной попытке выполняется пауза и проверка/замена прокси.
-_MAX_WARMUP_ATTEMPTS: int = 3
+_MAX_WARMUP_ATTEMPTS: int = 2
 
 # Пауза между попытками прогрева (секунды)
 _WARMUP_RETRY_DELAY_SECONDS: float = 5.0
@@ -45,7 +45,7 @@ _WORKER_START_DELAY_SECONDS: float = 2.0
 # Максимальное количество retry-раундов для упавших воркеров.
 # После каждого раунда необработанные карточки перераспределяются
 # между оставшимися рабочими прокси и запускаются повторно.
-_MAX_PARALLEL_RETRY_ROUNDS: int = 2
+_MAX_PARALLEL_RETRY_ROUNDS: int = 1
 
 # Интервал логирования статистики контроллера (секунды).
 # Каждые N секунд в лог выводится текущее состояние адаптации.
@@ -114,6 +114,7 @@ class EnrichStrategies:
         )
 
         # Определяем необработанные карточки — те, у которых нет данных
+        # и не установлена фатальная причина пропуска
         remaining = [l for l in listings if not self._is_enriched(l)]
         restart_count = 0
 
@@ -161,7 +162,8 @@ class EnrichStrategies:
                 # Пауза после перезапуска — даём сети стабилизироваться
                 await asyncio.sleep(_RESTART_COOLDOWN_SECONDS)
 
-                # Пересчитываем необработанные карточки
+                # Пересчитываем необработанные карточки — карточки
+                # с фатальной причиной (skip_reason) сюда не попадают
                 remaining = [l for l in listings if not self._is_enriched(l)]
 
                 logger.info(
@@ -411,17 +413,35 @@ class EnrichStrategies:
 
     @staticmethod
     def _is_enriched(listing: RawListing) -> bool:
-        """Проверяет, обогащена ли карточка данными.
+        """Проверяет, завершена ли обработка карточки (обогащена или необогащаема).
 
-        Карточка считается обогащённой, если хотя бы одна цена > 0
-        или хотя бы один день занят (calendar = 1).
+        Карточка считается «завершённой» (не нуждающейся в retry) если
+        выполнено любое из условий:
+
+        1. Обогащена успешно — хотя бы одна цена > 0 или хотя бы один
+           день занят (calendar = 1). Это означает, что данные получены.
+
+        2. Установлена фатальная причина пропуска (enrichment_skip_reason).
+           Возможные значения:
+           - "object_not_found" — объявление удалено или заблокировано.
+           - "min_nights_exceeded" — min_nights объекта превышает 60 дней.
+           Такие карточки принципиально невозможно обогатить, повторные
+           попытки — чистая потеря времени и лишние запросы к API.
+
+        Обе ситуации семантически эквивалентны для retry-цикла:
+        «трогать эту карточку больше не нужно».
 
         Args:
             listing: Объявление для проверки.
 
         Returns:
-            True если карточка содержит данные календаря/цен.
+            True если карточка обогащена ИЛИ необогащаема (skip_reason установлен).
         """
+        # Приоритетная проверка — фатальная причина исключает карточку
+        # мгновенно, без осмотра данных календаря/цен
+        if listing.enrichment_skip_reason is not None:
+            return True
+
         if listing.calendar_60_days and any(c == 1 for c in listing.calendar_60_days):
             return True
         if listing.prices_60_days and any(p > 0 for p in listing.prices_60_days):
@@ -596,6 +616,11 @@ class EnrichStrategies:
         перераспределяются между оставшимися рабочими прокси и запускаются
         повторно (до _MAX_PARALLEL_RETRY_ROUNDS раундов).
 
+        Карточки с установленным enrichment_skip_reason (object_not_found,
+        min_nights_exceeded) мгновенно исключаются из retry-раундов — это
+        экономит время и запросы на объявлениях, которые принципиально
+        невозможно обогатить.
+
         Args:
             settings: Настройки приложения.
             listings: Полный список карточек.
@@ -698,11 +723,39 @@ class EnrichStrategies:
 
             # ── Retry-раунды для необработанных карточек ──
             for retry_round in range(1, _MAX_PARALLEL_RETRY_ROUNDS + 1):
-                # Собираем необработанные карточки из всех чанков
+                # Собираем необработанные карточки из всех чанков.
+                # Метод _is_enriched теперь исключает карточки с
+                # enrichment_skip_reason — они не попадают в retry.
                 unenriched = [
                     l for l in listings
                     if not EnrichStrategies._is_enriched(l)
                 ]
+
+                # Диагностика: сколько карточек мгновенно пропущено
+                # по фатальной причине (object_not_found, min_nights_exceeded).
+                # Это даёт видимость экономии времени и запросов к API.
+                skipped_by_reason = sum(
+                    1 for l in listings
+                    if l.enrichment_skip_reason is not None
+                )
+
+                if skipped_by_reason > 0:
+                    # Разбивка по причинам для более информативного лога
+                    reasons_breakdown: dict[str, int] = {}
+                    for l in listings:
+                        if l.enrichment_skip_reason is not None:
+                            reason = l.enrichment_skip_reason
+                            reasons_breakdown[reason] = (
+                                reasons_breakdown.get(reason, 0) + 1
+                            )
+                    breakdown_str = ", ".join(
+                        f"{k}={v}" for k, v in sorted(reasons_breakdown.items())
+                    )
+                    logger.info(
+                        "retry_карточки_исключены_по_skip_reason",
+                        step=f"раунд={retry_round}, пропущено={skipped_by_reason} "
+                             f"({breakdown_str})",
+                    )
 
                 if not unenriched:
                     logger.info(
@@ -1056,7 +1109,13 @@ class EnrichStrategies:
             )
 
             # ── Обработка карточек по одной с контролем параллелизма ──
-            remaining = list(listings)
+            # Фильтруем на входе — если карточка уже помечена как
+            # необогащаемая (например, в предыдущем раунде), она сюда
+            # не попадёт. Это дополнительная защита на уровне воркера.
+            remaining = [
+                l for l in listings
+                if not EnrichStrategies._is_enriched(l)
+            ]
             restart_count = 0
 
             while remaining and restart_count <= _MAX_RESTARTS_PER_WORKER:
@@ -1216,7 +1275,8 @@ class EnrichStrategies:
                     # Пауза после перезапуска
                     await asyncio.sleep(_RESTART_COOLDOWN_SECONDS)
 
-                    # Пересчитываем необработанные
+                    # Пересчитываем необработанные — карточки с
+                    # skip_reason сюда не попадают
                     remaining = [
                         l for l in listings
                         if not EnrichStrategies._is_enriched(l)

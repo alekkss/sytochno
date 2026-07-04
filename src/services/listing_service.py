@@ -21,7 +21,12 @@ from src.services.browser_service import BrowserService
 from src.services.listing.api_client import ApiClient
 from src.services.listing.concurrency_controller import ConcurrencyController
 from src.services.listing.connection_monitor import ConnectionMonitor
-from src.services.listing.constants import DAYS_COUNT, DEFAULT_GUESTS, format_duration
+from src.services.listing.constants import (
+    DAYS_COUNT,
+    DEFAULT_GUESTS,
+    build_alt_url,
+    format_duration,
+)
 from src.services.listing.enrich_strategies import EnrichStrategies
 from src.services.listing.hybrid_strategy import HybridStrategy
 from src.services.listing.page_loader import PageLoader
@@ -45,6 +50,11 @@ _RETRY_DELAY_SECONDS = 3.0
 # лучше прервать сразу, чем запускать операцию, которая гарантированно
 # не успеет завершиться.
 _MIN_REMAINING_SECONDS = 10.0
+
+# Фатальная причина, при которой запускается fallback через альтернативный URL.
+# Другие причины (например, min_nights_exceeded) не требуют fallback —
+# они устанавливаются на основе логики API, а не структуры страницы.
+_OBJECT_NOT_FOUND_REASON = "object_not_found"
 
 
 class ListingService:
@@ -167,8 +177,17 @@ class ListingService:
         - токен API не перехвачен (частая проблема при параллельных вкладках);
         - hybrid_strategy вернула нулевой sentinel ([0]*60, [0]*60).
 
-        Если стратегия вернула skip_reason (фатальная ошибка) — повторные
-        попытки не запускаются, карточка сразу помечается как необогащаемая.
+        Если стратегия вернула skip_reason (фатальная ошибка) — обработка
+        зависит от типа причины:
+        - "object_not_found" на основном URL → запускается fallback через
+          альтернативный URL (https://sutochno.ru/front/searchapp/detail/{id}).
+          Основной URL — старая версия страницы, которая перенаправляет на
+          этот внутренний путь; иногда редирект даёт сбой и основной URL
+          возвращает пустую страницу. Если и альтернативный URL вернул
+          object_not_found — карточка окончательно помечается как удалённая.
+          Fallback выполняется не более одного раза за вызов enrich_listing.
+        - "min_nights_exceeded" или другие причины → карточка сразу
+          помечается как необогащаемая, повторные попытки не запускаются.
 
         Если монитор соединения сигнализирует о необходимости перезапуска
         браузера — обработка прерывается досрочно без траты попыток.
@@ -185,6 +204,10 @@ class ListingService:
         отмена задачи, а не сбой обработки. Перед пробросом фиксируется лог,
         чтобы пустая карточка не оставалась без следов в логах.
 
+        Публичное поле listing.url НЕ меняется даже при успешном fallback —
+        альтернативный URL используется только внутри как рабочий адрес.
+        В Excel-отчёте всегда остаётся публичная ссылка.
+
         Args:
             listing: Объявление с базовыми данными из каталога.
             page: Вкладка для работы. Если None — используется основная страница браузера.
@@ -194,6 +217,12 @@ class ListingService:
         """
         active_page = page if page is not None else self._browser.page
         start_time = time.perf_counter()
+
+        # Флаг «fallback через альтернативный URL уже использован».
+        # Гарантирует, что fallback выполняется не более одного раза
+        # за один вызов enrich_listing — даже если в разных попытках
+        # мы снова получим object_not_found.
+        alt_url_tried = False
 
         logger.info(
             "парсинг_карточки",
@@ -289,6 +318,28 @@ class ListingService:
                     )
                     break
 
+                # ── Fallback для object_not_found через альтернативный URL ──
+                # Основной URL (https://sutochno.ru/{id}) — старая версия
+                # страницы, которая перенаправляет на внутренний путь.
+                # Иногда редирект даёт сбой → основной URL возвращает пустоту
+                # → API отвечает no_objects → ложное object_not_found.
+                # Пробуем альтернативный URL один раз за вызов enrich_listing.
+                if (
+                    skip_reason == _OBJECT_NOT_FOUND_REASON
+                    and not alt_url_tried
+                ):
+                    alt_url_tried = True
+                    fallback_result = await self._try_alt_url_fallback(
+                        active_page, listing, start_time, attempt
+                    )
+                    if fallback_result is not None:
+                        # Fallback дал определённый результат — используем его
+                        calendar, prices, skip_reason = fallback_result
+                    # Если fallback вернул None — прерываемся (таймаут/монитор).
+                    # Не запускаем ретрай — за пределами fallback уже нет времени.
+                    else:
+                        break
+
                 # ── Фатальная ошибка — повторные попытки бессмысленны ──
                 # Карточка помечается как необогащаемая и не будет повторяться
                 # ни в текущем цикле retry, ни в _retry_empty_listings.
@@ -296,7 +347,10 @@ class ListingService:
                     listing.enrichment_skip_reason = skip_reason
                     logger.info(
                         "карточка_необогащаема",
-                        step=f"id={listing.external_id}, причина={skip_reason}",
+                        step=f"id={listing.external_id}, причина={skip_reason}"
+                             + (", fallback_проверен=да" if alt_url_tried
+                                and skip_reason == _OBJECT_NOT_FOUND_REASON
+                                else ""),
                     )
                     break
 
@@ -320,7 +374,8 @@ class ListingService:
                     total=f"свободных={sum(1 for c in calendar if c == 0)}, "
                           f"занятых={sum(1 for c in calendar if c == 1)}, "
                           f"цен={sum(1 for p in prices if p > 0)}"
-                          + (f", попытка={attempt}" if attempt > 1 else ""),
+                          + (f", попытка={attempt}" if attempt > 1 else "")
+                          + (", через=alt_url" if alt_url_tried else ""),
                 )
                 break
 
@@ -361,6 +416,167 @@ class ListingService:
         )
 
         return listing
+
+    async def _try_alt_url_fallback(
+        self,
+        active_page: Page,
+        listing: RawListing,
+        start_time: float,
+        attempt: int,
+    ) -> tuple[list[int], list[int], str | None] | None:
+        """Пытается обогатить карточку через альтернативный URL.
+
+        Выполняет полный цикл обогащения на альтернативном URL
+        (https://sutochno.ru/front/searchapp/detail/{id}):
+        1. Проверяет остаток времени и монитор.
+        2. Загружает альтернативную страницу и перехватывает токен.
+        3. Вызывает стратегию с альтернативным URL.
+
+        Публичное поле listing.url НЕ меняется — альтернативный URL
+        используется только внутри этого метода как временный
+        рабочий адрес для загрузки страницы.
+
+        Args:
+            active_page: Активная вкладка браузера.
+            listing: Объявление (используется его external_id).
+            start_time: Время начала обработки карточки (для таймаута).
+            attempt: Номер текущей попытки (для логов).
+
+        Returns:
+            Кортеж (calendar, prices, skip_reason) — результат fallback.
+            None если fallback был прерван (таймаут, монитор, ошибка загрузки).
+        """
+        alt_url = build_alt_url(listing.external_id)
+
+        logger.info(
+            "fallback_alt_url_старт",
+            path=alt_url,
+            step=f"id={listing.external_id}, попытка={attempt}",
+        )
+
+        # Проверка монитора — вдруг за это время что-то сломалось
+        if self._monitor and self._monitor.should_skip():
+            logger.debug(
+                "fallback_прерван_монитор",
+                step=f"id={listing.external_id}",
+            )
+            return None
+
+        # Проверка остатка времени — не запускаем тяжёлую операцию,
+        # если времени осталось меньше минимума
+        remaining = self._remaining_timeout(start_time)
+        if remaining is not None and remaining < _MIN_REMAINING_SECONDS:
+            logger.warning(
+                "fallback_прерван_таймаут",
+                step=f"id={listing.external_id}, "
+                     f"осталось={format_duration(remaining)}",
+            )
+            return None
+
+        # Загружаем альтернативную страницу и перехватываем токен
+        try:
+            alt_loaded, alt_token = await self._page_loader.goto_and_capture_token(
+                active_page, alt_url, object_id=listing.external_id
+            )
+        except asyncio.CancelledError:
+            raise
+        except Exception as e:
+            logger.warning(
+                "fallback_ошибка_загрузки",
+                error=str(e),
+                error_type=type(e).__name__,
+                step=f"id={listing.external_id}, url={alt_url}",
+            )
+            return None
+
+        if not alt_loaded:
+            logger.warning(
+                "fallback_страница_не_загрузилась",
+                step=f"id={listing.external_id}",
+            )
+            return None
+
+        if not alt_token:
+            logger.warning(
+                "fallback_токен_не_получен",
+                step=f"id={listing.external_id}",
+            )
+            return None
+
+        # Пересчитываем остаток времени после загрузки страницы
+        remaining_after_load = self._remaining_timeout(start_time)
+        if (
+            remaining_after_load is not None
+            and remaining_after_load < _MIN_REMAINING_SECONDS
+        ):
+            logger.warning(
+                "fallback_прерван_таймаут_после_загрузки",
+                step=f"id={listing.external_id}, "
+                     f"осталось={format_duration(remaining_after_load)}",
+            )
+            return None
+
+        # Вызываем стратегию с альтернативным URL
+        try:
+            if remaining_after_load is not None:
+                result = await asyncio.wait_for(
+                    self._strategy.fetch_calendar_and_prices(
+                        active_page, listing.external_id, alt_token, alt_url
+                    ),
+                    timeout=remaining_after_load,
+                )
+            else:
+                result = await self._strategy.fetch_calendar_and_prices(
+                    active_page, listing.external_id, alt_token, alt_url
+                )
+        except asyncio.TimeoutError:
+            elapsed = time.perf_counter() - start_time
+            logger.warning(
+                "fallback_таймаут_стратегии",
+                step=f"id={listing.external_id}, "
+                     f"время={format_duration(elapsed)}",
+            )
+            return None
+        except asyncio.CancelledError:
+            raise
+        except Exception as e:
+            logger.warning(
+                "fallback_ошибка_стратегии",
+                error=str(e),
+                error_type=type(e).__name__,
+                step=f"id={listing.external_id}",
+            )
+            return None
+
+        alt_calendar, alt_prices, alt_skip_reason = result
+
+        # Логируем результат fallback — для диагностики нужно понимать,
+        # что дал альтернативный маршрут
+        if alt_skip_reason == _OBJECT_NOT_FOUND_REASON:
+            logger.info(
+                "fallback_подтвердил_object_not_found",
+                step=f"id={listing.external_id}, "
+                     f"карточка_окончательно_удалена=да",
+            )
+        elif alt_skip_reason is not None:
+            logger.info(
+                "fallback_вернул_другую_причину",
+                step=f"id={listing.external_id}, причина={alt_skip_reason}",
+            )
+        elif not self._is_failure_sentinel(alt_calendar, alt_prices):
+            logger.info(
+                "fallback_успешно_обогатил",
+                step=f"id={listing.external_id}, "
+                     f"свободных={sum(1 for c in alt_calendar if c == 0)}, "
+                     f"занятых={sum(1 for c in alt_calendar if c == 1)}",
+            )
+        else:
+            logger.info(
+                "fallback_вернул_пустой_результат",
+                step=f"id={listing.external_id}",
+            )
+
+        return alt_calendar, alt_prices, alt_skip_reason
 
     def _remaining_timeout(self, start_time: float) -> float | None:
         """Вычисляет оставшееся время до таймаута обработки карточки.

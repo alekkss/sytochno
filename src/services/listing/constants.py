@@ -104,6 +104,19 @@ SUTOCHNO_BASE_URL: str = "https://sutochno.ru"
 
 LISTING_URL_TEMPLATE: str = f"{SUTOCHNO_BASE_URL}/{{object_id}}"
 
+# Шаблон альтернативного URL карточки объявления.
+# Основной URL (LISTING_URL_TEMPLATE) — старая версия страницы,
+# которая перенаправляет на этот внутренний путь фронтенда.
+# Иногда редирект даёт сбой и основной URL возвращает пустую страницу
+# без данных → API отвечает "no_objects" → ложное срабатывание
+# object_not_found. Альтернативный URL используется как fallback:
+# если основной путь вернул object_not_found, пробуем ещё раз через
+# внутренний путь фронтенда. Только если и он вернул object_not_found —
+# карточка окончательно помечается как удалённая.
+LISTING_URL_ALT_TEMPLATE: str = (
+    f"{SUTOCHNO_BASE_URL}/front/searchapp/detail/{{object_id}}"
+)
+
 MAX_TOKEN_RETRIES: int = 3
 
 MAX_TABS: int = 5
@@ -130,6 +143,29 @@ def format_duration(seconds: float) -> str:
     if minutes > 0:
         return f"{minutes}м {secs}с"
     return f"{secs}с"
+
+
+def build_alt_url(object_id: str) -> str:
+    """Строит альтернативный URL карточки объявления по ID.
+
+    Возвращает URL вида https://sutochno.ru/front/searchapp/detail/{id} —
+    внутренний путь фронтенда, на который основной URL делает редирект.
+    Используется как fallback при получении object_not_found на основном URL:
+    если основной URL вернул ошибку из-за сбоя редиректа, альтернативный
+    путь может отдать данные корректно.
+
+    Важно: это не должно заменять listing.url — то поле хранит публичный
+    адрес, который видит пользователь в Excel-отчёте. Альтернативный URL
+    используется только внутри логики fallback как временный «рабочий»
+    адрес для загрузки страницы.
+
+    Args:
+        object_id: Идентификатор объявления на sutochno.ru.
+
+    Returns:
+        Готовый альтернативный URL карточки.
+    """
+    return LISTING_URL_ALT_TEMPLATE.format(object_id=object_id)
 
 
 async def safe_stop_browser(browser_service: "any", worker_idx: int) -> None:  # type: ignore[name-defined]
