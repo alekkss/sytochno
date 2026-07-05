@@ -51,6 +51,18 @@ _MAX_PARALLEL_RETRY_ROUNDS: int = 1
 # Каждые N секунд в лог выводится текущее состояние адаптации.
 _STATS_LOG_INTERVAL_SECONDS: float = 60.0
 
+# Общий таймаут этапа остановки всех прокси-браузеров (секунды).
+# После завершения всех воркеров браузеры останавливаются параллельно
+# через asyncio.gather. Каждый браузер имеет собственный таймаут
+# WORKER_STOP_TIMEOUT (20 сек в constants.py) — но если общая
+# картина зависает (например, event loop заблокирован CDP-сессиями),
+# этот таймаут гарантирует, что программа перейдёт к следующему этапу
+# pipeline (снимки → сравнение → экспорт) не позднее чем через 100 сек.
+# 100 сек — избыточно для параллельной остановки: даже при 85 воркерах
+# все браузеры должны отчитаться за 20-30 секунд. Резерв в 3-5× —
+# защита от патологических случаев.
+_STOP_BROWSERS_GLOBAL_TIMEOUT: float = 100.0
+
 
 class EnrichStrategies:
     """Параллельные стратегии обогащения карточек.
@@ -425,6 +437,8 @@ class EnrichStrategies:
            Возможные значения:
            - "object_not_found" — объявление удалено или заблокировано.
            - "min_nights_exceeded" — min_nights объекта превышает 60 дней.
+           - "page_elements_not_found" — страница загрузилась без ключевых
+             DOM-элементов (битая вёрстка или антибот-заглушка).
            Такие карточки принципиально невозможно обогатить, повторные
            попытки — чистая потеря времени и лишние запросы к API.
 
@@ -617,9 +631,9 @@ class EnrichStrategies:
         повторно (до _MAX_PARALLEL_RETRY_ROUNDS раундов).
 
         Карточки с установленным enrichment_skip_reason (object_not_found,
-        min_nights_exceeded) мгновенно исключаются из retry-раундов — это
-        экономит время и запросы на объявлениях, которые принципиально
-        невозможно обогатить.
+        min_nights_exceeded, page_elements_not_found) мгновенно исключаются
+        из retry-раундов — это экономит время и запросы на объявлениях,
+        которые принципиально невозможно обогатить.
 
         Args:
             settings: Настройки приложения.
@@ -999,7 +1013,26 @@ class EnrichStrategies:
     async def _stop_browsers(
         browsers_to_stop: list[tuple[BrowserService, int]],
     ) -> None:
-        """Останавливает все браузеры из списка.
+        """Останавливает все браузеры из списка параллельно с общим таймаутом.
+
+        Раньше остановка была последовательной через цикл for — при 85+
+        воркерах и таймауте 20 сек на каждый браузер это могло занять
+        до 28 минут в худшем случае, если несколько браузеров зависли
+        на закрытии CDP-сессии. Программа висела и не переходила к
+        следующему этапу pipeline (снимки → сравнение → экспорт).
+
+        Теперь остановка параллельная — все браузеры получают команду stop()
+        одновременно через asyncio.gather. Каждый браузер имеет собственный
+        таймаут внутри safe_stop_browser (WORKER_STOP_TIMEOUT = 20 сек),
+        а весь этап дополнительно защищён общим таймаутом
+        _STOP_BROWSERS_GLOBAL_TIMEOUT = 100 сек. Если по какой-то причине
+        (заблокированный event loop, зависшая CDP-сессия) общий таймаут
+        превышен — программа логирует предупреждение и продолжает работу,
+        оставляя незакрытые браузеры «как есть». Процесс Chromium всё равно
+        завершится вместе с интерпретатором Python.
+
+        return_exceptions=True в gather гарантирует, что ошибка при
+        остановке одного браузера не помешает остановке остальных.
 
         Args:
             browsers_to_stop: Список (browser_service, worker_idx).
@@ -1007,10 +1040,46 @@ class EnrichStrategies:
         if not browsers_to_stop:
             return
 
-        logger.info("остановка_прокси_браузеров", total=len(browsers_to_stop))
-        for browser_svc, w_idx in browsers_to_stop:
-            await safe_stop_browser(browser_svc, w_idx)
-        logger.info("все_прокси_браузеры_остановлены")
+        total = len(browsers_to_stop)
+        logger.info(
+            "остановка_прокси_браузеров",
+            total=total,
+            step=f"параллельно, глобальный_таймаут={_STOP_BROWSERS_GLOBAL_TIMEOUT}с",
+        )
+
+        stop_start = time.perf_counter()
+
+        # Создаём задачи остановки для каждого браузера
+        stop_tasks = [
+            safe_stop_browser(browser_svc, w_idx)
+            for browser_svc, w_idx in browsers_to_stop
+        ]
+
+        try:
+            await asyncio.wait_for(
+                asyncio.gather(*stop_tasks, return_exceptions=True),
+                timeout=_STOP_BROWSERS_GLOBAL_TIMEOUT,
+            )
+            elapsed = time.perf_counter() - stop_start
+            logger.info(
+                "все_прокси_браузеры_остановлены",
+                total=total,
+                step=f"время={format_duration(elapsed)}",
+            )
+        except asyncio.TimeoutError:
+            elapsed = time.perf_counter() - stop_start
+            logger.warning(
+                "остановка_браузеров_превысила_общий_таймаут",
+                step=f"всего={total}, "
+                     f"время={format_duration(elapsed)}, "
+                     f"лимит={_STOP_BROWSERS_GLOBAL_TIMEOUT}с, "
+                     f"продолжаем_дальше=да",
+            )
+            # Отменяем незавершённые задачи — они «зависли» на закрытии CDP.
+            # Процесс Chromium всё равно завершится с интерпретатором.
+            for task in stop_tasks:
+                if not task.done() if isinstance(task, asyncio.Task) else False:
+                    task.cancel()  # type: ignore[union-attr]
 
     @staticmethod
     async def _worker(
