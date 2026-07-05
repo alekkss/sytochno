@@ -45,6 +45,14 @@ _MAX_ENRICH_ATTEMPTS = 3
 # Пауза перед повторной попыткой (секунды)
 _RETRY_DELAY_SECONDS = 3.0
 
+# Пауза перед повторной попыткой загрузки alt-URL (секунды).
+# Используется когда на alt-URL при первой попытке не получилось
+# перехватить токен — даём короткий второй шанс перед фатальной
+# пометкой page_elements_not_found. Более короткая пауза (по сравнению
+# с _RETRY_DELAY_SECONDS), потому что мы уже потратили время на первую
+# попытку alt-URL и не хотим выходить за общий таймаут карточки.
+_ALT_URL_RETRY_DELAY_SECONDS = 2.0
+
 # Минимальный остаток времени, при котором имеет смысл запускать
 # тяжёлую операцию (fetch_calendar_and_prices). Если осталось меньше —
 # лучше прервать сразу, чем запускать операцию, которая гарантированно
@@ -56,12 +64,14 @@ _MIN_REMAINING_SECONDS = 10.0
 # они устанавливаются на основе логики API, а не структуры страницы.
 _OBJECT_NOT_FOUND_REASON = "object_not_found"
 
-# Фатальная причина: страница карточки загрузилась, но ключевые DOM-элементы
-# не найдены. Признак битой страницы или изменения вёрстки. Карточка сразу
-# помечается как необогащаемая — без retry внутри enrich_listing и без
-# участия в retry-раундах (_retry_empty_listings в __main__).
-# Fallback через альтернативный URL для этой причины НЕ выполняется:
-# ошибка часто возникает уже на alt-URL, повторный переход бесполезен.
+# Фатальная причина: невозможно получить сессионный токен API ни на
+# основном URL, ни на альтернативном URL (с одним повтором каждый).
+# Без токена никакие API-запросы невозможны — карточка полностью
+# необрабатываема в этой сессии. Ошибка воспроизводится стабильно
+# при перманентно битой странице или изменении механизма авторизации.
+# Название сохранено для обратной совместимости с логами и БД —
+# используется тот же ключ, что и раньше, но семантика уточнена:
+# теперь это «токен недоступен», а не «элементы DOM не найдены».
 _PAGE_ELEMENTS_NOT_FOUND_REASON = "page_elements_not_found"
 
 
@@ -182,45 +192,48 @@ class ListingService:
         Выполняет до _MAX_ENRICH_ATTEMPTS попыток. Повторная попытка
         запускается при трёх сценариях сбоя:
         - страница не загрузилась;
-        - токен API не перехвачен (частая проблема при параллельных вкладках);
+        - токен API не перехвачен (в этом случае также запускается
+          упреждающий fallback на альтернативный URL);
         - hybrid_strategy вернула нулевой sentinel ([0]*60, [0]*60).
 
-        Если PageLoader сообщил об отсутствии ключевых DOM-элементов
-        (elements_not_found=True) — карточка немедленно помечается как
-        необогащаемая (enrichment_skip_reason="page_elements_not_found"),
-        без retry и без fallback на альтернативный URL. Ошибка типична для
-        битых страниц и изменений вёрстки — повторные попытки не помогут.
+        Логика fallback на альтернативный URL двухэтапная:
 
-        Если стратегия вернула skip_reason (фатальная ошибка) — обработка
-        зависит от типа причины:
-        - "object_not_found" на основном URL → запускается fallback через
-          альтернативный URL (https://sutochno.ru/front/searchapp/detail/{id}).
-          Основной URL — старая версия страницы, которая перенаправляет на
-          этот внутренний путь; иногда редирект даёт сбой и основной URL
-          возвращает пустую страницу. Если и альтернативный URL вернул
-          object_not_found — карточка окончательно помечается как удалённая.
-          Fallback выполняется не более одного раза за вызов enrich_listing.
-        - "min_nights_exceeded" или другие причины → карточка сразу
-          помечается как необогащаемая, повторные попытки не запускаются.
+        1. **Упреждающий fallback (по отсутствию токена)** — если после
+           загрузки основного URL (`https://sutochno.ru/{id}`, возможен
+           редирект на региональный поддомен вроде `spb.sutochno.ru`)
+           токен не был перехвачен, программа сразу пробует альтернативный
+           URL (`https://sutochno.ru/front/searchapp/detail/{id}`).
+           Если и там токен не получен — делается один повтор загрузки
+           alt-URL с короткой паузой. Если после повтора токена всё ещё
+           нет — карточка помечается фатально `page_elements_not_found`.
+
+        2. **Реактивный fallback (по object_not_found)** — если стратегия
+           после успешного bulk-запроса вернула `object_not_found` (API
+           ответил `no_objects`), программа делает fallback на тот же
+           альтернативный URL. Это защита от сбоя редиректа основного URL.
+
+        Оба механизма используют общий флаг `alt_url_tried`, гарантирующий,
+        что alt-URL посещается не более одного раза за вызов enrich_listing.
+        Если первый (упреждающий) fallback уже был выполнен, второй
+        (реактивный) не запускается — считается, что мы уже дали alt-URL
+        свой шанс.
+
+        Важно: флаг `elements_not_found` от PageLoader **больше не считается
+        фатальным сам по себе**. Причина: сайт может отдать DOM с другой
+        вёрсткой (например, на региональном поддомене), где наши селекторы
+        не совпадают, но при этом токен API всё равно перехвачен и
+        карточку можно обогатить через API. Единственный истинный признак
+        необогащаемости — отсутствие токена после всех попыток.
+
+        Если стратегия вернула skip_reason (min_nights_exceeded и т.п.) —
+        карточка сразу помечается как необогащаемая, повторные попытки
+        не запускаются.
 
         Если монитор соединения сигнализирует о необходимости перезапуска
         браузера — обработка прерывается досрочно без траты попыток.
 
         Если суммарное время обработки превысило enrich_timeout_seconds —
         обработка прерывается принудительно через asyncio.wait_for().
-        Карточка остаётся необогащённой (без enrichment_skip_reason) и
-        попадёт в retry-раунды как обычная.
-
-        Нулевой sentinel отличается от реально свободного объявления тем,
-        что у свободного объявления цены > 0, а у sentinel все цены = 0.
-
-        asyncio.CancelledError намеренно пробрасывается выше — это штатная
-        отмена задачи, а не сбой обработки. Перед пробросом фиксируется лог,
-        чтобы пустая карточка не оставалась без следов в логах.
-
-        Публичное поле listing.url НЕ меняется даже при успешном fallback —
-        альтернативный URL используется только внутри как рабочий адрес.
-        В Excel-отчёте всегда остаётся публичная ссылка.
 
         Args:
             listing: Объявление с базовыми данными из каталога.
@@ -234,8 +247,8 @@ class ListingService:
 
         # Флаг «fallback через альтернативный URL уже использован».
         # Гарантирует, что fallback выполняется не более одного раза
-        # за один вызов enrich_listing — даже если в разных попытках
-        # мы снова получим object_not_found.
+        # за один вызов enrich_listing — общий для упреждающего
+        # (по отсутствию токена) и реактивного (по object_not_found).
         alt_url_tried = False
 
         logger.info(
@@ -273,24 +286,6 @@ class ListingService:
                     )
                 )
 
-                # ── Мгновенное исключение: элементы карточки не найдены ──
-                # PageLoader сообщил, что страница загрузилась технически
-                # (нет сетевой ошибки, нет редиректа), но ключевые DOM-элементы
-                # отсутствуют. Это признак битой страницы: изменилась вёрстка,
-                # пустой ответ, антибот-заглушка. Повторные попытки не помогут
-                # (проверено на практике: ошибка воспроизводится стабильно
-                # даже на альтернативном URL). Помечаем карточку фатально,
-                # чтобы retry-раунды её мгновенно исключали.
-                if elements_not_found:
-                    listing.enrichment_skip_reason = _PAGE_ELEMENTS_NOT_FOUND_REASON
-                    logger.info(
-                        "карточка_необогащаема",
-                        step=f"id={listing.external_id}, "
-                             f"причина={_PAGE_ELEMENTS_NOT_FOUND_REASON}, "
-                             f"попытка={attempt}",
-                    )
-                    break
-
                 if not loaded:
                     logger.warning(
                         "страница_не_загрузилась",
@@ -305,12 +300,76 @@ class ListingService:
                         break
                     continue
 
+                # ── Упреждающий fallback: нет токена на основном URL ──
+                # Токен — единственное, что действительно нужно для работы
+                # через API. Без него никакие последующие шаги не имеют
+                # смысла. Пробуем сразу alt-URL, не дожидаясь ошибок API.
+                # Флаг elements_not_found здесь не учитывается: даже если
+                # DOM странный (например, региональный поддомен spb.sutochno.ru),
+                # но токен есть — карточка обрабатываема через API.
+                if not token and not alt_url_tried:
+                    alt_url_tried = True
+
+                    if elements_not_found:
+                        logger.info(
+                            "нет_токена_и_элементов_упреждающий_fallback",
+                            step=f"id={listing.external_id}, попытка={attempt}",
+                        )
+                    else:
+                        logger.info(
+                            "нет_токена_упреждающий_fallback",
+                            step=f"id={listing.external_id}, попытка={attempt}",
+                        )
+
+                    # Пробуем alt-URL — метод сам делает один повтор
+                    # с короткой паузой при отсутствии токена
+                    alt_token = await self._try_alt_url_token_capture(
+                        active_page, listing, start_time, attempt
+                    )
+
+                    if alt_token is None:
+                        # Ни на основном, ни на alt-URL (с повтором) токен
+                        # не получен — карточка окончательно необрабатываема.
+                        listing.enrichment_skip_reason = (
+                            _PAGE_ELEMENTS_NOT_FOUND_REASON
+                        )
+                        logger.info(
+                            "карточка_необогащаема",
+                            step=f"id={listing.external_id}, "
+                                 f"причина={_PAGE_ELEMENTS_NOT_FOUND_REASON}, "
+                                 f"попытка={attempt}, "
+                                 f"fallback_проверен=да",
+                        )
+                        break
+
+                    # Токен получен через alt-URL — используем его и
+                    # продолжаем обработку. active_page уже находится
+                    # на alt-URL после вызова _try_alt_url_token_capture.
+                    token = alt_token
+                    logger.info(
+                        "токен_получен_через_alt_url",
+                        step=f"id={listing.external_id}, попытка={attempt}",
+                    )
+
                 if not token:
+                    # Токен всё ещё не получен, но alt-URL уже был проверен
+                    # ранее (в текущей или предыдущей попытке enrich_listing).
+                    # Это ситуация «токен потерялся» — идём на общий retry,
+                    # не запуская повторный fallback.
                     logger.warning(
                         "токен_не_получен_повтор",
                         step=f"id={listing.external_id}, попытка={attempt}/{_MAX_ENRICH_ATTEMPTS}",
                     )
                     continue
+
+                # Информационный лог: элементы не найдены, но токен есть.
+                # Это не ошибка — обработка продолжается через API. Логируем
+                # для видимости, чтобы отличать штатное поведение от аномалий.
+                if elements_not_found:
+                    logger.info(
+                        "элементы_не_найдены_но_токен_есть_продолжаем",
+                        step=f"id={listing.external_id}, попытка={attempt}",
+                    )
 
                 await self._browser.random_delay()
 
@@ -352,12 +411,10 @@ class ListingService:
                     )
                     break
 
-                # ── Fallback для object_not_found через альтернативный URL ──
-                # Основной URL (https://sutochno.ru/{id}) — старая версия
-                # страницы, которая перенаправляет на внутренний путь.
-                # Иногда редирект даёт сбой → основной URL возвращает пустоту
-                # → API отвечает no_objects → ложное object_not_found.
-                # Пробуем альтернативный URL один раз за вызов enrich_listing.
+                # ── Реактивный fallback для object_not_found ──
+                # Запускается только если alt-URL ещё не пробовали.
+                # Если упреждающий fallback (по отсутствию токена) уже
+                # был выполнен — второй раз на alt-URL не идём.
                 if (
                     skip_reason == _OBJECT_NOT_FOUND_REASON
                     and not alt_url_tried
@@ -451,6 +508,126 @@ class ListingService:
 
         return listing
 
+    async def _try_alt_url_token_capture(
+        self,
+        active_page: Page,
+        listing: RawListing,
+        start_time: float,
+        attempt: int,
+    ) -> str | None:
+        """Пытается получить токен через альтернативный URL с одним повтором.
+
+        Используется как упреждающий fallback: если на основном URL не был
+        перехвачен токен, программа сразу пробует альтернативный URL
+        (https://sutochno.ru/front/searchapp/detail/{id}), не дожидаясь
+        ответа API. Если на alt-URL при первой попытке токен тоже
+        не получен — делается один повтор с короткой паузой.
+
+        При выходе из метода active_page остаётся на alt-URL. Это позволяет
+        вызывающему коду продолжить обработку карточки через полученный
+        токен без повторной навигации.
+
+        Публичное поле listing.url НЕ меняется — alt-URL используется
+        только как временный рабочий адрес.
+
+        Args:
+            active_page: Активная вкладка браузера.
+            listing: Объявление (используется его external_id).
+            start_time: Время начала обработки карточки (для таймаута).
+            attempt: Номер текущей попытки enrich_listing (для логов).
+
+        Returns:
+            Перехваченный токен API (не пустая строка) или None если
+            ни одна из двух попыток alt-URL не дала токена.
+            None также возвращается при прерывании (таймаут, монитор,
+            ошибка загрузки) — в этом случае вызывающий код должен
+            пометить карточку фатально, потому что без токена продолжать
+            невозможно.
+        """
+        alt_url = build_alt_url(listing.external_id)
+
+        # Максимум две попытки: основная + один повтор
+        for alt_attempt in range(1, 3):
+            logger.info(
+                "alt_url_попытка_токена",
+                path=alt_url,
+                step=f"id={listing.external_id}, "
+                     f"попытка_карточки={attempt}, "
+                     f"попытка_alt={alt_attempt}/2",
+            )
+
+            # Проверка монитора — вдруг за это время что-то сломалось
+            if self._monitor and self._monitor.should_skip():
+                logger.debug(
+                    "alt_url_прерван_монитор",
+                    step=f"id={listing.external_id}",
+                )
+                return None
+
+            # Проверка остатка времени — не запускаем тяжёлую операцию,
+            # если времени осталось меньше минимума
+            remaining = self._remaining_timeout(start_time)
+            if remaining is not None and remaining < _MIN_REMAINING_SECONDS:
+                logger.warning(
+                    "alt_url_прерван_таймаут",
+                    step=f"id={listing.external_id}, "
+                         f"осталось={format_duration(remaining)}",
+                )
+                return None
+
+            # Пауза перед повторной попыткой (для второй попытки)
+            if alt_attempt > 1:
+                await asyncio.sleep(_ALT_URL_RETRY_DELAY_SECONDS)
+
+            # Загружаем alt-URL и перехватываем токен
+            try:
+                alt_loaded, alt_token, _ = (
+                    await self._page_loader.goto_and_capture_token(
+                        active_page, alt_url, object_id=listing.external_id
+                    )
+                )
+            except asyncio.CancelledError:
+                raise
+            except Exception as e:
+                logger.warning(
+                    "alt_url_ошибка_загрузки",
+                    error=str(e),
+                    error_type=type(e).__name__,
+                    step=f"id={listing.external_id}, "
+                         f"попытка_alt={alt_attempt}/2",
+                )
+                continue
+
+            if not alt_loaded:
+                logger.warning(
+                    "alt_url_страница_не_загрузилась",
+                    step=f"id={listing.external_id}, "
+                         f"попытка_alt={alt_attempt}/2",
+                )
+                continue
+
+            if alt_token:
+                logger.info(
+                    "alt_url_токен_получен",
+                    step=f"id={listing.external_id}, "
+                         f"попытка_alt={alt_attempt}/2",
+                )
+                return alt_token
+
+            # Токен не перехвачен — идём на следующую попытку
+            logger.warning(
+                "alt_url_токен_не_получен",
+                step=f"id={listing.external_id}, "
+                     f"попытка_alt={alt_attempt}/2",
+            )
+
+        # Обе попытки исчерпаны — токен не получен
+        logger.info(
+            "alt_url_обе_попытки_без_токена",
+            step=f"id={listing.external_id}",
+        )
+        return None
+
     async def _try_alt_url_fallback(
         self,
         active_page: Page,
@@ -460,16 +637,16 @@ class ListingService:
     ) -> tuple[list[int], list[int], str | None] | None:
         """Пытается обогатить карточку через альтернативный URL.
 
-        Выполняет полный цикл обогащения на альтернативном URL
-        (https://sutochno.ru/front/searchapp/detail/{id}):
+        Реактивный fallback — вызывается после того, как стратегия на
+        основном URL вернула object_not_found. Делает полный цикл:
         1. Проверяет остаток времени и монитор.
         2. Загружает альтернативную страницу и перехватывает токен.
         3. Вызывает стратегию с альтернативным URL.
 
-        Если PageLoader на альтернативном URL сообщил elements_not_found —
-        fallback прерывается: повторные попытки бессмысленны, битая
-        страница возвращается стабильно. Возвращает специальный кортеж,
-        сигнализирующий вызывающему коду о фатальной причине.
+        Отличается от _try_alt_url_token_capture: этот метод делает
+        полное обогащение (bulk + скользящее окно), а не только
+        перехватывает токен. Используется во второй фазе обработки —
+        когда токен уже был, но API ответил no_objects.
 
         Публичное поле listing.url НЕ меняется — альтернативный URL
         используется только внутри этого метода как временный
@@ -530,13 +707,21 @@ class ListingService:
             )
             return None
 
-        # ── Элементы не найдены и на альтернативном URL ──
-        # Возвращаем результат с фатальной причиной — вызывающий код
-        # запишет её в enrichment_skip_reason. Это защита от битой
-        # страницы: если и alt-URL показывает пустоту, retry бесполезен.
-        if alt_elements_not_found:
-            logger.info(
-                "fallback_подтвердил_элементы_не_найдены",
+        if not alt_loaded:
+            logger.warning(
+                "fallback_страница_не_загрузилась",
+                step=f"id={listing.external_id}",
+            )
+            return None
+
+        # ── Токен на alt-URL не получен — фатально ──
+        # Реактивный fallback вызывается после того, как токен на основном
+        # URL уже был (иначе сработал бы упреждающий fallback). Если и на
+        # alt-URL токен не удалось перехватить, то работать через API
+        # невозможно — помечаем карточку фатально.
+        if not alt_token:
+            logger.warning(
+                "fallback_токен_не_получен",
                 step=f"id={listing.external_id}",
             )
             return (
@@ -545,19 +730,13 @@ class ListingService:
                 _PAGE_ELEMENTS_NOT_FOUND_REASON,
             )
 
-        if not alt_loaded:
-            logger.warning(
-                "fallback_страница_не_загрузилась",
+        # Информационный лог: элементы не найдены на alt-URL,
+        # но токен есть — продолжаем обработку через API.
+        if alt_elements_not_found:
+            logger.info(
+                "fallback_элементы_не_найдены_но_токен_есть",
                 step=f"id={listing.external_id}",
             )
-            return None
-
-        if not alt_token:
-            logger.warning(
-                "fallback_токен_не_получен",
-                step=f"id={listing.external_id}",
-            )
-            return None
 
         # Пересчитываем остаток времени после загрузки страницы
         remaining_after_load = self._remaining_timeout(start_time)
