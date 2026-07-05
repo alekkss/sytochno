@@ -101,7 +101,7 @@ class PageLoader:
 
     async def goto_and_capture_token(
         self, page: Page, url: str, object_id: str = ""
-    ) -> tuple[bool, str | None]:
+    ) -> tuple[bool, str | None, bool]:
         """Загружает страницу карточки и перехватывает токен API.
 
         Перехват выполняется через page.route — надёжнее page.on('request'),
@@ -114,7 +114,14 @@ class PageLoader:
             object_id: ID объявления (для логов монитора).
 
         Returns:
-            Кортеж (страница_загружена, токен_или_None).
+            Кортеж из трёх элементов:
+            - loaded (bool): True если страница загружена (даже если DOM-элементы
+              не найдены — важно только, что не было редиректа/сетевой ошибки).
+            - token (str | None): Перехваченный сессионный токен API или None.
+            - elements_not_found (bool): True если страница загрузилась, но
+              ключевые DOM-элементы карточки не обнаружены. Это признак
+              битой страницы или изменения вёрстки — вызывающему коду
+              следует пометить карточку как необогащаемую без retry.
         """
         # Проверяем — не требуется ли уже перезапуск браузера
         if self._monitor and self._monitor.should_skip():
@@ -122,7 +129,7 @@ class PageLoader:
                 "загрузка_пропущена_перезапуск_требуется",
                 step=f"id={object_id}",
             )
-            return False, None
+            return False, None, False
 
         captured_token: list[str] = []
 
@@ -151,7 +158,9 @@ class PageLoader:
         await page.route("**/api/json/**", _route_handler)
 
         try:
-            loaded = await self.goto_with_retry(page, url, object_id)
+            loaded, elements_not_found = await self.goto_with_retry(
+                page, url, object_id
+            )
             await asyncio.sleep(1.0)
         finally:
             await page.unroute("**/api/json/**")
@@ -166,9 +175,11 @@ class PageLoader:
         else:
             logger.warning("токен_не_перехвачен_при_загрузке")
 
-        return loaded, token
+        return loaded, token, elements_not_found
 
-    async def goto_with_retry(self, page: Page, url: str, object_id: str = "") -> bool:
+    async def goto_with_retry(
+        self, page: Page, url: str, object_id: str = ""
+    ) -> tuple[bool, bool]:
         """Загружает страницу карточки с повторными попытками.
 
         При сетевых ошибках (таймаут, сброс соединения, проблемы прокси)
@@ -192,7 +203,13 @@ class PageLoader:
             object_id: ID объявления (для логов монитора).
 
         Returns:
-            True если страница загружена, False — если все попытки исчерпаны.
+            Кортеж из двух элементов:
+            - loaded (bool): True если страница загружена, False — если
+              все попытки исчерпаны (сетевая ошибка или редирект).
+            - elements_not_found (bool): True если страница загрузилась,
+              но ключевые DOM-элементы карточки не найдены. Актуально
+              только при loaded=True. Признак битой страницы — вызывающий
+              код должен пометить карточку как необогащаемую без retry.
         """
         # Быстрая проверка перед началом retry-цикла
         if self._monitor and self._monitor.should_skip():
@@ -200,7 +217,7 @@ class PageLoader:
                 "goto_пропущен_перезапуск_требуется",
                 step=f"id={object_id}",
             )
-            return False
+            return False, False
 
         for attempt in range(1, MAX_GOTO_RETRIES + 1):
             # Проверяем перед каждой попыткой — другая вкладка могла
@@ -210,7 +227,7 @@ class PageLoader:
                     "goto_прерван_перезапуск_требуется",
                     step=f"id={object_id}, попытка={attempt}",
                 )
-                return False
+                return False, False
 
             try:
                 logger.debug(
@@ -239,7 +256,7 @@ class PageLoader:
                         await self._monitor.report_success(object_id)
                     if self._controller:
                         self._controller.report_success()
-                    return True
+                    return True, False
 
                 # Ключевые элементы не найдены — возможна CAPTCHA, редирект
                 # или изменение вёрстки. Проверяем URL: если нас увели
@@ -260,10 +277,14 @@ class PageLoader:
                     # Все попытки исчерпаны — редирект на каждой
                     if self._monitor:
                         await self._monitor.report_failure(object_id)
-                    return False
+                    return False, False
 
-                # URL в порядке, но элементы не найдены — вёрстка могла
-                # измениться. Продолжаем: токен может быть уже перехвачен.
+                # URL в порядке, но элементы не найдены — это признак битой
+                # страницы (изменилась вёрстка, пустой ответ и т.п.).
+                # Возвращаем loaded=True (страница технически загрузилась),
+                # но с флагом elements_not_found=True — чтобы вызывающий код
+                # мог сразу пометить карточку как необогащаемую, не тратя
+                # retry-раунды на заведомо битую страницу.
                 logger.warning(
                     "элементы_карточки_не_найдены",
                     path=current_url,
@@ -274,7 +295,7 @@ class PageLoader:
                     await self._monitor.report_success(object_id)
                 if self._controller:
                     self._controller.report_success()
-                return True
+                return True, True
 
             except Exception as e:
                 error_msg = str(e)
@@ -311,14 +332,14 @@ class PageLoader:
                 # репортим и в контроллер (неизвестная ошибка тоже сигнал)
                 if self._controller and not is_network_error:
                     self._controller.report_failure()
-                return False
+                return False, False
 
         # Сюда попадаем если цикл завершился без return (теоретически не должно)
         if self._monitor:
             await self._monitor.report_failure(object_id)
         if self._controller:
             self._controller.report_failure()
-        return False
+        return False, False
 
     async def wait_for_page_ready(self, page: Page) -> bool:
         """Ожидает появления ключевых элементов на странице карточки.

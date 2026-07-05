@@ -56,6 +56,14 @@ _MIN_REMAINING_SECONDS = 10.0
 # они устанавливаются на основе логики API, а не структуры страницы.
 _OBJECT_NOT_FOUND_REASON = "object_not_found"
 
+# Фатальная причина: страница карточки загрузилась, но ключевые DOM-элементы
+# не найдены. Признак битой страницы или изменения вёрстки. Карточка сразу
+# помечается как необогащаемая — без retry внутри enrich_listing и без
+# участия в retry-раундах (_retry_empty_listings в __main__).
+# Fallback через альтернативный URL для этой причины НЕ выполняется:
+# ошибка часто возникает уже на alt-URL, повторный переход бесполезен.
+_PAGE_ELEMENTS_NOT_FOUND_REASON = "page_elements_not_found"
+
 
 class ListingService:
     """Оркестратор обогащения карточек объявлений данными о ценах и занятости.
@@ -177,6 +185,12 @@ class ListingService:
         - токен API не перехвачен (частая проблема при параллельных вкладках);
         - hybrid_strategy вернула нулевой sentinel ([0]*60, [0]*60).
 
+        Если PageLoader сообщил об отсутствии ключевых DOM-элементов
+        (elements_not_found=True) — карточка немедленно помечается как
+        необогащаемая (enrichment_skip_reason="page_elements_not_found"),
+        без retry и без fallback на альтернативный URL. Ошибка типична для
+        битых страниц и изменений вёрстки — повторные попытки не помогут.
+
         Если стратегия вернула skip_reason (фатальная ошибка) — обработка
         зависит от типа причины:
         - "object_not_found" на основном URL → запускается fallback через
@@ -253,9 +267,29 @@ class ListingService:
                     )
                     await asyncio.sleep(_RETRY_DELAY_SECONDS)
 
-                loaded, token = await self._page_loader.goto_and_capture_token(
-                    active_page, listing.url, object_id=listing.external_id
+                loaded, token, elements_not_found = (
+                    await self._page_loader.goto_and_capture_token(
+                        active_page, listing.url, object_id=listing.external_id
+                    )
                 )
+
+                # ── Мгновенное исключение: элементы карточки не найдены ──
+                # PageLoader сообщил, что страница загрузилась технически
+                # (нет сетевой ошибки, нет редиректа), но ключевые DOM-элементы
+                # отсутствуют. Это признак битой страницы: изменилась вёрстка,
+                # пустой ответ, антибот-заглушка. Повторные попытки не помогут
+                # (проверено на практике: ошибка воспроизводится стабильно
+                # даже на альтернативном URL). Помечаем карточку фатально,
+                # чтобы retry-раунды её мгновенно исключали.
+                if elements_not_found:
+                    listing.enrichment_skip_reason = _PAGE_ELEMENTS_NOT_FOUND_REASON
+                    logger.info(
+                        "карточка_необогащаема",
+                        step=f"id={listing.external_id}, "
+                             f"причина={_PAGE_ELEMENTS_NOT_FOUND_REASON}, "
+                             f"попытка={attempt}",
+                    )
+                    break
 
                 if not loaded:
                     logger.warning(
@@ -432,6 +466,11 @@ class ListingService:
         2. Загружает альтернативную страницу и перехватывает токен.
         3. Вызывает стратегию с альтернативным URL.
 
+        Если PageLoader на альтернативном URL сообщил elements_not_found —
+        fallback прерывается: повторные попытки бессмысленны, битая
+        страница возвращается стабильно. Возвращает специальный кортеж,
+        сигнализирующий вызывающему коду о фатальной причине.
+
         Публичное поле listing.url НЕ меняется — альтернативный URL
         используется только внутри этого метода как временный
         рабочий адрес для загрузки страницы.
@@ -475,8 +514,10 @@ class ListingService:
 
         # Загружаем альтернативную страницу и перехватываем токен
         try:
-            alt_loaded, alt_token = await self._page_loader.goto_and_capture_token(
-                active_page, alt_url, object_id=listing.external_id
+            alt_loaded, alt_token, alt_elements_not_found = (
+                await self._page_loader.goto_and_capture_token(
+                    active_page, alt_url, object_id=listing.external_id
+                )
             )
         except asyncio.CancelledError:
             raise
@@ -488,6 +529,21 @@ class ListingService:
                 step=f"id={listing.external_id}, url={alt_url}",
             )
             return None
+
+        # ── Элементы не найдены и на альтернативном URL ──
+        # Возвращаем результат с фатальной причиной — вызывающий код
+        # запишет её в enrichment_skip_reason. Это защита от битой
+        # страницы: если и alt-URL показывает пустоту, retry бесполезен.
+        if alt_elements_not_found:
+            logger.info(
+                "fallback_подтвердил_элементы_не_найдены",
+                step=f"id={listing.external_id}",
+            )
+            return (
+                [0] * DAYS_COUNT,
+                [0] * DAYS_COUNT,
+                _PAGE_ELEMENTS_NOT_FOUND_REASON,
+            )
 
         if not alt_loaded:
             logger.warning(

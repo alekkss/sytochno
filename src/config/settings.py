@@ -151,6 +151,15 @@ class Settings:
     # она больше не будет обрабатываться в текущем запуске.
     blacklist_threshold: int = 2
 
+    # Повторное обогащение — досрочное завершение цикла
+    # Минимальное количество карточек-кандидатов для запуска раунда.
+    # Если перед началом раунда количество карточек к обработке
+    # (после исключения чёрного списка) меньше этого значения —
+    # цикл повторного обогащения прерывается досрочно.
+    # 0 = отключено (все раунды выполняются до штатного завершения).
+    # Проверка выполняется на любом раунде (в том числе первом).
+    retry_min_cards_threshold: int = 300
+
     # Адаптивный контроль параллелизма (AIMD)
     # Минимальное количество одновременных операций. Ниже этого значения
     # лимит не опустится даже при 100% ошибок. Рекомендуется 3–5.
@@ -208,6 +217,7 @@ class Settings:
             max_proxy_workers=_get_int("MAX_PROXY_WORKERS", "5"),
             memory_limit_mb=_get_int("MEMORY_LIMIT_MB", "0"),
             blacklist_threshold=_get_int("BLACKLIST_THRESHOLD", "2"),
+            retry_min_cards_threshold=_get_int("RETRY_MIN_CARDS_THRESHOLD", "300"),
             concurrency_min=_get_int("CONCURRENCY_MIN", "5"),
             concurrency_max=_get_int("CONCURRENCY_MAX", "0"),
             concurrency_start=_get_int("CONCURRENCY_START", "0"),
@@ -266,6 +276,13 @@ class Settings:
             raise RuntimeError(
                 "BLACKLIST_THRESHOLD должен быть не менее 1. "
                 f"Получено: {settings.blacklist_threshold}."
+            )
+
+        # Валидация порога досрочного завершения повторного обогащения
+        if settings.retry_min_cards_threshold < 0:
+            raise RuntimeError(
+                "RETRY_MIN_CARDS_THRESHOLD не может быть отрицательным. "
+                f"Получено: {settings.retry_min_cards_threshold}."
             )
 
         # Валидация адаптивного контроля параллелизма
