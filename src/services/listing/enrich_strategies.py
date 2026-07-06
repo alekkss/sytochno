@@ -848,15 +848,20 @@ class EnrichStrategies:
                 )
 
         finally:
-            # Гарантированная остановка мониторинга — даже при исключениях
-            await memory_monitor.stop_monitoring()
-
-            # Остановка логирования статистики
+            # ── ВАЖНО: сначала останавливаем stats_task ──
+            # stats_task работает в бесконечном цикле. Если _stop_browsers
+            # зависнет — stats_task будет печатать статистику вечно,
+            # создавая иллюзию «программа работает». Отменяем ДО остановки
+            # браузеров — так при зависании остановки программа хотя бы
+            # замолчит и станет очевидно, что она зависла.
             stats_task.cancel()
             try:
                 await stats_task
             except asyncio.CancelledError:
                 pass
+
+            # Гарантированная остановка мониторинга RAM — даже при исключениях
+            await memory_monitor.stop_monitoring()
 
         parallel_elapsed = time.perf_counter() - parallel_start
 
@@ -1013,26 +1018,17 @@ class EnrichStrategies:
     async def _stop_browsers(
         browsers_to_stop: list[tuple[BrowserService, int]],
     ) -> None:
-        """Останавливает все браузеры из списка параллельно с общим таймаутом.
+        """Останавливает все браузеры из списка параллельно с жёстким таймаутом.
 
-        Раньше остановка была последовательной через цикл for — при 85+
-        воркерах и таймауте 20 сек на каждый браузер это могло занять
-        до 28 минут в худшем случае, если несколько браузеров зависли
-        на закрытии CDP-сессии. Программа висела и не переходила к
-        следующему этапу pipeline (снимки → сравнение → экспорт).
+        Использует asyncio.wait вместо asyncio.wait_for + asyncio.gather.
+        Причина: Playwright browser.close() может зависнуть навечно на
+        мёртвой прокси (CDP-сессия не отвечает). asyncio.wait_for отменяет
+        внутреннюю задачу, но CancelledError не проходит через native-код
+        Playwright — программа зависает навсегда.
 
-        Теперь остановка параллельная — все браузеры получают команду stop()
-        одновременно через asyncio.gather. Каждый браузер имеет собственный
-        таймаут внутри safe_stop_browser (WORKER_STOP_TIMEOUT = 20 сек),
-        а весь этап дополнительно защищён общим таймаутом
-        _STOP_BROWSERS_GLOBAL_TIMEOUT = 100 сек. Если по какой-то причине
-        (заблокированный event loop, зависшая CDP-сессия) общий таймаут
-        превышен — программа логирует предупреждение и продолжает работу,
-        оставляя незакрытые браузеры «как есть». Процесс Chromium всё равно
-        завершится вместе с интерпретатором Python.
-
-        return_exceptions=True в gather гарантирует, что ошибка при
-        остановке одного браузера не помешает остановке остальных.
+        asyncio.wait с таймаутом корректно разделяет задачи на завершённые
+        (done) и зависшие (pending). Зависшие задачи отменяются и
+        игнорируются — процесс Chromium завершится вместе с интерпретатором.
 
         Args:
             browsers_to_stop: Список (browser_service, worker_idx).
@@ -1049,37 +1045,47 @@ class EnrichStrategies:
 
         stop_start = time.perf_counter()
 
-        # Создаём задачи остановки для каждого браузера
-        stop_tasks = [
-            safe_stop_browser(browser_svc, w_idx)
+        # Создаём реальные Task-объекты — asyncio.wait требует задачи, не корутины
+        stop_tasks: list[asyncio.Task] = [
+            asyncio.create_task(
+                safe_stop_browser(browser_svc, w_idx),
+                name=f"stop-browser-{w_idx}",
+            )
             for browser_svc, w_idx in browsers_to_stop
         ]
 
-        try:
-            await asyncio.wait_for(
-                asyncio.gather(*stop_tasks, return_exceptions=True),
-                timeout=_STOP_BROWSERS_GLOBAL_TIMEOUT,
-            )
-            elapsed = time.perf_counter() - stop_start
+        # asyncio.wait возвращает (done, pending) и НЕ блокируется навечно
+        done, pending = await asyncio.wait(
+            stop_tasks,
+            timeout=_STOP_BROWSERS_GLOBAL_TIMEOUT,
+        )
+
+        elapsed = time.perf_counter() - stop_start
+
+        if not pending:
+            # Все браузеры остановились в срок
             logger.info(
                 "все_прокси_браузеры_остановлены",
                 total=total,
                 step=f"время={format_duration(elapsed)}",
             )
-        except asyncio.TimeoutError:
-            elapsed = time.perf_counter() - stop_start
+        else:
+            # Часть браузеров зависла — отменяем и продолжаем
             logger.warning(
-                "остановка_браузеров_превысила_общий_таймаут",
-                step=f"всего={total}, "
+                "остановка_браузеров_превысила_таймаут",
+                step=f"завершено={len(done)}, зависло={len(pending)}, "
                      f"время={format_duration(elapsed)}, "
                      f"лимит={_STOP_BROWSERS_GLOBAL_TIMEOUT}с, "
                      f"продолжаем_дальше=да",
             )
-            # Отменяем незавершённые задачи — они «зависли» на закрытии CDP.
-            # Процесс Chromium всё равно завершится с интерпретатором.
-            for task in stop_tasks:
-                if not task.done() if isinstance(task, asyncio.Task) else False:
-                    task.cancel()  # type: ignore[union-attr]
+
+            # Отменяем зависшие задачи — это реальные Task, cancel() сработает
+            for task in pending:
+                task.cancel()
+
+            # Даём короткое время на обработку отмены (не ждём долго)
+            if pending:
+                await asyncio.wait(pending, timeout=3.0)
 
     @staticmethod
     async def _worker(
