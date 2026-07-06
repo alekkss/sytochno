@@ -136,7 +136,11 @@ class TokenManager:
         """
         await asyncio.sleep(RELOAD_WAIT_SECONDS)
 
-        loaded, new_token = await self._page_loader.goto_and_capture_token(page, url)
+        loaded, new_token, _elements_not_found = (
+            await self._page_loader.goto_and_capture_token(
+                page, url, object_id=object_id
+            )
+        )
 
         if not loaded:
             logger.warning(
