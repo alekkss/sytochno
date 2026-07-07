@@ -109,20 +109,26 @@ SEASON_PRICE_TYPE: str = "season_price"
 
 SUTOCHNO_BASE_URL: str = "https://sutochno.ru"
 
+# Шаблон публичного URL объявления — используется в listing.url
+# для отображения пользователю в Excel-отчёте (кликабельная ссылка).
+# Этот URL при открытии в браузере делает редирект на внутренний
+# путь фронтенда (ENRICHMENT_URL_TEMPLATE).
 LISTING_URL_TEMPLATE: str = f"{SUTOCHNO_BASE_URL}/{{object_id}}"
 
-# Шаблон альтернативного URL карточки объявления.
-# Основной URL (LISTING_URL_TEMPLATE) — старая версия страницы,
-# которая перенаправляет на этот внутренний путь фронтенда.
-# Иногда редирект даёт сбой и основной URL возвращает пустую страницу
-# без данных → API отвечает "no_objects" → ложное срабатывание
-# object_not_found. Альтернативный URL используется как fallback:
-# если основной путь вернул object_not_found, пробуем ещё раз через
-# внутренний путь фронтенда. Только если и он вернул object_not_found —
-# карточка окончательно помечается как удалённая.
-LISTING_URL_ALT_TEMPLATE: str = (
+# Шаблон рабочего URL для парсинга карточки — внутренний путь фронтенда.
+# Используется для загрузки страницы при обогащении: перехват токена,
+# bulk-запрос цен, скользящее окно занятости. Загружается напрямую,
+# минуя редирект через основной URL — это исключает сбои редиректа,
+# проблемы с региональными поддоменами (spb.sutochno.ru) и ускоряет
+# навигацию на ~1-2 секунды за карточку.
+# В listing.url НЕ сохраняется — пользователь видит публичный URL.
+ENRICHMENT_URL_TEMPLATE: str = (
     f"{SUTOCHNO_BASE_URL}/front/searchapp/detail/{{object_id}}"
 )
+
+# Deprecated: старое название для ENRICHMENT_URL_TEMPLATE.
+# Сохранено для обратной совместимости — не использовать в новом коде.
+LISTING_URL_ALT_TEMPLATE: str = ENRICHMENT_URL_TEMPLATE
 
 MAX_TOKEN_RETRIES: int = 3
 
@@ -152,27 +158,44 @@ def format_duration(seconds: float) -> str:
     return f"{secs}с"
 
 
-def build_alt_url(object_id: str) -> str:
-    """Строит альтернативный URL карточки объявления по ID.
+def build_enrichment_url(object_id: str) -> str:
+    """Строит рабочий URL карточки для парсинга (обогащения).
 
     Возвращает URL вида https://sutochno.ru/front/searchapp/detail/{id} —
-    внутренний путь фронтенда, на который основной URL делает редирект.
-    Используется как fallback при получении object_not_found на основном URL:
-    если основной URL вернул ошибку из-за сбоя редиректа, альтернативный
-    путь может отдать данные корректно.
+    внутренний путь фронтенда. Загружается напрямую при обогащении
+    карточки, минуя редирект через публичный URL https://sutochno.ru/{id}.
 
-    Важно: это не должно заменять listing.url — то поле хранит публичный
-    адрес, который видит пользователь в Excel-отчёте. Альтернативный URL
-    используется только внутри логики fallback как временный «рабочий»
-    адрес для загрузки страницы.
+    Преимущества прямой загрузки:
+    - Нет сбоев редиректа (основной URL иногда возвращает пустую страницу).
+    - Нет проблем с региональными поддоменами (spb.sutochno.ru и т.п.).
+    - Быстрее на ~1-2 секунды (один HTTP-запрос вместо двух).
+    - Токен API перехватывается стабильнее (страница загружается
+      в предсказуемом формате).
+
+    Этот URL НЕ сохраняется в listing.url — пользователь в Excel-отчёте
+    видит публичный URL https://sutochno.ru/{id}.
 
     Args:
         object_id: Идентификатор объявления на sutochno.ru.
 
     Returns:
-        Готовый альтернативный URL карточки.
+        Готовый рабочий URL карточки для парсинга.
     """
-    return LISTING_URL_ALT_TEMPLATE.format(object_id=object_id)
+    return ENRICHMENT_URL_TEMPLATE.format(object_id=object_id)
+
+
+def build_alt_url(object_id: str) -> str:
+    """Deprecated: используйте build_enrichment_url().
+
+    Сохранено для обратной совместимости.
+
+    Args:
+        object_id: Идентификатор объявления на sutochno.ru.
+
+    Returns:
+        Готовый URL карточки.
+    """
+    return build_enrichment_url(object_id)
 
 
 async def safe_stop_browser(browser_service: "any", worker_idx: int) -> None:  # type: ignore[name-defined]

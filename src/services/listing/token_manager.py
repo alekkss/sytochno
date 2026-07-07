@@ -11,6 +11,7 @@ from src.services.listing.constants import (
     API_PRICES_URL,
     DEFAULT_GUESTS,
     RELOAD_WAIT_SECONDS,
+    build_enrichment_url,
 )
 from src.services.listing.page_loader import PageLoader
 
@@ -124,21 +125,28 @@ class TokenManager:
         """Перезагружает страницу и получает новый токен.
 
         Ждёт RELOAD_WAIT_SECONDS перед перезагрузкой, затем загружает
-        страницу заново с перехватом токена.
+        страницу заново с перехватом токена. Всегда использует прямой URL
+        фронтенда (front/searchapp/detail/{id}), минуя редирект —
+        независимо от того, какой URL передан в параметре url.
 
         Args:
             page: Вкладка браузера.
-            url: URL карточки.
-            object_id: ID объявления (для логов).
+            url: URL карточки (параметр сохранён для обратной совместимости,
+                фактически не используется — рабочий URL строится из object_id).
+            object_id: ID объявления (для логов и построения URL).
 
         Returns:
             Новый токен или None.
         """
         await asyncio.sleep(RELOAD_WAIT_SECONDS)
 
+        # Всегда загружаем прямой URL фронтенда — это исключает сбои
+        # редиректа и проблемы с региональными поддоменами.
+        enrichment_url = build_enrichment_url(object_id)
+
         loaded, new_token, _elements_not_found = (
             await self._page_loader.goto_and_capture_token(
-                page, url, object_id=object_id
+                page, enrichment_url, object_id=object_id
             )
         )
 
