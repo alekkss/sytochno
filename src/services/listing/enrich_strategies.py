@@ -63,6 +63,22 @@ _STATS_LOG_INTERVAL_SECONDS: float = 60.0
 # защита от патологических случаев.
 _STOP_BROWSERS_GLOBAL_TIMEOUT: float = 100.0
 
+# ── Детектор стагнации (watchdog) ──
+
+# Максимальное время без прогресса обогащения (секунды).
+# Если за это время ни одна новая карточка не обогащена —
+# все зависшие воркеры принудительно отменяются, программа
+# продолжает pipeline с тем, что успела собрать.
+# 5 минут — достаточно для самых медленных карточек (bulk +
+# скользящее окно + адаптация min_nights + retry), но не
+# настолько долго, чтобы программа зависала бесполезно.
+_STAGNATION_TIMEOUT_SECONDS: float = 300.0
+
+# Интервал проверки прогресса watchdog'ом (секунды).
+# Каждые 60 секунд watchdog считает обогащённые карточки
+# и сравнивает с предыдущим значением.
+_STAGNATION_CHECK_INTERVAL_SECONDS: float = 60.0
+
 
 class EnrichStrategies:
     """Параллельные стратегии обогащения карточек.
@@ -71,6 +87,7 @@ class EnrichStrategies:
     - enrich_listings_tabbed: параллельная обработка через вкладки.
     - enrich_listings_parallel: параллельная обработка через прокси-браузеры.
     - _worker: воркер для одного прокси-браузера.
+    - _stagnation_watchdog: фоновый детектор зависания.
     """
 
     def __init__(
@@ -463,6 +480,112 @@ class EnrichStrategies:
         return False
 
     @staticmethod
+    def _count_enriched(listings: list[RawListing]) -> int:
+        """Подсчитывает количество обогащённых карточек в списке.
+
+        Используется watchdog'ом для отслеживания прогресса —
+        если счётчик не растёт в течение _STAGNATION_TIMEOUT_SECONDS,
+        обработка считается зависшей.
+
+        Args:
+            listings: Полный список карточек (включая все чанки воркеров).
+
+        Returns:
+            Количество карточек, которые считаются завершёнными.
+        """
+        return sum(1 for l in listings if EnrichStrategies._is_enriched(l))
+
+    @staticmethod
+    async def _stagnation_watchdog(
+        all_listings: list[RawListing],
+        worker_tasks: list[asyncio.Task],
+        label: str = "основной",
+    ) -> None:
+        """Фоновый детектор зависания — отменяет воркеры при отсутствии прогресса.
+
+        Каждые _STAGNATION_CHECK_INTERVAL_SECONDS проверяет, увеличилось ли
+        количество обогащённых карточек. Если за _STAGNATION_TIMEOUT_SECONDS
+        прогресса нет — считает, что воркеры зависли, и отменяет все
+        незавершённые задачи.
+
+        Реагирует на реальный прогресс данных, а не на логи — это надёжнее,
+        чем подсчёт одинаковых строк статистики.
+
+        Завершается при отмене (CancelledError) — вызывающий код отменяет
+        watchdog после штатного завершения всех воркеров.
+
+        Args:
+            all_listings: Полный плоский список всех карточек всех воркеров.
+                Воркеры модифицируют карточки in-place — watchdog видит
+                актуальное состояние через тот же список.
+            worker_tasks: Список asyncio.Task воркеров для отмены при зависании.
+            label: Метка раунда для логов (например, "основной" или "retry_1").
+        """
+        last_enriched_count = EnrichStrategies._count_enriched(all_listings)
+        last_progress_time = time.monotonic()
+
+        try:
+            while True:
+                await asyncio.sleep(_STAGNATION_CHECK_INTERVAL_SECONDS)
+
+                current_count = EnrichStrategies._count_enriched(all_listings)
+
+                if current_count > last_enriched_count:
+                    # Прогресс есть — обновляем точку отсчёта
+                    last_enriched_count = current_count
+                    last_progress_time = time.monotonic()
+                    logger.debug(
+                        "watchdog_прогресс",
+                        step=f"раунд={label}, обогащено={current_count}, "
+                             f"всего={len(all_listings)}",
+                    )
+                else:
+                    # Прогресса нет — проверяем, не истёк ли таймаут
+                    stagnation_duration = time.monotonic() - last_progress_time
+
+                    logger.debug(
+                        "watchdog_нет_прогресса",
+                        step=f"раунд={label}, обогащено={current_count}, "
+                             f"стагнация={format_duration(stagnation_duration)}, "
+                             f"лимит={format_duration(_STAGNATION_TIMEOUT_SECONDS)}",
+                    )
+
+                    if stagnation_duration >= _STAGNATION_TIMEOUT_SECONDS:
+                        # ── Стагнация подтверждена — отменяем воркеры ──
+                        pending_tasks = [
+                            t for t in worker_tasks if not t.done()
+                        ]
+
+                        logger.warning(
+                            "watchdog_стагнация_обнаружена",
+                            step=f"раунд={label}, "
+                                 f"без_прогресса={format_duration(stagnation_duration)}, "
+                                 f"обогащено={current_count}/{len(all_listings)}, "
+                                 f"зависших_задач={len(pending_tasks)}",
+                        )
+
+                        # Отменяем все незавершённые задачи воркеров
+                        for task in pending_tasks:
+                            task.cancel()
+
+                        # Даём время на обработку CancelledError
+                        if pending_tasks:
+                            await asyncio.wait(pending_tasks, timeout=15.0)
+
+                        logger.info(
+                            "watchdog_воркеры_отменены",
+                            step=f"раунд={label}, отменено={len(pending_tasks)}",
+                        )
+                        return
+
+        except asyncio.CancelledError:
+            # Штатная отмена — воркеры завершились раньше таймаута
+            logger.debug(
+                "watchdog_отменён_штатно",
+                step=f"раунд={label}",
+            )
+
+    @staticmethod
     async def _warmup_browser(
         browser_service: BrowserService,
         proxy: ProxyConfig | None,
@@ -625,6 +748,11 @@ class EnrichStrategies:
         контролируется ConcurrencyController — воркеры запрашивают
         разрешение (acquire) перед каждой карточкой.
 
+        Фоновый watchdog отслеживает прогресс обогащения. Если за
+        _STAGNATION_TIMEOUT_SECONDS ни одна новая карточка не обогащена —
+        все зависшие воркеры принудительно отменяются и программа
+        продолжает pipeline с тем, что успела собрать.
+
         При падении воркера с исключением его карточки считаются
         необработанными. После основного раунда необработанные карточки
         перераспределяются между оставшимися рабочими прокси и запускаются
@@ -687,7 +815,8 @@ class EnrichStrategies:
                  f", вкладок_на_прокси={settings.max_tabs}"
                  f", контроллер: floor={controller.floor}"
                  f", ceiling={controller.ceiling}"
-                 f", start={controller.current_limit}",
+                 f", start={controller.current_limit}"
+                 f", watchdog={format_duration(_STAGNATION_TIMEOUT_SECONDS)}",
         )
 
         # ── Запуск фонового мониторинга RAM ──
@@ -703,6 +832,9 @@ class EnrichStrategies:
 
         # Отслеживаем прокси, на которых воркеры упали (исключаем из retry)
         failed_proxies: set[str] = set()
+
+        # Фоновые задачи, которые нужно отменить в finally
+        background_tasks: list[asyncio.Task] = [stats_task]
 
         try:
             # ── Основной раунд: запуск всех воркеров с задержкой ──
@@ -722,8 +854,61 @@ class EnrichStrategies:
                 controller=controller,
             )
 
-            # Ожидаем завершения ВСЕХ воркеров параллельно
-            results = await asyncio.gather(*all_tasks, return_exceptions=True)
+            # ── Собираем плоский список всех карточек для watchdog ──
+            # Воркеры модифицируют карточки in-place — watchdog видит
+            # актуальное состояние через тот же список объектов.
+            all_listings_flat: list[RawListing] = []
+            for _, chunk, _ in worker_configs:
+                all_listings_flat.extend(chunk)
+
+            # ── Запуск watchdog'а — детектор стагнации ──
+            watchdog_task = asyncio.create_task(
+                EnrichStrategies._stagnation_watchdog(
+                    all_listings=all_listings_flat,
+                    worker_tasks=all_tasks,
+                    label="основной",
+                ),
+                name="stagnation-watchdog",
+            )
+            background_tasks.append(watchdog_task)
+
+            # ── Ожидаем завершения ВСЕХ воркеров ──
+            # Используем asyncio.wait вместо asyncio.gather — это позволяет
+            # корректно обработать отмену задач watchdog'ом.
+            # asyncio.gather при CancelledError внутри задачи может
+            # заблокироваться; asyncio.wait всегда возвращает управление.
+            if all_tasks:
+                done, pending = await asyncio.wait(all_tasks)
+
+                # Если есть pending (не должно быть после wait без таймаута,
+                # но на всякий случай) — отменяем
+                for task in pending:
+                    task.cancel()
+                if pending:
+                    await asyncio.wait(pending, timeout=10.0)
+            else:
+                done = set()
+
+            # ── Отменяем watchdog — воркеры завершились штатно ──
+            watchdog_task.cancel()
+            try:
+                await watchdog_task
+            except asyncio.CancelledError:
+                pass
+
+            # Собираем результаты из завершённых задач
+            results: list = []
+            for task in all_tasks:
+                if task.done():
+                    exc = task.exception() if not task.cancelled() else None
+                    if exc is not None:
+                        results.append(exc)
+                    elif task.cancelled():
+                        results.append(asyncio.CancelledError())
+                    else:
+                        results.append(task.result())
+                else:
+                    results.append(asyncio.CancelledError())
 
             # Обрабатываем результаты основного раунда
             all_enriched, worker_stats, browsers_to_stop, failed_proxies = (
@@ -822,9 +1007,45 @@ class EnrichStrategies:
                     controller=controller,
                 )
 
-                retry_results = await asyncio.gather(
-                    *retry_tasks, return_exceptions=True
+                # ── Собираем плоский список для retry watchdog ──
+                retry_listings_flat: list[RawListing] = []
+                for _, chunk, _ in retry_configs:
+                    retry_listings_flat.extend(chunk)
+
+                # ── Запуск watchdog для retry-раунда ──
+                retry_watchdog_task = asyncio.create_task(
+                    EnrichStrategies._stagnation_watchdog(
+                        all_listings=retry_listings_flat,
+                        worker_tasks=retry_tasks,
+                        label=f"retry_{retry_round}",
+                    ),
+                    name=f"stagnation-watchdog-retry-{retry_round}",
                 )
+
+                # ── Ожидаем завершения retry-воркеров ──
+                if retry_tasks:
+                    await asyncio.wait(retry_tasks)
+
+                # Отменяем retry watchdog
+                retry_watchdog_task.cancel()
+                try:
+                    await retry_watchdog_task
+                except asyncio.CancelledError:
+                    pass
+
+                # Собираем результаты retry
+                retry_results: list = []
+                for task in retry_tasks:
+                    if task.done():
+                        exc = task.exception() if not task.cancelled() else None
+                        if exc is not None:
+                            retry_results.append(exc)
+                        elif task.cancelled():
+                            retry_results.append(asyncio.CancelledError())
+                        else:
+                            retry_results.append(task.result())
+                    else:
+                        retry_results.append(asyncio.CancelledError())
 
                 # Обрабатываем результаты retry
                 retry_enriched, retry_stats, retry_browsers, retry_failed = (
@@ -848,17 +1069,20 @@ class EnrichStrategies:
                 )
 
         finally:
-            # ── ВАЖНО: сначала останавливаем stats_task ──
-            # stats_task работает в бесконечном цикле. Если _stop_browsers
-            # зависнет — stats_task будет печатать статистику вечно,
-            # создавая иллюзию «программа работает». Отменяем ДО остановки
-            # браузеров — так при зависании остановки программа хотя бы
-            # замолчит и станет очевидно, что она зависла.
-            stats_task.cancel()
-            try:
-                await stats_task
-            except asyncio.CancelledError:
-                pass
+            # ── ВАЖНО: сначала останавливаем ВСЕ фоновые задачи ──
+            # stats_task и watchdog работают в бесконечных циклах.
+            # Если _stop_browsers зависнет — они будут работать вечно,
+            # создавая иллюзию «программа работает». Отменяем ДО
+            # остановки браузеров.
+            for bg_task in background_tasks:
+                if not bg_task.done():
+                    bg_task.cancel()
+
+            for bg_task in background_tasks:
+                try:
+                    await bg_task
+                except asyncio.CancelledError:
+                    pass
 
             # Гарантированная остановка мониторинга RAM — даже при исключениях
             await memory_monitor.stop_monitoring()
@@ -901,6 +1125,7 @@ class EnrichStrategies:
         )
 
         return all_enriched
+
 
     @staticmethod
     async def _launch_workers(
@@ -1516,3 +1741,4 @@ class EnrichStrategies:
                 controller.release()
             if page is not None:
                 await browser_service.close_page(page)
+
