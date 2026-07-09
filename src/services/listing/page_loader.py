@@ -9,9 +9,6 @@ from src.config.logger import get_logger
 from src.services.listing.constants import (
     GOTO_RETRY_DELAY,
     MAX_GOTO_RETRIES,
-    NETWORKIDLE_SOFT_TIMEOUT_MS,
-    PAGE_READY_SELECTORS,
-    PAGE_READY_TIMEOUT_MS,
 )
 
 if TYPE_CHECKING:
@@ -39,9 +36,29 @@ _NETWORK_ERROR_MARKERS: tuple[str, ...] = (
 # гарантированно бесполезна — экономим 5+ секунд на каждой карточке.
 _CONSECUTIVE_NETWORK_ERRORS_LIMIT: int = 2
 
+# Максимальное время ожидания токена после domcontentloaded (секунды).
+# Фронтенд sutochno.ru отправляет API-запрос (с токеном в заголовке)
+# практически сразу при загрузке страницы — обычно токен перехватывается
+# ещё ДО domcontentloaded. Но в редких случаях (медленная прокси,
+# тяжёлый JS-бандл) запрос может уйти чуть позже.
+# 3 секунды — достаточный запас для перехвата без бесполезного ожидания
+# networkidle (10 сек) и CSS-селекторов (до 45 сек).
+_TOKEN_WAIT_AFTER_DOM_SECONDS: float = 3.0
+
+# Интервал проверки наличия токена внутри цикла ожидания (секунды).
+# Мелкий шаг позволяет выйти из ожидания практически мгновенно
+# после перехвата, не дожидаясь полных _TOKEN_WAIT_AFTER_DOM_SECONDS.
+_TOKEN_POLL_INTERVAL_SECONDS: float = 0.2
+
 
 class PageLoader:
     """Загрузка страницы карточки с retry и перехватом токена через route interception.
+
+    Оптимизация: после domcontentloaded не ожидает networkidle и
+    появления CSS-селекторов. Вместо этого ждёт только перехвата токена
+    (до _TOKEN_WAIT_AFTER_DOM_SECONDS). Токен — единственное, что нужно
+    от страницы; все данные потом получаются через fetch() в контексте
+    браузера, а не из DOM.
 
     При наличии ConnectionMonitor репортит результаты загрузки —
     это позволяет централизованно детектировать массовые сбои
@@ -113,6 +130,12 @@ class PageLoader:
         так как гарантирует перехват даже для запросов из iframe,
         service workers или асинхронных init-скриптов.
 
+        Оптимизация: после domcontentloaded не ожидает networkidle
+        (10 сек) и появления CSS-селекторов (до 45 сек). Вместо этого
+        ждёт только перехвата токена — обычно токен появляется ещё до
+        domcontentloaded, поэтому дополнительное ожидание минимально
+        (0–3 секунды). Это экономит 10–25 секунд на каждой карточке.
+
         Args:
             page: Вкладка браузера.
             url: URL карточки.
@@ -120,13 +143,12 @@ class PageLoader:
 
         Returns:
             Кортеж из трёх элементов:
-            - loaded (bool): True если страница загружена (даже если DOM-элементы
-              не найдены — важно только, что не было редиректа/сетевой ошибки).
+            - loaded (bool): True если страница загружена (навигация
+              завершилась без сетевой ошибки и без редиректа за пределы сайта).
             - token (str | None): Перехваченный сессионный токен API или None.
-            - elements_not_found (bool): True если страница загрузилась, но
-              ключевые DOM-элементы карточки не обнаружены. Это признак
-              битой страницы или изменения вёрстки — вызывающему коду
-              следует пометить карточку как необогащаемую без retry.
+            - elements_not_found (bool): Всегда False (сохранён для обратной
+              совместимости с listing_service — CSS-селекторы больше не
+              проверяются, так как данные получаются через API, а не DOM).
         """
         # Проверяем — не требуется ли уже перезапуск браузера
         if self._monitor and self._monitor.should_skip():
@@ -163,12 +185,23 @@ class PageLoader:
         await page.route("**/api/json/**", _route_handler)
 
         try:
-            loaded, elements_not_found = await self.goto_with_retry(
-                page, url, object_id
+            loaded = await self.goto_with_retry(
+                page, url, object_id, captured_token
             )
-            await asyncio.sleep(1.0)
+
+            # Если страница загрузилась, но токен ещё не перехвачен —
+            # даём короткое время на перехват. Фронтенд мог отправить
+            # API-запрос с небольшой задержкой после domcontentloaded.
+            if loaded and not captured_token:
+                await self._wait_for_token(captured_token, object_id)
+
         finally:
-            await page.unroute("**/api/json/**")
+            # unroute безопасен даже если page уже закрыта —
+            # Playwright просто проигнорирует вызов
+            try:
+                await page.unroute("**/api/json/**")
+            except Exception:
+                pass
 
         token = captured_token[0] if captured_token else None
 
@@ -180,22 +213,29 @@ class PageLoader:
         else:
             logger.warning("токен_не_перехвачен_при_загрузке")
 
-        return loaded, token, elements_not_found
+        # elements_not_found=False всегда — CSS-селекторы больше не проверяются
+        return loaded, token, False
 
     async def goto_with_retry(
-        self, page: Page, url: str, object_id: str = ""
-    ) -> tuple[bool, bool]:
+        self,
+        page: Page,
+        url: str,
+        object_id: str = "",
+        captured_token: list[str] | None = None,
+    ) -> bool:
         """Загружает страницу карточки с повторными попытками.
 
         При сетевых ошибках (таймаут, сброс соединения, проблемы прокси)
-        повторяет попытку с паузой. Ожидает domcontentloaded, затем
-        пытается дождаться networkidle (мягкий таймаут), затем проверяет
-        наличие ключевых элементов.
+        повторяет попытку с паузой. Ожидает только domcontentloaded —
+        networkidle и CSS-селекторы больше не проверяются.
 
         Раннее прерывание: если две подряд попытки завершились сетевой
         ошибкой (любой из _NETWORK_ERROR_MARKERS) — retry прекращается
         досрочно без третьей попытки. При бане IP третья попытка с того
         же адреса гарантированно бесполезна — экономим 5+ секунд.
+
+        Если токен перехвачен (captured_token не пуст) — domcontentloaded
+        считается достаточным для успеха, даже без проверки DOM-элементов.
 
         Репортит результаты в два компонента:
         - ConnectionMonitor: для детектирования массовых локальных сбоев
@@ -203,23 +243,16 @@ class PageLoader:
         - ConcurrencyController: для глобальной адаптации параллелизма
           (>30% ошибок → снижение лимита + cooldown).
 
-        После полного провала (все попытки исчерпаны или раннее прерывание)
-        репортит сбой в оба компонента. При успехе — сбрасывает счётчик
-        монитора и репортит успех в контроллер.
-
         Args:
             page: Вкладка браузера.
             url: URL карточки.
             object_id: ID объявления (для логов монитора).
+            captured_token: Разделяемый список для перехваченного токена.
+                Если не None — используется для раннего определения успеха.
 
         Returns:
-            Кортеж из двух элементов:
-            - loaded (bool): True если страница загружена, False — если
-              все попытки исчерпаны (сетевая ошибка или редирект).
-            - elements_not_found (bool): True если страница загрузилась,
-              но ключевые DOM-элементы карточки не найдены. Актуально
-              только при loaded=True. Признак битой страницы — вызывающий
-              код должен пометить карточку как необогащаемую без retry.
+            True если страница загружена (domcontentloaded без редиректа),
+            False — если все попытки исчерпаны.
         """
         # Быстрая проверка перед началом retry-цикла
         if self._monitor and self._monitor.should_skip():
@@ -227,7 +260,7 @@ class PageLoader:
                 "goto_пропущен_перезапуск_требуется",
                 step=f"id={object_id}",
             )
-            return False, False
+            return False
 
         # Счётчик подряд идущих сетевых ошибок. Сбрасывается при любом
         # успехе (страница загрузилась). При достижении лимита — досрочный
@@ -242,7 +275,7 @@ class PageLoader:
                     "goto_прерван_перезапуск_требуется",
                     step=f"id={object_id}, попытка={attempt}",
                 )
-                return False, False
+                return False
 
             try:
                 logger.debug(
@@ -256,29 +289,8 @@ class PageLoader:
                 # Страница загрузилась — сбрасываем счётчик сетевых ошибок
                 consecutive_network_errors = 0
 
-                try:
-                    await page.wait_for_load_state(
-                        "networkidle", timeout=NETWORKIDLE_SOFT_TIMEOUT_MS
-                    )
-                except Exception:
-                    logger.debug(
-                        "networkidle_не_достигнут_продолжаем",
-                        step=f"попытка={attempt}",
-                    )
-
-                page_ready = await self.wait_for_page_ready(page)
-                if page_ready:
-                    logger.debug("страница_готова", step=f"попытка={attempt}")
-                    # Успех — репортим в монитор и контроллер
-                    if self._monitor:
-                        await self._monitor.report_success(object_id)
-                    if self._controller:
-                        self._controller.report_success()
-                    return True, False
-
-                # Ключевые элементы не найдены — возможна CAPTCHA, редирект
-                # или изменение вёрстки. Проверяем URL: если нас увели
-                # со страницы карточки — это явный признак блокировки.
+                # Проверяем URL: если нас увели со страницы карточки —
+                # это явный признак блокировки (CAPTCHA, антибот).
                 current_url = page.url
                 if "sutochno.ru" not in current_url:
                     logger.warning(
@@ -286,7 +298,6 @@ class PageLoader:
                         path=current_url,
                         step=f"попытка={attempt}",
                     )
-                    # Редирект — это признак блокировки, репортим провал
                     if self._controller:
                         self._controller.report_failure()
                     if attempt < MAX_GOTO_RETRIES:
@@ -295,25 +306,22 @@ class PageLoader:
                     # Все попытки исчерпаны — редирект на каждой
                     if self._monitor:
                         await self._monitor.report_failure(object_id)
-                    return False, False
+                    return False
 
-                # URL в порядке, но элементы не найдены — это признак битой
-                # страницы (изменилась вёрстка, пустой ответ и т.п.).
-                # Возвращаем loaded=True (страница технически загрузилась),
-                # но с флагом elements_not_found=True — чтобы вызывающий код
-                # мог сразу пометить карточку как необогащаемую, не тратя
-                # retry-раунды на заведомо битую страницу.
-                logger.warning(
-                    "элементы_карточки_не_найдены",
-                    path=current_url,
-                    step=f"попытка={attempt}",
+                # ── Успех: domcontentloaded + URL в порядке ──
+                # Токен уже мог быть перехвачен route_handler'ом во время
+                # навигации — если да, логируем это как бонус.
+                token_status = "да" if (captured_token and captured_token) else "нет"
+                logger.debug(
+                    "страница_загружена",
+                    step=f"попытка={attempt}, токен_уже_перехвачен={token_status}",
                 )
-                # Считаем частичным успехом — страница загрузилась
+
                 if self._monitor:
                     await self._monitor.report_success(object_id)
                 if self._controller:
                     self._controller.report_success()
-                return True, True
+                return True
 
             except Exception as e:
                 error_msg = str(e)
@@ -325,15 +333,10 @@ class PageLoader:
                     consecutive_network_errors += 1
 
                     # Сетевая ошибка — репортим в контроллер для адаптации.
-                    # Репортим КАЖДУЮ попытку, а не только финальный провал —
-                    # это даёт контроллеру более быструю обратную связь.
                     if self._controller:
                         self._controller.report_failure()
 
                     # ── Раннее прерывание при подряд идущих сетевых ошибках ──
-                    # Если N попыток подряд дали сетевую ошибку — IP забанен
-                    # или прокси мертва. Третья попытка с того же адреса
-                    # гарантированно бесполезна, экономим время.
                     if consecutive_network_errors >= _CONSECUTIVE_NETWORK_ERRORS_LIMIT:
                         logger.warning(
                             "досрочное_прерывание_сетевых_ошибок",
@@ -344,7 +347,7 @@ class PageLoader:
                         )
                         if self._monitor:
                             await self._monitor.report_failure(object_id)
-                        return False, False
+                        return False
 
                     if attempt < MAX_GOTO_RETRIES:
                         logger.warning(
@@ -364,34 +367,46 @@ class PageLoader:
                 # Все попытки исчерпаны — репортим сбой в монитор
                 if self._monitor:
                     await self._monitor.report_failure(object_id)
-                # Если последняя попытка не была сетевой ошибкой —
-                # репортим и в контроллер (неизвестная ошибка тоже сигнал)
                 if self._controller and not is_network_error:
                     self._controller.report_failure()
-                return False, False
+                return False
 
         # Сюда попадаем если цикл завершился без return (теоретически не должно)
         if self._monitor:
             await self._monitor.report_failure(object_id)
         if self._controller:
             self._controller.report_failure()
-        return False, False
+        return False
 
-    async def wait_for_page_ready(self, page: Page) -> bool:
-        """Ожидает появления ключевых элементов на странице карточки.
+    @staticmethod
+    async def _wait_for_token(
+        captured_token: list[str],
+        object_id: str,
+    ) -> None:
+        """Ожидает перехвата токена с коротким поллингом.
 
-        Проверяет селекторы последовательно. Достаточно одного совпадения.
+        Вызывается если после domcontentloaded токен ещё не перехвачен.
+        Ждёт до _TOKEN_WAIT_AFTER_DOM_SECONDS, проверяя каждые
+        _TOKEN_POLL_INTERVAL_SECONDS. Выходит досрочно как только
+        токен появился.
 
         Args:
-            page: Вкладка браузера.
-
-        Returns:
-            True если хотя бы один ключевой элемент найден.
+            captured_token: Разделяемый список — route_handler добавляет
+                токен сюда при перехвате.
+            object_id: ID объявления (для логов).
         """
-        for selector in PAGE_READY_SELECTORS:
-            try:
-                await page.wait_for_selector(selector, timeout=PAGE_READY_TIMEOUT_MS)
-                return True
-            except Exception:
-                continue
-        return False
+        elapsed = 0.0
+        while elapsed < _TOKEN_WAIT_AFTER_DOM_SECONDS:
+            if captured_token:
+                logger.debug(
+                    "токен_перехвачен_после_ожидания",
+                    step=f"id={object_id}, ожидание={elapsed:.1f}с",
+                )
+                return
+            await asyncio.sleep(_TOKEN_POLL_INTERVAL_SECONDS)
+            elapsed += _TOKEN_POLL_INTERVAL_SECONDS
+
+        logger.debug(
+            "токен_не_перехвачен_за_лимит",
+            step=f"id={object_id}, лимит={_TOKEN_WAIT_AFTER_DOM_SECONDS}с",
+        )

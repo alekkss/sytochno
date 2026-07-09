@@ -753,10 +753,19 @@ class EnrichStrategies:
         все зависшие воркеры принудительно отменяются и программа
         продолжает pipeline с тем, что успела собрать.
 
+        Переиспользование браузеров между раундами:
+        После основного раунда браузеры успешных воркеров НЕ останавливаются.
+        В retry-раунде необработанные карточки перераспределяются между
+        живыми браузерами — воркеры получают уже запущенный BrowserService
+        и пропускают создание/прогрев. Это экономит 15–30 секунд на воркер
+        (запуск Chromium + навигация + прокрутка + ожидание) и сохраняет
+        «прогретую» сессию (cookies, JS-контекст, сетевое соединение).
+        Все браузеры останавливаются после завершения всех retry-раундов.
+
         При падении воркера с исключением его карточки считаются
-        необработанными. После основного раунда необработанные карточки
-        перераспределяются между оставшимися рабочими прокси и запускаются
-        повторно (до _MAX_PARALLEL_RETRY_ROUNDS раундов).
+        необработанными, а его браузер помечается для остановки.
+        После основного раунда необработанные карточки перераспределяются
+        между оставшимися живыми браузерами.
 
         Карточки с установленным enrichment_skip_reason (object_not_found,
         min_nights_exceeded, page_elements_not_found) мгновенно исключаются
@@ -836,6 +845,13 @@ class EnrichStrategies:
         # Фоновые задачи, которые нужно отменить в finally
         background_tasks: list[asyncio.Task] = [stats_task]
 
+        # Все живые браузеры, которые нужно остановить в finally.
+        # Ключ — worker_idx, значение — (BrowserService, ProxyConfig | None).
+        # Заполняется после каждого раунда. Браузеры упавших воркеров
+        # останавливаются сразу; браузеры успешных — переиспользуются
+        # в retry-раундах и останавливаются только в finally.
+        all_live_browsers: dict[int, tuple[BrowserService, ProxyConfig | None]] = {}
+
         try:
             # ── Основной раунд: запуск всех воркеров с задержкой ──
             worker_configs: list[tuple[int, list[RawListing], ProxyConfig]] = [
@@ -873,15 +889,9 @@ class EnrichStrategies:
             background_tasks.append(watchdog_task)
 
             # ── Ожидаем завершения ВСЕХ воркеров ──
-            # Используем asyncio.wait вместо asyncio.gather — это позволяет
-            # корректно обработать отмену задач watchdog'ом.
-            # asyncio.gather при CancelledError внутри задачи может
-            # заблокироваться; asyncio.wait всегда возвращает управление.
             if all_tasks:
                 done, pending = await asyncio.wait(all_tasks)
 
-                # Если есть pending (не должно быть после wait без таймаута,
-                # но на всякий случай) — отменяем
                 for task in pending:
                     task.cancel()
                 if pending:
@@ -910,15 +920,26 @@ class EnrichStrategies:
                 else:
                     results.append(asyncio.CancelledError())
 
-            # Обрабатываем результаты основного раунда
-            all_enriched, worker_stats, browsers_to_stop, failed_proxies = (
+            # Обрабатываем результаты основного раунда.
+            # Живые браузеры успешных воркеров сохраняются для retry.
+            # Браузеры упавших воркеров — в отдельный список для остановки.
+            all_enriched, worker_stats, live_browsers, dead_browsers, failed_proxies = (
                 EnrichStrategies._process_worker_results(
                     results, worker_configs, active_proxies
                 )
             )
 
-            # Останавливаем браузеры основного раунда
-            await EnrichStrategies._stop_browsers(browsers_to_stop)
+            # Сохраняем живые браузеры для переиспользования
+            all_live_browsers.update(live_browsers)
+
+            # Останавливаем ТОЛЬКО браузеры упавших воркеров —
+            # живые переиспользуем в retry-раундах
+            if dead_browsers:
+                logger.info(
+                    "остановка_браузеров_упавших_воркеров",
+                    total=len(dead_browsers),
+                )
+                await EnrichStrategies._stop_browsers(dead_browsers)
 
             # ── Retry-раунды для необработанных карточек ──
             for retry_round in range(1, _MAX_PARALLEL_RETRY_ROUNDS + 1):
@@ -932,14 +953,12 @@ class EnrichStrategies:
 
                 # Диагностика: сколько карточек мгновенно пропущено
                 # по фатальной причине (object_not_found, min_nights_exceeded).
-                # Это даёт видимость экономии времени и запросов к API.
                 skipped_by_reason = sum(
                     1 for l in listings
                     if l.enrichment_skip_reason is not None
                 )
 
                 if skipped_by_reason > 0:
-                    # Разбивка по причинам для более информативного лога
                     reasons_breakdown: dict[str, int] = {}
                     for l in listings:
                         if l.enrichment_skip_reason is not None:
@@ -962,49 +981,62 @@ class EnrichStrategies:
                     )
                     break
 
-                # Отбираем прокси, которые НЕ упали в предыдущих раундах
-                retry_proxies = [
-                    p for p in active_proxies
-                    if str(p) not in failed_proxies
+                # Отбираем живые браузеры, чьи прокси НЕ упали
+                reusable_browsers: list[tuple[int, BrowserService, ProxyConfig | None]] = [
+                    (w_idx, bsvc, bproxy)
+                    for w_idx, (bsvc, bproxy) in all_live_browsers.items()
+                    if str(bproxy) not in failed_proxies
                 ]
 
-                if not retry_proxies:
+                if not reusable_browsers:
                     logger.warning(
-                        "нет_рабочих_прокси_для_retry",
+                        "нет_живых_браузеров_для_retry",
                         step=f"упавших_прокси={len(failed_proxies)}, "
                              f"необработано={len(unenriched)}",
                     )
                     break
 
                 logger.info(
-                    "retry_раунд_упавших_воркеров",
+                    "retry_раунд_переиспользование_браузеров",
                     step=f"раунд={retry_round}/{_MAX_PARALLEL_RETRY_ROUNDS}, "
                          f"необработано={len(unenriched)}, "
-                         f"прокси_для_retry={len(retry_proxies)}",
+                         f"живых_браузеров={len(reusable_browsers)}",
                 )
 
-                # Перераспределяем необработанные карточки
+                # Перераспределяем необработанные карточки между живыми браузерами
                 retry_chunks = ProxyServiceClass.distribute_listings(
-                    unenriched, len(retry_proxies)
+                    unenriched, len(reusable_browsers)
                 )
 
-                retry_configs: list[tuple[int, list[RawListing], ProxyConfig]] = [
-                    (100 * retry_round + idx, chunk, proxy)
-                    for idx, (chunk, proxy) in enumerate(
-                        zip(retry_chunks, retry_proxies), start=1
-                    )
-                ]
+                # Формируем конфигурации retry-воркеров с existing_browser
+                retry_configs: list[tuple[int, list[RawListing], ProxyConfig | None]] = []
+                retry_existing_browsers: dict[int, BrowserService] = {}
+
+                for i, (chunk, (orig_w_idx, bsvc, bproxy)) in enumerate(
+                    zip(retry_chunks, reusable_browsers)
+                ):
+                    # Используем оригинальный worker_idx + 100*round для уникальности логов
+                    retry_w_idx = 100 * retry_round + orig_w_idx
+                    retry_configs.append((retry_w_idx, chunk, bproxy))
+                    retry_existing_browsers[retry_w_idx] = bsvc
 
                 # Пауза перед retry — даём сети стабилизироваться
                 await asyncio.sleep(_RESTART_COOLDOWN_SECONDS)
 
+                # Запускаем retry-воркеры С ПЕРЕИСПОЛЬЗОВАНИЕМ браузеров
+                retry_proxies_list = [
+                    bproxy for _, bproxy in all_live_browsers.items()
+                    if str(bproxy) not in failed_proxies and bproxy is not None
+                ]
+
                 retry_tasks = await EnrichStrategies._launch_workers(
                     worker_configs=retry_configs,
                     settings=settings,
-                    active_proxies=retry_proxies,
+                    active_proxies=retry_proxies_list or active_proxies,
                     proxy_service=proxy_service,
                     memory_monitor=memory_monitor,
                     controller=controller,
+                    existing_browsers=retry_existing_browsers,
                 )
 
                 # ── Собираем плоский список для retry watchdog ──
@@ -1048,9 +1080,9 @@ class EnrichStrategies:
                         retry_results.append(asyncio.CancelledError())
 
                 # Обрабатываем результаты retry
-                retry_enriched, retry_stats, retry_browsers, retry_failed = (
+                retry_enriched, retry_stats, retry_live, retry_dead, retry_failed = (
                     EnrichStrategies._process_worker_results(
-                        retry_results, retry_configs, retry_proxies
+                        retry_results, retry_configs, retry_proxies_list or active_proxies
                     )
                 )
 
@@ -1058,8 +1090,23 @@ class EnrichStrategies:
                 worker_stats.extend(retry_stats)
                 failed_proxies.update(retry_failed)
 
-                # Останавливаем браузеры retry-раунда
-                await EnrichStrategies._stop_browsers(retry_browsers)
+                # Обновляем живые браузеры — retry-воркер мог перезапустить
+                # свой браузер (смена прокси), поэтому обновляем ссылку.
+                # Маппинг retry_w_idx → orig_w_idx для обновления all_live_browsers.
+                for i, (orig_w_idx, _, _) in enumerate(reusable_browsers):
+                    retry_w_idx = 100 * retry_round + orig_w_idx
+                    if retry_w_idx in retry_live:
+                        # Воркер вернул (возможно новый) браузер — обновляем
+                        all_live_browsers[orig_w_idx] = retry_live[retry_w_idx]
+                    elif retry_w_idx in {
+                        w_idx for (bsvc, w_idx) in retry_dead
+                    }:
+                        # Воркер упал — удаляем из живых, браузер остановим
+                        all_live_browsers.pop(orig_w_idx, None)
+
+                # Останавливаем браузеры упавших retry-воркеров
+                if retry_dead:
+                    await EnrichStrategies._stop_browsers(retry_dead)
 
                 logger.info(
                     "retry_раунд_завершён",
@@ -1070,10 +1117,6 @@ class EnrichStrategies:
 
         finally:
             # ── ВАЖНО: сначала останавливаем ВСЕ фоновые задачи ──
-            # stats_task и watchdog работают в бесконечных циклах.
-            # Если _stop_browsers зависнет — они будут работать вечно,
-            # создавая иллюзию «программа работает». Отменяем ДО
-            # остановки браузеров.
             for bg_task in background_tasks:
                 if not bg_task.done():
                     bg_task.cancel()
@@ -1086,6 +1129,19 @@ class EnrichStrategies:
 
             # Гарантированная остановка мониторинга RAM — даже при исключениях
             await memory_monitor.stop_monitoring()
+
+            # ── Остановка ВСЕХ оставшихся живых браузеров ──
+            # Это единственное место, где останавливаются успешные браузеры.
+            # Ранее они переиспользовались между раундами.
+            remaining_browsers: list[tuple[BrowserService, int]] = [
+                (bsvc, w_idx) for w_idx, (bsvc, _) in all_live_browsers.items()
+            ]
+            if remaining_browsers:
+                logger.info(
+                    "остановка_всех_живых_браузеров",
+                    total=len(remaining_browsers),
+                )
+                await EnrichStrategies._stop_browsers(remaining_browsers)
 
         parallel_elapsed = time.perf_counter() - parallel_start
 
@@ -1126,21 +1182,25 @@ class EnrichStrategies:
 
         return all_enriched
 
-
     @staticmethod
     async def _launch_workers(
-        worker_configs: list[tuple[int, list[RawListing], ProxyConfig]],
+        worker_configs: list[tuple[int, list[RawListing], ProxyConfig | None]],
         settings: "any",  # type: ignore[name-defined]
         active_proxies: list[ProxyConfig],
         proxy_service: "ProxyService | None",
         memory_monitor: MemoryMonitor,
         controller: ConcurrencyController,
+        existing_browsers: dict[int, BrowserService] | None = None,
     ) -> list[asyncio.Task]:
         """Создаёт и запускает все воркеры с задержкой между стартами.
 
         Все воркеры стартуют последовательно с задержкой
         _WORKER_START_DELAY_SECONDS. После создания — работают параллельно.
         Реальный параллелизм контролируется ConcurrencyController.
+
+        Если передан existing_browsers — воркеры с совпадающим worker_idx
+        получают уже запущенный BrowserService и пропускают создание/прогрев.
+        Это позволяет переиспользовать браузеры между раундами.
 
         Args:
             worker_configs: Список (worker_idx, chunk, proxy) для каждого воркера.
@@ -1149,28 +1209,43 @@ class EnrichStrategies:
             proxy_service: Сервис прокси (опциональный).
             memory_monitor: Монитор RAM.
             controller: Глобальный контроллер параллелизма.
+            existing_browsers: Маппинг worker_idx → BrowserService для
+                переиспользования (опциональный). Если для worker_idx есть
+                запись — воркер получает этот браузер вместо создания нового.
 
         Returns:
             Список запущенных asyncio.Task.
         """
         all_tasks: list[asyncio.Task] = []
+        browsers_map = existing_browsers or {}
+
+        reuse_count = sum(
+            1 for w_idx, _, _ in worker_configs if w_idx in browsers_map
+        )
+        new_count = len(worker_configs) - reuse_count
 
         logger.info(
             "запуск_воркеров",
             step=f"всего={len(worker_configs)}, "
+                 f"переиспользуемых={reuse_count}, "
+                 f"новых={new_count}, "
                  f"задержка_между_стартами={_WORKER_START_DELAY_SECONDS}с",
         )
 
         for i, (worker_idx, chunk, proxy) in enumerate(worker_configs):
-            # Задержка перед запуском каждого воркера (кроме первого)
-            if i > 0:
+            # Задержка только между НОВЫМИ воркерами (без existing_browser) —
+            # переиспользуемые браузеры уже запущены и прогреты
+            if i > 0 and worker_idx not in browsers_map:
                 await asyncio.sleep(_WORKER_START_DELAY_SECONDS)
+
+            existing_browser = browsers_map.get(worker_idx)
 
             task = asyncio.create_task(
                 EnrichStrategies._worker(
                     settings, chunk, proxy, worker_idx,
                     active_proxies, proxy_service, memory_monitor,
                     controller,
+                    existing_browser=existing_browser,
                 ),
                 name=f"worker-{worker_idx}",
             )
@@ -1186,18 +1261,20 @@ class EnrichStrategies:
     @staticmethod
     def _process_worker_results(
         results: list,
-        worker_configs: list[tuple[int, list[RawListing], ProxyConfig]],
+        worker_configs: list[tuple[int, list[RawListing], ProxyConfig | None]],
         active_proxies: list[ProxyConfig],
     ) -> tuple[
         list[RawListing],
         list[tuple[int, int, float]],
+        dict[int, tuple[BrowserService, ProxyConfig | None]],
         list[tuple[BrowserService, int]],
         set[str],
     ]:
         """Обрабатывает результаты завершённых воркеров.
 
-        Разделяет успешные и упавшие воркеры. Для упавших — запоминает
-        прокси, чтобы исключить их из retry-раундов.
+        Разделяет успешные и упавшие воркеры. Для успешных — сохраняет
+        живой браузер (для переиспользования в retry). Для упавших —
+        сохраняет браузер для немедленной остановки и запоминает прокси.
 
         Args:
             results: Результаты asyncio.gather (tuple или BaseException).
@@ -1205,15 +1282,19 @@ class EnrichStrategies:
             active_proxies: Список активных прокси.
 
         Returns:
-            Кортеж:
+            Кортеж из пяти элементов:
             - all_enriched: карточки из успешных воркеров.
             - worker_stats: статистика (worker_idx, cards, duration).
-            - browsers_to_stop: браузеры для остановки.
+            - live_browsers: живые браузеры успешных воркеров
+              {worker_idx: (BrowserService, ProxyConfig | None)}.
+            - dead_browsers: браузеры упавших воркеров для остановки
+              [(BrowserService, worker_idx)].
             - failed_proxies: прокси упавших воркеров (строковое представление).
         """
         all_enriched: list[RawListing] = []
         worker_stats: list[tuple[int, int, float]] = []
-        browsers_to_stop: list[tuple[BrowserService, int]] = []
+        live_browsers: dict[int, tuple[BrowserService, ProxyConfig | None]] = {}
+        dead_browsers: list[tuple[BrowserService, int]] = []
         failed_proxies: set[str] = set()
 
         for idx, result in enumerate(results):
@@ -1235,9 +1316,11 @@ class EnrichStrategies:
                 enriched_list, duration, browser_svc = result
                 all_enriched.extend(enriched_list)
                 worker_stats.append((worker_idx, len(enriched_list), duration))
-                browsers_to_stop.append((browser_svc, worker_idx))
 
-        return all_enriched, worker_stats, browsers_to_stop, failed_proxies
+                # Браузер жив — сохраняем для переиспользования в retry
+                live_browsers[worker_idx] = (browser_svc, worker_proxy)
+
+        return all_enriched, worker_stats, live_browsers, dead_browsers, failed_proxies
 
     @staticmethod
     async def _stop_browsers(
@@ -1288,14 +1371,12 @@ class EnrichStrategies:
         elapsed = time.perf_counter() - stop_start
 
         if not pending:
-            # Все браузеры остановились в срок
             logger.info(
                 "все_прокси_браузеры_остановлены",
                 total=total,
                 step=f"время={format_duration(elapsed)}",
             )
         else:
-            # Часть браузеров зависла — отменяем и продолжаем
             logger.warning(
                 "остановка_браузеров_превысила_таймаут",
                 step=f"завершено={len(done)}, зависло={len(pending)}, "
@@ -1304,11 +1385,9 @@ class EnrichStrategies:
                      f"продолжаем_дальше=да",
             )
 
-            # Отменяем зависшие задачи — это реальные Task, cancel() сработает
             for task in pending:
                 task.cancel()
 
-            # Даём короткое время на обработку отмены (не ждём долго)
             if pending:
                 await asyncio.wait(pending, timeout=3.0)
 
@@ -1316,18 +1395,23 @@ class EnrichStrategies:
     async def _worker(
         settings: "any",  # type: ignore[name-defined]
         listings: list[RawListing],
-        proxy: ProxyConfig,
+        proxy: ProxyConfig | None,
         worker_idx: int,
         all_proxies: list[ProxyConfig],
         proxy_service: "ProxyService | None" = None,
         memory_monitor: MemoryMonitor | None = None,
         controller: ConcurrencyController | None = None,
+        existing_browser: BrowserService | None = None,
     ) -> tuple[list[RawListing], float, BrowserService]:
         """Воркер — обрабатывает порцию карточек через один прокси-браузер.
 
         Перед каждой карточкой запрашивает разрешение у контроллера
         параллелизма (acquire). Это обеспечивает глобальное ограничение
         нагрузки на сайт — если контроллер снизил лимит, воркер ждёт.
+
+        Если передан existing_browser — воркер пропускает создание и прогрев
+        браузера, работает в уже запущенном. Это экономит 15–30 секунд
+        и сохраняет прогретую сессию (cookies, JS-контекст).
 
         Этап прогрева защищён retry-циклом (_warmup_browser): при ошибках
         навигации на главную страницу выполняется до _MAX_WARMUP_ATTEMPTS
@@ -1344,63 +1428,87 @@ class EnrichStrategies:
         Args:
             settings: Настройки приложения.
             listings: Порция карточек для этого воркера.
-            proxy: Прокси для этого воркера.
+            proxy: Прокси для этого воркера (может быть None).
             worker_idx: Номер воркера (для логов).
             all_proxies: Полный список прокси всех воркеров (для исключения занятых).
             proxy_service: Сервис прокси с заполненным пулом (опциональный).
             memory_monitor: Монитор RAM (опциональный). Общий для всех воркеров.
             controller: Глобальный контроллер параллелизма (опциональный).
+            existing_browser: Уже запущенный и прогретый BrowserService
+                (опциональный). Если передан — пропускает создание и прогрев.
 
         Returns:
             Кортеж (список карточек, время работы, browser_service).
         """
         if not listings:
-            return ([], 0.0, BrowserService(settings=settings))
+            # Возвращаем existing_browser если он есть — чтобы вызывающий
+            # код мог корректно управлять его жизненным циклом
+            fallback_browser = existing_browser or BrowserService(settings=settings)
+            return ([], 0.0, fallback_browser)
 
         worker_start = time.perf_counter()
-        browser_service = BrowserService(settings=settings)
         monitor = ConnectionMonitor()
         current_proxy: ProxyConfig | None = proxy
 
         # Прокси, занятые другими воркерами (исключаем из замены)
         in_use_by_others = [p for p in all_proxies if p != proxy]
 
-        try:
-            await browser_service.start(proxy=current_proxy)
-
+        # ── Определяем, нужно ли создавать браузер ──
+        if existing_browser is not None:
+            # Переиспользуем существующий — пропускаем создание и прогрев
+            browser_service = existing_browser
             logger.info(
-                "воркер_запущен",
-                step=f"воркер={worker_idx}",
+                "воркер_переиспользует_браузер",
+                step=f"воркер={worker_idx}, прокси={current_proxy or 'без_прокси'}",
                 total=len(listings),
             )
+        else:
+            # Создаём новый браузер как раньше
+            browser_service = BrowserService(settings=settings)
 
-            # ── Прогрев с retry и возможной заменой прокси ──
-            warmup_ok, current_proxy = await EnrichStrategies._warmup_browser(
-                browser_service=browser_service,
-                proxy=current_proxy,
-                worker_idx=worker_idx,
-                all_proxies=all_proxies,
-                proxy_service=proxy_service,
-            )
+            try:
+                await browser_service.start(proxy=current_proxy)
 
-            if not warmup_ok:
-                # Прогрев не удался после всех попыток — воркер завершается.
-                # Карточки остаются необработанными → подхватит retry-раунд.
+                logger.info(
+                    "воркер_запущен",
+                    step=f"воркер={worker_idx}",
+                    total=len(listings),
+                )
+
+                # ── Прогрев с retry и возможной заменой прокси ──
+                warmup_ok, current_proxy = await EnrichStrategies._warmup_browser(
+                    browser_service=browser_service,
+                    proxy=current_proxy,
+                    worker_idx=worker_idx,
+                    all_proxies=all_proxies,
+                    proxy_service=proxy_service,
+                )
+
+                if not warmup_ok:
+                    worker_elapsed = time.perf_counter() - worker_start
+                    logger.warning(
+                        "воркер_не_прогрелся_завершение",
+                        step=f"воркер={worker_idx}, время={format_duration(worker_elapsed)}",
+                    )
+                    return (listings, worker_elapsed, browser_service)
+
+                # Обновляем список исключений после возможной замены прокси
+                in_use_by_others = [p for p in all_proxies if p != current_proxy]
+
+            except Exception as e:
                 worker_elapsed = time.perf_counter() - worker_start
                 logger.warning(
-                    "воркер_не_прогрелся_завершение",
-                    step=f"воркер={worker_idx}, время={format_duration(worker_elapsed)}",
+                    "ошибка_воркера_при_запуске",
+                    error=str(e),
+                    error_type=type(e).__name__,
+                    step=f"воркер={worker_idx}",
                 )
                 return (listings, worker_elapsed, browser_service)
 
-            # Обновляем список исключений после возможной замены прокси
-            in_use_by_others = [p for p in all_proxies if p != current_proxy]
-
+        try:
             from src.services.listing_service import ListingService
 
-            # ── ИСПРАВЛЕНИЕ: пробрасываем controller в ListingService ──
-            # Без этого PageLoader и HybridStrategy внутри ListingService
-            # не получают контроллер и не вызывают report_success/failure.
+            # ── Пробрасываем controller в ListingService ──
             listing_service = ListingService(
                 settings=settings,
                 browser_service=browser_service,
@@ -1409,9 +1517,6 @@ class EnrichStrategies:
             )
 
             # ── Обработка карточек по одной с контролем параллелизма ──
-            # Фильтруем на входе — если карточка уже помечена как
-            # необогащаемая (например, в предыдущем раунде), она сюда
-            # не попадёт. Это дополнительная защита на уровне воркера.
             remaining = [
                 l for l in listings
                 if not EnrichStrategies._is_enriched(l)
@@ -1434,8 +1539,6 @@ class EnrichStrategies:
 
                 await monitor.reset()
 
-                # Обрабатываем карточки порциями по max_tabs вкладок.
-                # Перед каждой карточкой — acquire() у контроллера.
                 await EnrichStrategies._process_worker_cards(
                     listings=remaining,
                     listing_service=listing_service,
@@ -1549,7 +1652,7 @@ class EnrichStrategies:
                             p for p in all_proxies if p != current_proxy
                         ]
 
-                        # ── ИСПРАВЛЕНИЕ: пробрасываем controller при пересоздании ──
+                        # ── Пробрасываем controller при пересоздании ──
                         monitor = ConnectionMonitor()
                         listing_service = ListingService(
                             settings=settings,
@@ -1575,8 +1678,7 @@ class EnrichStrategies:
                     # Пауза после перезапуска
                     await asyncio.sleep(_RESTART_COOLDOWN_SECONDS)
 
-                    # Пересчитываем необработанные — карточки с
-                    # skip_reason сюда не попадают
+                    # Пересчитываем необработанные
                     remaining = [
                         l for l in listings
                         if not EnrichStrategies._is_enriched(l)
@@ -1741,4 +1843,3 @@ class EnrichStrategies:
                 controller.release()
             if page is not None:
                 await browser_service.close_page(page)
-

@@ -1,6 +1,7 @@
 """Сервис управления браузером — Playwright + stealth-настройки."""
 
 import asyncio
+import logging
 import random
 
 from playwright.async_api import (
@@ -104,6 +105,155 @@ _CONTEXT_OPTIONS: dict = {
     ),
 }
 
+# ── Маркеры для идентификации Playwright-исключений ──
+# Используются обработчиком _make_playwright_exception_handler для
+# определения, что исключение пришло из внутренних задач Playwright,
+# а не из пользовательского кода. Проверяется имя модуля в __module__
+# класса исключения и текст ошибки.
+
+# Имена модулей Playwright, из которых приходят осиротевшие исключения.
+_PLAYWRIGHT_MODULE_MARKERS: tuple[str, ...] = (
+    "playwright.",
+    "playwright._impl.",
+)
+
+# Маркеры в тексте ошибки, указывающие на сетевые/навигационные проблемы.
+# Эти ошибки безвредны при остановке браузера — страница уже закрыта,
+# а pending-операция (goto, wait_for_selector) получила отказ.
+_PLAYWRIGHT_ERROR_MARKERS: tuple[str, ...] = (
+    "net::ERR_",
+    "Timeout",
+    "frame was detached",
+    "Target closed",
+    "Target crashed",
+    "Navigation failed",
+    "Protocol error",
+    "Connection closed",
+    "Browser closed",
+    "browser has been closed",
+    "context has been closed",
+    "page has been closed",
+)
+
+
+def _is_playwright_exception(exception: BaseException | None) -> bool:
+    """Определяет, является ли исключение внутренним Playwright-исключением.
+
+    Проверяет два критерия (любого достаточно):
+    1. Модуль класса исключения начинается с 'playwright.' — это типы
+       TimeoutError и Error из playwright._impl._errors.
+    2. Исключение является asyncio.InvalidStateError и связано с
+       задачей Connection.run (гонка состояний при закрытии браузера).
+
+    Не фильтрует:
+    - Стандартные asyncio.TimeoutError из пользовательского asyncio.wait_for().
+    - Любые исключения из пользовательского кода (src/).
+    - Неизвестные исключения без маркеров Playwright.
+
+    Args:
+        exception: Исключение из контекста asyncio.
+
+    Returns:
+        True если исключение из внутренних задач Playwright и безвредно.
+    """
+    if exception is None:
+        return False
+
+    # Критерий 1: InvalidStateError из Connection.run
+    # (гонка при параллельном закрытии браузера)
+    if isinstance(exception, asyncio.InvalidStateError):
+        return True
+
+    # Критерий 2: Исключение из модуля playwright.*
+    exc_module = getattr(type(exception), "__module__", "") or ""
+    if any(exc_module.startswith(marker) for marker in _PLAYWRIGHT_MODULE_MARKERS):
+        return True
+
+    # Критерий 3: Текст ошибки содержит маркеры Playwright-проблем.
+    # Покрывает случай, когда playwright оборачивает стандартные типы
+    # (например, Error вместо playwright.Error в старых версиях).
+    error_text = str(exception)
+    if any(marker in error_text for marker in _PLAYWRIGHT_ERROR_MARKERS):
+        return True
+
+    return False
+
+
+def _make_playwright_exception_handler(
+    default_handler: "asyncio.events._ExceptionHandler | None",
+) -> "callable":
+    """Создаёт обработчик необработанных исключений asyncio-задач.
+
+    Перехватывает и подавляет безвредные исключения из внутренних задач
+    Playwright, которые возникают при остановке браузера:
+
+    1. InvalidStateError из Connection.run — гонка состояний при
+       параллельной работе вкладок и закрытии браузера. Playwright
+       вызывает _stopped_future.set_result() на уже завершённом Future.
+
+    2. TimeoutError из wait_for_selector / page.goto — страница закрылась
+       при остановке браузера, а на ней висели pending-операции с таймаутом.
+       Операция получила исключение, но Task уже никто не ожидает.
+
+    3. Error(net::ERR_*) из page.goto — аналогично: сетевое соединение
+       разорвано при остановке браузера, pending-навигация получила
+       сетевую ошибку.
+
+    4. Error(frame was detached / Target closed / Browser closed) —
+       страница или контекст уничтожены во время pending-операции.
+
+    Все эти ошибки безвредны — они возникают ПОСЛЕ штатного завершения
+    всех воркеров и не влияют на собранные данные. Без обработчика они
+    засоряют stderr десятками трейсбеков.
+
+    Критерий фильтрации: исключение должно пройти _is_playwright_exception().
+    Все остальные исключения пробрасываются в стандартный обработчик asyncio.
+
+    Args:
+        default_handler: Предыдущий обработчик исключений (может быть None).
+
+    Returns:
+        Функция-обработчик для loop.set_exception_handler().
+    """
+
+    def handler(loop: asyncio.AbstractEventLoop, context: dict) -> None:
+        exception = context.get("exception")
+
+        if _is_playwright_exception(exception):
+            # Подавляем — логируем на уровне DEBUG, чтобы не засорять stdout
+            exc_type = type(exception).__name__ if exception else "unknown"
+            exc_msg = str(exception)[:150] if exception else ""
+
+            # Определяем источник для диагностики
+            future = context.get("future")
+            source_name = ""
+            if future is not None:
+                source_name = getattr(future, "get_name", lambda: "")()
+                if not source_name:
+                    coro = getattr(future, "get_coro", lambda: None)()
+                    if coro is not None:
+                        source_name = getattr(coro, "__qualname__", "")
+
+            logger.debug(
+                "playwright_осиротевшее_исключение_подавлено",
+                step=f"тип={exc_type}, источник={source_name or 'unknown'}",
+                error=exc_msg,
+            )
+            return
+
+        # Все остальные исключения — пробрасываем в стандартный обработчик
+        if default_handler is not None:
+            default_handler(loop, context)
+        else:
+            # Стандартное поведение asyncio — вывод в stderr через logging
+            logging.getLogger("asyncio").error(
+                "Необработанное исключение в asyncio-задаче",
+                exc_info=exception,
+                extra={"asyncio_context": context},
+            )
+
+    return handler
+
 
 class BrowserService:
     """Сервис для управления браузером Playwright.
@@ -117,6 +267,7 @@ class BrowserService:
     - Создание дополнительных вкладок для параллельной обработки карточек.
     - Оптимизацию потребления памяти через аргументы Chromium.
     - Отключение загрузки изображений для экономии RAM.
+    - Подавление безвредных осиротевших исключений из внутренних задач Playwright.
     """
 
     def __init__(self, settings: Settings) -> None:
@@ -131,6 +282,9 @@ class BrowserService:
         self._context: BrowserContext | None = None
         self._page: Page | None = None
         self._proxy: ProxyConfig | None = None
+        self._original_exception_handler: "asyncio.events._ExceptionHandler | None" = (
+            None
+        )
 
     @property
     def page(self) -> Page:
@@ -170,6 +324,11 @@ class BrowserService:
         Если передана прокси — браузер использует её для всех соединений.
         Без прокси — запускает обычный браузер без прокси.
 
+        Устанавливает обработчик необработанных исключений asyncio-задач,
+        который подавляет безвредные осиротевшие исключения из внутренних
+        задач Playwright. Оригинальный обработчик сохраняется
+        и восстанавливается при вызове stop().
+
         Args:
             proxy: Конфигурация прокси (опционально).
         """
@@ -179,6 +338,17 @@ class BrowserService:
         logger.info(
             "запуск_браузера",
             step=proxy_label,
+        )
+
+        # ── Установка обработчика осиротевших Playwright-исключений ──
+        # При параллельной работе вкладок + закрытии браузера внутренние
+        # задачи Playwright (Connection.run, Page._on_route, навигация)
+        # получают исключения, которые уже никто не ожидает. Без обработчика
+        # каждое такое исключение выбрасывает трейсбек в stderr.
+        loop = asyncio.get_running_loop()
+        self._original_exception_handler = loop.get_exception_handler()
+        loop.set_exception_handler(
+            _make_playwright_exception_handler(self._original_exception_handler)
         )
 
         self._playwright = await async_playwright().start()
@@ -333,6 +503,10 @@ class BrowserService:
         пауза (_CLOSE_DRAIN_DELAY), чтобы Node.js-драйвер Playwright
         успел обработать pending dispose/event-сообщения до разрыва pipe.
 
+        Восстанавливает оригинальный обработчик исключений asyncio,
+        который был заменён в start() для подавления осиротевших
+        Playwright-исключений.
+
         Порядок закрытия:
         1. Закрытие всех дополнительных страниц (вкладок).
         2. Пауза — Node.js обрабатывает page dispose-события.
@@ -341,6 +515,7 @@ class BrowserService:
         5. Закрытие браузера (убивает процесс Chromium).
         6. Пауза — Node.js завершает финализацию процесса.
         7. Остановка Playwright (закрывает pipe к Node.js-драйверу).
+        8. Восстановление оригинального обработчика исключений asyncio.
         """
         # Шаг 1: Закрываем все дополнительные страницы
         if self._context is not None:
@@ -419,6 +594,19 @@ class BrowserService:
                 )
             finally:
                 self._playwright = None
+
+        # Шаг 5: Восстанавливаем оригинальный обработчик исключений asyncio.
+        # Это важно, если BrowserService создаётся/уничтожается несколько
+        # раз за время жизни event loop (например, при перезапуске браузера
+        # в retry-раундах). Без восстановления каждый start() устанавливает
+        # новый обработчик, оборачивающий предыдущий — это утечка памяти.
+        try:
+            loop = asyncio.get_running_loop()
+            loop.set_exception_handler(self._original_exception_handler)
+            self._original_exception_handler = None
+        except RuntimeError:
+            # Event loop уже закрыт — восстановление не нужно
+            pass
 
         logger.info("браузер_остановлен")
 
