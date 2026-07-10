@@ -108,9 +108,15 @@ class ListingService:
         # 0 = отключён (без ограничения времени).
         self._enrich_timeout_seconds: float = float(settings.enrich_timeout_seconds)
 
+        # PageLoader получает navigation_timeout из settings — пользователь
+        # управляет таймаутом навигации через NAVIGATION_TIMEOUT в .env.
+        # Если settings.navigation_timeout = 60000 (дефолт), page.goto
+        # будет ждать 60 секунд вместо прежних 30. Для медленных прокси
+        # рекомендуется 45000–60000 мс.
         self._page_loader = PageLoader(
             monitor=monitor,
             concurrency_controller=concurrency_controller,
+            navigation_timeout_ms=settings.navigation_timeout,
         )
         self._token_manager = TokenManager(
             page_loader=self._page_loader,

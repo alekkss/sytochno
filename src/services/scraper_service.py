@@ -58,6 +58,15 @@ _MAX_CONSECUTIVE_ERRORS: int = 3
 # Максимальное количество перезапусков браузера с прокси за одну ссылку
 _MAX_PROXY_RESTARTS: int = 5
 
+# Количество повторных попыток для одной пачки перед пропуском
+_BATCH_RETRY_ATTEMPTS: int = 2
+
+# Пауза перед повторной попыткой пачки (секунды)
+_BATCH_RETRY_PAUSE: float = 2.0
+
+# Пауза после переключения прокси в Фазе B (секунды)
+_PROXY_SWITCH_PAUSE: float = 3.0
+
 # Маркеры ошибок API, при которых выполняется переключение на прокси
 _API_ERROR_MARKERS: tuple[str, ...] = (
     "Bad request",
@@ -219,6 +228,7 @@ class ScraperService:
             page=page,
             ids=all_ids,
             headers=api_headers,
+            current_proxy=current_proxy,
         )
 
         # Закрываем браузер после сбора
@@ -550,19 +560,30 @@ class ScraperService:
         page: Page,
         ids: list[int],
         headers: dict[str, str],
+        current_proxy: ProxyConfig | None = None,
     ) -> list[RawListing]:
         """Получает полные данные объявлений пачками по 50 ID.
+
+        При ошибках:
+        1. Повторяет пачку до _BATCH_RETRY_ATTEMPTS раз с паузой.
+        2. При _MAX_CONSECUTIVE_ERRORS подряд — переключается на прокси,
+           перезапускает браузер и продолжает с той же пачки.
+        3. Если прокси исчерпаны — возвращает то, что собрано.
 
         Args:
             page: Страница Playwright для fetch().
             ids: Список ID объявлений.
             headers: Заголовки API.
+            current_proxy: Текущая прокси (для fallback при блокировке).
 
         Returns:
             Список RawListing с заполненными полями.
         """
         listings: list[RawListing] = []
         total_batches = (len(ids) + _API_PAGE_SIZE - 1) // _API_PAGE_SIZE
+        consecutive_errors: int = 0
+        proxy_restarts: int = 0
+        skipped_batches: int = 0
 
         logger.info(
             "начало_получения_полных_данных",
@@ -570,9 +591,11 @@ class ScraperService:
             total_batches=total_batches,
         )
 
-        for i in range(0, len(ids), _API_PAGE_SIZE):
-            batch = ids[i: i + _API_PAGE_SIZE]
-            batch_num = i // _API_PAGE_SIZE + 1
+        batch_index = 0
+
+        while batch_index < len(ids):
+            batch = ids[batch_index: batch_index + _API_PAGE_SIZE]
+            batch_num = batch_index // _API_PAGE_SIZE + 1
 
             ids_params = "&".join(f"ids[]={oid}" for oid in batch)
             url = (
@@ -581,43 +604,216 @@ class ScraperService:
                 f"&max_guests=2&relevance=pairs&currencyId=1"
             )
 
-            result = await _fetch_get(page, url, headers)
+            # ── Retry для отдельной пачки ──
+            batch_success = False
 
-            if _is_error_response(result):
+            for attempt in range(_BATCH_RETRY_ATTEMPTS):
+                result = await _fetch_get(page, url, headers)
+
+                if not _is_error_response(result):
+                    # Успешный ответ — сбрасываем счётчик ошибок
+                    consecutive_errors = 0
+                    batch_success = True
+
+                    objects = _extract_objects(result.get("data"))
+
+                    if objects:
+                        for obj in objects:
+                            listing = _parse_api_object(obj)
+                            if listing is not None:
+                                listings.append(listing)
+
+                    break
+
+                # Ошибка — логируем с деталями
                 error_msg = _extract_error_message(result)
+                raw_preview = result.get("raw", "")
+
                 logger.warning(
                     "ошибка_получения_данных_пачки",
                     batch=f"{batch_num}/{total_batches}",
+                    attempt=f"{attempt + 1}/{_BATCH_RETRY_ATTEMPTS}",
                     error=error_msg,
+                    raw_preview=raw_preview[:200] if raw_preview else "",
+                    consecutive=consecutive_errors + 1,
                 )
-                await asyncio.sleep(_PAUSE_BETWEEN_API)
-                continue
 
-            objects = _extract_objects(result.get("data"))
+                consecutive_errors += 1
 
-            if not objects:
-                logger.debug(
-                    "пустая_пачка",
+                # ── Порог ошибок → переключение на прокси ──
+                if consecutive_errors >= _MAX_CONSECUTIVE_ERRORS:
+                    logger.warning(
+                        "порог_ошибок_фазы_B_переключение_прокси",
+                        consecutive=consecutive_errors,
+                        batch=f"{batch_num}/{total_batches}",
+                        collected=len(listings),
+                    )
+
+                    switch_result = await self._restart_browser_for_phase_b(
+                        current_proxy=current_proxy,
+                        proxy_restarts=proxy_restarts,
+                    )
+
+                    if switch_result is None:
+                        # Прокси исчерпаны — возвращаем собранное
+                        logger.warning(
+                            "прокси_исчерпаны_фаза_B_возврат_собранного",
+                            collected=len(listings),
+                            remaining_batches=total_batches - batch_num + 1,
+                        )
+                        return listings
+
+                    page, headers, current_proxy, proxy_restarts = switch_result
+                    consecutive_errors = 0
+                    # Не инкрементируем batch_index — повторяем ту же пачку
+                    break
+
+                # Пауза перед retry пачки
+                if attempt < _BATCH_RETRY_ATTEMPTS - 1:
+                    await asyncio.sleep(_BATCH_RETRY_PAUSE)
+
+            if not batch_success and consecutive_errors < _MAX_CONSECUTIVE_ERRORS:
+                # Все retry пачки исчерпаны, но порог прокси не достигнут —
+                # пропускаем пачку
+                skipped_batches += 1
+                logger.warning(
+                    "пачка_пропущена_после_retry",
                     batch=f"{batch_num}/{total_batches}",
+                    skipped_ids=len(batch),
+                    total_skipped_batches=skipped_batches,
                 )
-                await asyncio.sleep(_PAUSE_BETWEEN_API)
-                continue
 
-            for obj in objects:
-                listing = _parse_api_object(obj)
-                if listing is not None:
-                    listings.append(listing)
+            # Переходим к следующей пачке только при успехе или пропуске
+            # (не при переключении прокси — тогда повторяем текущую)
+            if batch_success or consecutive_errors < _MAX_CONSECUTIVE_ERRORS:
+                batch_index += _API_PAGE_SIZE
 
-            if batch_num % 50 == 0 or batch_num == total_batches:
+            if batch_num % 50 == 0 or batch_index >= len(ids):
                 logger.info(
                     "прогресс_получения_данных",
                     batch=f"{batch_num}/{total_batches}",
                     listings_collected=len(listings),
+                    skipped_batches=skipped_batches,
                 )
 
             await asyncio.sleep(_PAUSE_BETWEEN_API)
 
+        if skipped_batches > 0:
+            logger.warning(
+                "фаза_B_завершена_с_пропусками",
+                total_listings=len(listings),
+                skipped_batches=skipped_batches,
+                skipped_ids_approx=skipped_batches * _API_PAGE_SIZE,
+            )
+
         return listings
+
+    async def _restart_browser_for_phase_b(
+        self,
+        current_proxy: ProxyConfig | None,
+        proxy_restarts: int,
+    ) -> tuple[Page, dict[str, str], ProxyConfig | None, int] | None:
+        """Перезапускает браузер с новой прокси для Фазы B.
+
+        Загружает страницу sutochno.ru для получения сессии,
+        перехватывает свежие заголовки API.
+
+        Args:
+            current_proxy: Текущая прокси.
+            proxy_restarts: Количество перезапусков.
+
+        Returns:
+            Кортеж (page, headers, proxy, restarts) или None если прокси исчерпаны.
+        """
+        if proxy_restarts >= _MAX_PROXY_RESTARTS:
+            logger.warning(
+                "лимит_перезапусков_прокси_фаза_B",
+                restarts=proxy_restarts,
+            )
+            return None
+
+        next_proxy = self._get_next_proxy(exclude=current_proxy)
+
+        if next_proxy is None:
+            logger.warning("пул_прокси_пуст_фаза_B")
+            return None
+
+        logger.info(
+            "переключение_прокси_фаза_B",
+            proxy=str(next_proxy),
+            restart_num=proxy_restarts + 1,
+        )
+
+        await self._browser.stop()
+        await asyncio.sleep(_PROXY_SWITCH_PAUSE)
+
+        # Открываем новый браузер через прокси
+        # и загружаем главную страницу для получения сессии
+        try:
+            await self._browser.start(proxy=next_proxy)
+            page = self._browser.page
+
+            # Перехватываем свежие заголовки из любого API-запроса
+            fresh_headers: dict[str, str] | None = None
+
+            async def _capture_headers(route, request):
+                nonlocal fresh_headers
+                if fresh_headers is None:
+                    fresh_headers = {
+                        k: v for k, v in request.headers.items()
+                        if k.lower() not in _SKIP_HEADERS
+                    }
+                await route.continue_()
+
+            await page.route("**/api/json/**", _capture_headers)
+
+            # Загружаем любую страницу sutochno.ru для инициализации сессии
+            await page.goto(
+                "https://sutochno.ru",
+                wait_until="domcontentloaded",
+            )
+
+            # Ожидаем перехвата заголовков
+            elapsed = 0.0
+            while elapsed < _API_INTERCEPT_TIMEOUT:
+                if fresh_headers is not None:
+                    break
+                await asyncio.sleep(_API_INTERCEPT_POLL_INTERVAL)
+                elapsed += _API_INTERCEPT_POLL_INTERVAL
+
+            await page.unroute("**/api/json/**")
+
+            if fresh_headers is None:
+                logger.warning(
+                    "не_удалось_перехватить_заголовки_фаза_B",
+                    proxy=str(next_proxy),
+                )
+                # Используем базовые заголовки — fetch может работать
+                # благодаря cookies сессии
+                fresh_headers = {
+                    "accept": "application/json, text/plain, */*",
+                    "accept-language": "ru-RU,ru;q=0.9",
+                }
+
+            logger.info(
+                "прокси_готова_фаза_B",
+                proxy=str(next_proxy),
+                headers_captured=fresh_headers is not None,
+            )
+
+            return page, fresh_headers, next_proxy, proxy_restarts + 1
+
+        except Exception as e:
+            logger.warning(
+                "ошибка_запуска_прокси_фаза_B",
+                proxy=str(next_proxy),
+                error=str(e)[:300],
+            )
+            # Рекурсивно пробуем следующую прокси
+            return await self._restart_browser_for_phase_b(
+                current_proxy=next_proxy,
+                proxy_restarts=proxy_restarts + 1,
+            )
 
 
 # ── Вспомогательные функции (модульный уровень) ──────────────

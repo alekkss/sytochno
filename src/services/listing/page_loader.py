@@ -7,8 +7,11 @@ from playwright.async_api import Page
 
 from src.config.logger import get_logger
 from src.services.listing.constants import (
+    DEFAULT_GOTO_TIMEOUT_MS,
     GOTO_RETRY_DELAY,
     MAX_GOTO_RETRIES,
+    TOKEN_POLL_INTERVAL_SECONDS,
+    TOKEN_WAIT_AFTER_DOM_SECONDS,
 )
 
 if TYPE_CHECKING:
@@ -36,29 +39,22 @@ _NETWORK_ERROR_MARKERS: tuple[str, ...] = (
 # гарантированно бесполезна — экономим 5+ секунд на каждой карточке.
 _CONSECUTIVE_NETWORK_ERRORS_LIMIT: int = 2
 
-# Максимальное время ожидания токена после domcontentloaded (секунды).
-# Фронтенд sutochno.ru отправляет API-запрос (с токеном в заголовке)
-# практически сразу при загрузке страницы — обычно токен перехватывается
-# ещё ДО domcontentloaded. Но в редких случаях (медленная прокси,
-# тяжёлый JS-бандл) запрос может уйти чуть позже.
-# 3 секунды — достаточный запас для перехвата без бесполезного ожидания
-# networkidle (10 сек) и CSS-селекторов (до 45 сек).
-_TOKEN_WAIT_AFTER_DOM_SECONDS: float = 3.0
-
-# Интервал проверки наличия токена внутри цикла ожидания (секунды).
-# Мелкий шаг позволяет выйти из ожидания практически мгновенно
-# после перехвата, не дожидаясь полных _TOKEN_WAIT_AFTER_DOM_SECONDS.
-_TOKEN_POLL_INTERVAL_SECONDS: float = 0.2
-
 
 class PageLoader:
     """Загрузка страницы карточки с retry и перехватом токена через route interception.
 
     Оптимизация: после domcontentloaded не ожидает networkidle и
     появления CSS-селекторов. Вместо этого ждёт только перехвата токена
-    (до _TOKEN_WAIT_AFTER_DOM_SECONDS). Токен — единственное, что нужно
+    (до token_wait_seconds). Токен — единственное, что нужно
     от страницы; все данные потом получаются через fetch() в контексте
     браузера, а не из DOM.
+
+    Таймауты настраиваются через конструктор:
+    - navigation_timeout_ms: таймаут page.goto (по умолчанию 45000 мс).
+      Через медленные прокси SPA sutochno.ru загружается за 15–40 секунд.
+    - token_wait_seconds: ожидание токена после domcontentloaded
+      (по умолчанию 10 секунд). Поллинг каждые 0.2 секунды обеспечивает
+      мгновенный выход при перехвате — реальное ожидание обычно 0–1 сек.
 
     При наличии ConnectionMonitor репортит результаты загрузки —
     это позволяет централизованно детектировать массовые сбои
@@ -72,6 +68,8 @@ class PageLoader:
         self,
         monitor: "ConnectionMonitor | None" = None,
         concurrency_controller: "ConcurrencyController | None" = None,
+        navigation_timeout_ms: int = DEFAULT_GOTO_TIMEOUT_MS,
+        token_wait_seconds: float = TOKEN_WAIT_AFTER_DOM_SECONDS,
     ) -> None:
         """Инициализирует загрузчик страниц.
 
@@ -81,9 +79,19 @@ class PageLoader:
             concurrency_controller: Глобальный контроллер параллелизма
                 (опциональный). Если передан — успехи и провалы навигации
                 репортятся для адаптации лимита.
+            navigation_timeout_ms: Таймаут навигации page.goto
+                в миллисекундах. По умолчанию DEFAULT_GOTO_TIMEOUT_MS
+                (45000). Через медленные прокси рекомендуется 45000–60000.
+            token_wait_seconds: Максимальное время ожидания перехвата
+                токена после domcontentloaded (секунды). По умолчанию
+                TOKEN_WAIT_AFTER_DOM_SECONDS (10.0). Поллинг каждые
+                TOKEN_POLL_INTERVAL_SECONDS обеспечивает мгновенный выход
+                при быстром перехвате.
         """
         self._monitor = monitor
         self._controller = concurrency_controller
+        self._navigation_timeout_ms = navigation_timeout_ms
+        self._token_wait_seconds = token_wait_seconds
 
     @property
     def monitor(self) -> "ConnectionMonitor | None":
@@ -280,11 +288,16 @@ class PageLoader:
             try:
                 logger.debug(
                     "goto_попытка",
-                    step=f"попытка={attempt}/{MAX_GOTO_RETRIES}",
+                    step=f"попытка={attempt}/{MAX_GOTO_RETRIES}, "
+                         f"таймаут={self._navigation_timeout_ms}мс",
                     path=url,
                 )
 
-                await page.goto(url, wait_until="domcontentloaded", timeout=30000)
+                await page.goto(
+                    url,
+                    wait_until="domcontentloaded",
+                    timeout=self._navigation_timeout_ms,
+                )
 
                 # Страница загрузилась — сбрасываем счётчик сетевых ошибок
                 consecutive_network_errors = 0
@@ -343,7 +356,8 @@ class PageLoader:
                             error=error_msg[:200],
                             step=f"id={object_id}, "
                                  f"попытка={attempt}/{MAX_GOTO_RETRIES}, "
-                                 f"подряд_сетевых={consecutive_network_errors}",
+                                 f"подряд_сетевых={consecutive_network_errors}, "
+                                 f"таймаут={self._navigation_timeout_ms}мс",
                         )
                         if self._monitor:
                             await self._monitor.report_failure(object_id)
@@ -353,7 +367,8 @@ class PageLoader:
                         logger.warning(
                             "сетевая_ошибка_повтор",
                             error=error_msg[:200],
-                            step=f"попытка={attempt}/{MAX_GOTO_RETRIES}",
+                            step=f"попытка={attempt}/{MAX_GOTO_RETRIES}, "
+                                 f"таймаут={self._navigation_timeout_ms}мс",
                         )
                         await asyncio.sleep(GOTO_RETRY_DELAY)
                         continue
@@ -362,7 +377,8 @@ class PageLoader:
                     "goto_не_удался",
                     error=error_msg[:200],
                     error_type=type(e).__name__,
-                    step=f"попытка={attempt}/{MAX_GOTO_RETRIES}",
+                    step=f"попытка={attempt}/{MAX_GOTO_RETRIES}, "
+                         f"таймаут={self._navigation_timeout_ms}мс",
                 )
                 # Все попытки исчерпаны — репортим сбой в монитор
                 if self._monitor:
@@ -378,16 +394,16 @@ class PageLoader:
             self._controller.report_failure()
         return False
 
-    @staticmethod
     async def _wait_for_token(
+        self,
         captured_token: list[str],
         object_id: str,
     ) -> None:
         """Ожидает перехвата токена с коротким поллингом.
 
         Вызывается если после domcontentloaded токен ещё не перехвачен.
-        Ждёт до _TOKEN_WAIT_AFTER_DOM_SECONDS, проверяя каждые
-        _TOKEN_POLL_INTERVAL_SECONDS. Выходит досрочно как только
+        Ждёт до self._token_wait_seconds, проверяя каждые
+        TOKEN_POLL_INTERVAL_SECONDS. Выходит досрочно как только
         токен появился.
 
         Args:
@@ -396,17 +412,17 @@ class PageLoader:
             object_id: ID объявления (для логов).
         """
         elapsed = 0.0
-        while elapsed < _TOKEN_WAIT_AFTER_DOM_SECONDS:
+        while elapsed < self._token_wait_seconds:
             if captured_token:
                 logger.debug(
                     "токен_перехвачен_после_ожидания",
                     step=f"id={object_id}, ожидание={elapsed:.1f}с",
                 )
                 return
-            await asyncio.sleep(_TOKEN_POLL_INTERVAL_SECONDS)
-            elapsed += _TOKEN_POLL_INTERVAL_SECONDS
+            await asyncio.sleep(TOKEN_POLL_INTERVAL_SECONDS)
+            elapsed += TOKEN_POLL_INTERVAL_SECONDS
 
         logger.debug(
             "токен_не_перехвачен_за_лимит",
-            step=f"id={object_id}, лимит={_TOKEN_WAIT_AFTER_DOM_SECONDS}с",
+            step=f"id={object_id}, лимит={self._token_wait_seconds}с",
         )
