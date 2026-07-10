@@ -21,11 +21,25 @@ logger = get_logger("browser")
 # Таймаут ожидания завершения Playwright (секунды)
 _PLAYWRIGHT_STOP_TIMEOUT: float = 10.0
 
-# Пауза между шагами закрытия, чтобы Node.js-драйвер
-# успел обработать pending-события до разрыва pipe (секунды).
-# Решает проблему EPIPE в Node.js v24+, где unhandled write
-# на закрытый pipe стал fatal error.
+# Пауза между шагами закрытия (страницы → контекст → браузер),
+# чтобы Node.js-драйвер успел обработать dispose-события (секунды).
 _CLOSE_DRAIN_DELAY: float = 0.5
+
+# Увеличенная пауза перед playwright.stop() — критический шаг,
+# где закрывается pipe к Node.js-драйверу. Если в этот момент
+# Node.js ещё обрабатывает dispose-события от browser.close() —
+# запись в закрытый pipe даёт EPIPE (fatal в Node.js v24+).
+# 2 секунды — достаточно для одного браузера с несколькими вкладками.
+# При параллельной остановке 80 браузеров (через _stop_browsers)
+# каждый процесс Node.js независим, поэтому 2 сек хватает.
+_CLOSE_DRAIN_BEFORE_STOP: float = 2.0
+
+# Таймаут на навигацию about:blank при закрытии страницы (мс).
+# Перед закрытием контекста навигируем все страницы на about:blank —
+# это отменяет все pending-операции (goto, wait_for_selector, route)
+# и гарантирует, что Node.js-драйвер не попытается отправить
+# ответ через pipe после его закрытия.
+_BLANK_NAVIGATION_TIMEOUT_MS: int = 3000
 
 # Таймаут на полную прокрутку страницы (секунды).
 # Если Chromium захлебнулся по памяти/CPU — evaluate() может
@@ -54,34 +68,13 @@ _BROWSER_ARGS: list[str] = [
     "--no-sandbox",
 
     # ── Экономия памяти: ограничение ресурсов Chromium ──
-    # Один процесс вместо отдельных renderer'ов на каждую вкладку.
-    # Предотвращает ситуацию, когда OOM-killer убивает отдельный renderer
-    # (Target crashed), оставляя главный процесс живым и неработоспособным.
-    # С --single-process Chromium управляет памятью в рамках одного процесса,
-    # и при нехватке RAM завершается целиком (что обрабатывается retry-логикой).
     "--single-process",
-    # Ограничиваем JS-хип до 256 МБ.
-    # Для парсинга каталога sutochno.ru (не тяжёлое SPA) достаточно с запасом.
-    # С --single-process это единый лимит на весь JS-контекст.
     "--js-flags=--max-old-space-size=256",
-    # Запрещаем фоновую активность неактивных вкладок.
-    # Без этих флагов Chromium продолжает выполнять JS-таймеры,
-    # requestAnimationFrame и сетевые запросы во вкладках,
-    # которые не находятся в фокусе — впустую расходуя CPU и RAM.
     "--disable-renderer-backgrounding",
     "--disable-background-timer-throttling",
     "--disable-backgrounding-occluded-windows",
-    # Отключаем GPU-ускорение — на серверах нет GPU,
-    # а software-рендеринг расходует дополнительную память.
     "--disable-gpu",
-    # Отключаем PaintHolding (буферизация рендеринга до полной загрузки —
-    # расходует RAM на хранение промежуточных фреймов) и ImageDecodeService
-    # (декодирование изображений в отдельных потоках — расходует RAM).
     "--disable-features=PaintHolding,ImageDecodeService",
-    # Полностью отключаем загрузку изображений.
-    # Для парсинга каталога изображения не нужны — данные извлекаются из текста.
-    # Каждая страница содержит ~50 карточек с фото — это основной потребитель
-    # памяти renderer'а. Отключение экономит ~200-400 МБ на страницу.
     "--blink-settings=imagesEnabled=false",
 ]
 
@@ -106,20 +99,12 @@ _CONTEXT_OPTIONS: dict = {
 }
 
 # ── Маркеры для идентификации Playwright-исключений ──
-# Используются обработчиком _make_playwright_exception_handler для
-# определения, что исключение пришло из внутренних задач Playwright,
-# а не из пользовательского кода. Проверяется имя модуля в __module__
-# класса исключения и текст ошибки.
 
-# Имена модулей Playwright, из которых приходят осиротевшие исключения.
 _PLAYWRIGHT_MODULE_MARKERS: tuple[str, ...] = (
     "playwright.",
     "playwright._impl.",
 )
 
-# Маркеры в тексте ошибки, указывающие на сетевые/навигационные проблемы.
-# Эти ошибки безвредны при остановке браузера — страница уже закрыта,
-# а pending-операция (goto, wait_for_selector) получила отказ.
 _PLAYWRIGHT_ERROR_MARKERS: tuple[str, ...] = (
     "net::ERR_",
     "Timeout",
@@ -139,16 +124,11 @@ _PLAYWRIGHT_ERROR_MARKERS: tuple[str, ...] = (
 def _is_playwright_exception(exception: BaseException | None) -> bool:
     """Определяет, является ли исключение внутренним Playwright-исключением.
 
-    Проверяет два критерия (любого достаточно):
-    1. Модуль класса исключения начинается с 'playwright.' — это типы
+    Проверяет три критерия (любого достаточно):
+    1. asyncio.InvalidStateError — гонка при закрытии браузера.
+    2. Модуль класса исключения начинается с 'playwright.' —
        TimeoutError и Error из playwright._impl._errors.
-    2. Исключение является asyncio.InvalidStateError и связано с
-       задачей Connection.run (гонка состояний при закрытии браузера).
-
-    Не фильтрует:
-    - Стандартные asyncio.TimeoutError из пользовательского asyncio.wait_for().
-    - Любые исключения из пользовательского кода (src/).
-    - Неизвестные исключения без маркеров Playwright.
+    3. Текст ошибки содержит маркеры Playwright-проблем.
 
     Args:
         exception: Исключение из контекста asyncio.
@@ -159,19 +139,13 @@ def _is_playwright_exception(exception: BaseException | None) -> bool:
     if exception is None:
         return False
 
-    # Критерий 1: InvalidStateError из Connection.run
-    # (гонка при параллельном закрытии браузера)
     if isinstance(exception, asyncio.InvalidStateError):
         return True
 
-    # Критерий 2: Исключение из модуля playwright.*
     exc_module = getattr(type(exception), "__module__", "") or ""
     if any(exc_module.startswith(marker) for marker in _PLAYWRIGHT_MODULE_MARKERS):
         return True
 
-    # Критерий 3: Текст ошибки содержит маркеры Playwright-проблем.
-    # Покрывает случай, когда playwright оборачивает стандартные типы
-    # (например, Error вместо playwright.Error в старых версиях).
     error_text = str(exception)
     if any(marker in error_text for marker in _PLAYWRIGHT_ERROR_MARKERS):
         return True
@@ -185,29 +159,7 @@ def _make_playwright_exception_handler(
     """Создаёт обработчик необработанных исключений asyncio-задач.
 
     Перехватывает и подавляет безвредные исключения из внутренних задач
-    Playwright, которые возникают при остановке браузера:
-
-    1. InvalidStateError из Connection.run — гонка состояний при
-       параллельной работе вкладок и закрытии браузера. Playwright
-       вызывает _stopped_future.set_result() на уже завершённом Future.
-
-    2. TimeoutError из wait_for_selector / page.goto — страница закрылась
-       при остановке браузера, а на ней висели pending-операции с таймаутом.
-       Операция получила исключение, но Task уже никто не ожидает.
-
-    3. Error(net::ERR_*) из page.goto — аналогично: сетевое соединение
-       разорвано при остановке браузера, pending-навигация получила
-       сетевую ошибку.
-
-    4. Error(frame was detached / Target closed / Browser closed) —
-       страница или контекст уничтожены во время pending-операции.
-
-    Все эти ошибки безвредны — они возникают ПОСЛЕ штатного завершения
-    всех воркеров и не влияют на собранные данные. Без обработчика они
-    засоряют stderr десятками трейсбеков.
-
-    Критерий фильтрации: исключение должно пройти _is_playwright_exception().
-    Все остальные исключения пробрасываются в стандартный обработчик asyncio.
+    Playwright (InvalidStateError, TimeoutError, net::ERR_*, EPIPE).
 
     Args:
         default_handler: Предыдущий обработчик исключений (может быть None).
@@ -220,11 +172,9 @@ def _make_playwright_exception_handler(
         exception = context.get("exception")
 
         if _is_playwright_exception(exception):
-            # Подавляем — логируем на уровне DEBUG, чтобы не засорять stdout
             exc_type = type(exception).__name__ if exception else "unknown"
             exc_msg = str(exception)[:150] if exception else ""
 
-            # Определяем источник для диагностики
             future = context.get("future")
             source_name = ""
             if future is not None:
@@ -241,11 +191,9 @@ def _make_playwright_exception_handler(
             )
             return
 
-        # Все остальные исключения — пробрасываем в стандартный обработчик
         if default_handler is not None:
             default_handler(loop, context)
         else:
-            # Стандартное поведение asyncio — вывод в stderr через logging
             logging.getLogger("asyncio").error(
                 "Необработанное исключение в asyncio-задаче",
                 exc_info=exception,
@@ -268,6 +216,7 @@ class BrowserService:
     - Оптимизацию потребления памяти через аргументы Chromium.
     - Отключение загрузки изображений для экономии RAM.
     - Подавление безвредных осиротевших исключений из внутренних задач Playwright.
+    - Корректное завершение без EPIPE в Node.js v24+.
     """
 
     def __init__(self, settings: Settings) -> None:
@@ -321,13 +270,7 @@ class BrowserService:
     async def start(self, proxy: ProxyConfig | None = None) -> None:
         """Запускает браузер с настройками stealth.
 
-        Если передана прокси — браузер использует её для всех соединений.
-        Без прокси — запускает обычный браузер без прокси.
-
-        Устанавливает обработчик необработанных исключений asyncio-задач,
-        который подавляет безвредные осиротевшие исключения из внутренних
-        задач Playwright. Оригинальный обработчик сохраняется
-        и восстанавливается при вызове stop().
+        Устанавливает обработчик необработанных исключений asyncio-задач.
 
         Args:
             proxy: Конфигурация прокси (опционально).
@@ -340,11 +283,6 @@ class BrowserService:
             step=proxy_label,
         )
 
-        # ── Установка обработчика осиротевших Playwright-исключений ──
-        # При параллельной работе вкладок + закрытии браузера внутренние
-        # задачи Playwright (Connection.run, Page._on_route, навигация)
-        # получают исключения, которые уже никто не ожидает. Без обработчика
-        # каждое такое исключение выбрасывает трейсбек в stderr.
         loop = asyncio.get_running_loop()
         self._original_exception_handler = loop.get_exception_handler()
         loop.set_exception_handler(
@@ -386,9 +324,6 @@ class BrowserService:
     async def is_alive(self) -> bool:
         """Проверяет, жив ли renderer процесс страницы.
 
-        Отправляет минимальный evaluate-запрос с таймаутом.
-        Если renderer мёртв (Target crashed) или завис — возвращает False.
-
         Returns:
             True если renderer отвечает, False если мёртв или недоступен.
         """
@@ -406,13 +341,6 @@ class BrowserService:
 
     async def create_page(self) -> Page:
         """Создаёт новую вкладку (page) в существующем контексте браузера.
-
-        Используется для параллельной обработки карточек — каждая вкладка
-        работает со своим объявлением независимо, разделяя один сетевой канал.
-
-        Новая вкладка наследует все stealth-настройки контекста (user-agent,
-        скрытие webdriver, locale). Таймаут навигации устанавливается
-        из настроек приложения.
 
         Returns:
             Новый экземпляр Page.
@@ -435,9 +363,6 @@ class BrowserService:
     async def close_page(self, page: Page) -> None:
         """Закрывает указанную вкладку и освобождает её ресурсы.
 
-        Не закрывает основную страницу (self._page) — только дополнительные.
-        Если передана основная страница, закрытие пропускается с предупреждением.
-
         Args:
             page: Вкладка для закрытия.
         """
@@ -457,15 +382,7 @@ class BrowserService:
             )
 
     async def close_all_pages(self) -> None:
-        """Закрывает все дополнительные вкладки, оставляя только основную.
-
-        Используется для освобождения памяти между пачками карточек
-        без полного перезапуска браузера. Каждая вкладка Chromium
-        потребляет ~50–150 МБ — при 5 вкладках на 20 воркеров это до 15 ГБ.
-
-        Основная страница (self._page) не закрывается — она нужна
-        для поддержания сессии и контекста браузера.
-        """
+        """Закрывает все дополнительные вкладки, оставляя только основную."""
         if self._context is None:
             return
 
@@ -495,29 +412,69 @@ class BrowserService:
                 step=f"закрыто={closed_count}",
             )
 
+    async def _navigate_all_to_blank(self) -> None:
+        """Навигирует все открытые страницы на about:blank.
+
+        Это отменяет все pending-операции Playwright (goto, wait_for_selector,
+        route handlers) на каждой странице. Без этого при закрытии контекста
+        Node.js-драйвер пытается отправить ответы/ошибки по pending-операциям
+        через pipe — если pipe уже закрыт, получается EPIPE (fatal в Node.js v24+).
+
+        Навигация на about:blank — лёгкая операция (локальная, без сети),
+        которая заставляет Playwright отменить все pending-запросы и route
+        handlers страницы. После этого context.close() и browser.close()
+        не генерируют dispose-событий, требующих записи в pipe.
+
+        Ошибки навигации игнорируются — страница может быть уже закрыта
+        или renderer мёртв. Главное — попытка отмены pending-операций.
+        """
+        if self._context is None:
+            return
+
+        try:
+            pages = self._context.pages
+        except Exception:
+            return
+
+        for p in pages:
+            try:
+                if not p.is_closed():
+                    await p.goto(
+                        "about:blank",
+                        timeout=_BLANK_NAVIGATION_TIMEOUT_MS,
+                        wait_until="commit",
+                    )
+            except Exception:
+                # Страница закрыта, renderer мёртв, таймаут — не критично.
+                # Главное — мы попытались отменить pending-операции.
+                pass
+
     async def stop(self) -> None:
         """Останавливает браузер и освобождает все ресурсы.
 
         Последовательность закрытия спроектирована для предотвращения
-        ошибки EPIPE в Node.js v24+. Между каждым шагом выдерживается
-        пауза (_CLOSE_DRAIN_DELAY), чтобы Node.js-драйвер Playwright
-        успел обработать pending dispose/event-сообщения до разрыва pipe.
+        ошибки EPIPE в Node.js v24+:
 
-        Восстанавливает оригинальный обработчик исключений asyncio,
-        который был заменён в start() для подавления осиротевших
-        Playwright-исключений.
-
-        Порядок закрытия:
-        1. Закрытие всех дополнительных страниц (вкладок).
-        2. Пауза — Node.js обрабатывает page dispose-события.
-        3. Закрытие контекста браузера.
-        4. Пауза — Node.js обрабатывает context dispose-события.
-        5. Закрытие браузера (убивает процесс Chromium).
-        6. Пауза — Node.js завершает финализацию процесса.
-        7. Остановка Playwright (закрывает pipe к Node.js-драйверу).
-        8. Восстановление оригинального обработчика исключений asyncio.
+        1. Навигация всех страниц на about:blank — отменяет все pending-
+           операции (goto, wait_for_selector, route handlers). Это ключевой
+           шаг: именно pending-операции, пытающиеся отправить ответ через
+           pipe после его закрытия, вызывают EPIPE.
+        2. Закрытие всех дополнительных страниц (вкладок).
+        3. Пауза — Node.js обрабатывает page dispose-события.
+        4. Закрытие контекста браузера.
+        5. Пауза — Node.js обрабатывает context dispose-события.
+        6. Закрытие браузера (убивает процесс Chromium).
+        7. Увеличенная пауза — Node.js завершает финализацию процесса.
+        8. Остановка Playwright (закрывает pipe к Node.js-драйверу).
+        9. Восстановление оригинального обработчика исключений asyncio.
         """
-        # Шаг 1: Закрываем все дополнительные страницы
+        # Шаг 1: Навигируем все страницы на about:blank.
+        # Это отменяет pending goto, wait_for_selector, route handlers —
+        # после этого закрытие контекста/браузера не генерирует событий,
+        # требующих записи в pipe.
+        await self._navigate_all_to_blank()
+
+        # Шаг 2: Закрываем все дополнительные страницы
         if self._context is not None:
             try:
                 pages_to_close = [
@@ -539,7 +496,7 @@ class BrowserService:
         # Пауза: даём Node.js обработать page dispose-события
         await asyncio.sleep(_CLOSE_DRAIN_DELAY)
 
-        # Шаг 2: Закрываем контекст браузера
+        # Шаг 3: Закрываем контекст браузера
         if self._context is not None:
             try:
                 await self._context.close()
@@ -556,7 +513,7 @@ class BrowserService:
         # Пауза: даём Node.js обработать context dispose-события
         await asyncio.sleep(_CLOSE_DRAIN_DELAY)
 
-        # Шаг 3: Закрываем браузер (убивает процесс Chromium)
+        # Шаг 4: Закрываем браузер (убивает процесс Chromium)
         if self._browser is not None:
             try:
                 await self._browser.close()
@@ -569,10 +526,14 @@ class BrowserService:
             finally:
                 self._browser = None
 
-        # Пауза: даём Node.js завершить финализацию перед разрывом pipe
-        await asyncio.sleep(_CLOSE_DRAIN_DELAY)
+        # Увеличенная пауза перед playwright.stop() — критический момент.
+        # browser.close() убивает процесс Chromium, и Node.js-драйвер
+        # обрабатывает серию событий (disconnected, closed). Если начать
+        # playwright.stop() (закрытие pipe) до завершения обработки —
+        # запись в закрытый pipe даёт EPIPE.
+        await asyncio.sleep(_CLOSE_DRAIN_BEFORE_STOP)
 
-        # Шаг 4: Останавливаем Playwright с таймаутом
+        # Шаг 5: Останавливаем Playwright с таймаутом
         if self._playwright is not None:
             try:
                 await asyncio.wait_for(
@@ -585,8 +546,6 @@ class BrowserService:
                     step=f"превышен_лимит={_PLAYWRIGHT_STOP_TIMEOUT}с",
                 )
             except Exception as e:
-                # EPIPE или другие ошибки при разрыве соединения —
-                # не критичны, браузер уже закрыт, ресурсы освобождены.
                 logger.debug(
                     "ошибка_при_остановке_playwright",
                     error=str(e),
@@ -595,17 +554,12 @@ class BrowserService:
             finally:
                 self._playwright = None
 
-        # Шаг 5: Восстанавливаем оригинальный обработчик исключений asyncio.
-        # Это важно, если BrowserService создаётся/уничтожается несколько
-        # раз за время жизни event loop (например, при перезапуске браузера
-        # в retry-раундах). Без восстановления каждый start() устанавливает
-        # новый обработчик, оборачивающий предыдущий — это утечка памяти.
+        # Шаг 6: Восстанавливаем оригинальный обработчик исключений asyncio
         try:
             loop = asyncio.get_running_loop()
             loop.set_exception_handler(self._original_exception_handler)
             self._original_exception_handler = None
         except RuntimeError:
-            # Event loop уже закрыт — восстановление не нужно
             pass
 
         logger.info("браузер_остановлен")
@@ -626,11 +580,7 @@ class BrowserService:
         await self.random_delay()
 
     async def random_delay(self) -> None:
-        """Выполняет случайную паузу между действиями.
-
-        Диапазон задержки определяется настройками MIN_DELAY_MS и MAX_DELAY_MS.
-        Имитирует поведение реального пользователя.
-        """
+        """Выполняет случайную паузу между действиями."""
         delay_ms = random.randint(
             self._settings.min_delay_ms,
             self._settings.max_delay_ms,
@@ -639,18 +589,7 @@ class BrowserService:
         await asyncio.sleep(delay_seconds)
 
     async def scroll_page(self) -> None:
-        """Плавно прокручивает страницу вниз для имитации поведения пользователя.
-
-        Прокручивает порциями с небольшими паузами между ними.
-        Защищена тройным таймаутом:
-        1. Общий таймаут на всю прокрутку (_SCROLL_TIMEOUT_SECONDS).
-        2. Таймаут на каждый шаг evaluate (_SCROLL_STEP_TIMEOUT_SECONDS).
-        3. Лимит шагов (_MAX_SCROLL_STEPS) — защита от infinite scroll.
-
-        Если любой таймаут сработал — прокрутка прекращается штатно
-        с предупреждением в логах. Парсинг продолжается с тем,
-        что успело загрузиться — карточки уже в DOM после domcontentloaded.
-        """
+        """Плавно прокручивает страницу вниз для имитации поведения пользователя."""
         try:
             await asyncio.wait_for(
                 self._scroll_page_inner(),
@@ -669,17 +608,10 @@ class BrowserService:
             )
 
     async def _scroll_page_inner(self) -> None:
-        """Внутренняя реализация прокрутки страницы.
-
-        Вынесена из scroll_page для обёртки в asyncio.wait_for.
-        Каждый вызов page.evaluate обёрнут в отдельный таймаут —
-        если Chromium завис на одном шаге, цикл прерывается
-        без блокировки всего процесса.
-        """
+        """Внутренняя реализация прокрутки страницы."""
         page = self.page
         viewport_height = page.viewport_size["height"] if page.viewport_size else 1080
 
-        # Получаем высоту страницы с таймаутом
         try:
             page_height = await asyncio.wait_for(
                 page.evaluate("document.body.scrollHeight"),
