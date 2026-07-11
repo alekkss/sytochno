@@ -30,8 +30,9 @@ _RESTART_COOLDOWN_SECONDS: float = 5.0
 # Максимальное количество перезапусков браузера за один прогон воркера
 _MAX_RESTARTS_PER_WORKER: int = 2
 
-# Максимальное количество попыток прогрева браузера (навигация на главную).
-# При каждой неудачной попытке выполняется пауза и проверка/замена прокси.
+# Максимальное количество попыток прогрева браузера.
+# Прогрев теперь проверяет только что браузер жив (is_alive),
+# без навигации на главную страницу.
 _MAX_WARMUP_ATTEMPTS: int = 2
 
 # Пауза между попытками прогрева (секунды)
@@ -54,10 +55,25 @@ _STOP_BROWSERS_GLOBAL_TIMEOUT: float = 100.0
 # ── Детектор стагнации (watchdog) ──
 
 # Максимальное время без прогресса обогащения (секунды).
-_STAGNATION_TIMEOUT_SECONDS: float = 300.0
+# Увеличено до 10 минут — при множестве «тяжёлых» карточек (busy=busy)
+# скользящее окно (60 запросов × 0.5с пауза) занимает до 5 минут.
+# Если 73 воркера одновременно обрабатывают такие карточки, прогресс
+# по завершённым = 0 на протяжении всего окна обработки.
+# Watchdog теперь дополнительно учитывает активность контроллера —
+# если API-запросы идут, стагнации нет даже при нулевом прогрессе.
+_STAGNATION_TIMEOUT_SECONDS: float = 600.0
 
 # Интервал проверки прогресса watchdog'ом (секунды).
 _STAGNATION_CHECK_INTERVAL_SECONDS: float = 60.0
+
+# Время ожидания завершения задач после сигнала watchdog'а (секунды).
+# После отмены задач watchdog'ом основной код ждёт ещё столько секунд,
+# чтобы задачи, уже находящиеся в процессе graceful shutdown, успели
+# корректно завершиться. По истечении — продолжает pipeline с тем, что есть.
+# Это предотвращает бесконечное зависание на некансeлируемых операциях
+# Playwright (page.evaluate, page.goto), которые игнорируют asyncio cancel
+# и завершаются только по собственному таймауту (до 300 секунд).
+_WATCHDOG_GRACE_PERIOD_SECONDS: float = 30.0
 
 # Максимальное количество одновременных проверок упавших прокси при retry.
 # Ограничиваем, чтобы не перегружать сервер запуском 66 Chromium сразу.
@@ -72,6 +88,7 @@ class EnrichStrategies:
     - enrich_listings_parallel: параллельная обработка через прокси-браузеры.
     - _worker: воркер для одного прокси-браузера.
     - _stagnation_watchdog: фоновый детектор зависания.
+    - _await_tasks_with_watchdog: защита от бесконечного зависания.
     - _revive_failed_proxies: проверка и воскрешение упавших прокси.
     """
 
@@ -278,6 +295,9 @@ class EnrichStrategies:
     async def _restart_browser_with_proxy_check(self) -> bool:
         """Перезапускает браузер с проверкой и возможной заменой прокси.
 
+        После перезапуска не выполняет навигацию на главную страницу —
+        первая карточка загружается напрямую через front/searchapp/detail/{id}.
+
         Returns:
             True если браузер успешно перезапущен, False — если не удалось.
         """
@@ -341,10 +361,6 @@ class EnrichStrategies:
         try:
             await self._browser.start(proxy=active_proxy)
 
-            await self._browser.navigate("https://sutochno.ru")
-            await self._browser.scroll_page()
-            await asyncio.sleep(5)
-
             logger.info(
                 "браузер_перезапущен",
                 step=str(active_proxy) if active_proxy else "без_прокси",
@@ -387,34 +403,92 @@ class EnrichStrategies:
     async def _stagnation_watchdog(
         all_listings: list[RawListing],
         worker_tasks: list[asyncio.Task],
+        stagnation_event: asyncio.Event,
         label: str = "основной",
+        controller: ConcurrencyController | None = None,
     ) -> None:
-        """Фоновый детектор зависания — отменяет воркеры при отсутствии прогресса."""
+        """Фоновый детектор зависания — отменяет воркеры при отсутствии прогресса.
+
+        Стагнация определяется как отсутствие ОДНОВРЕМЕННО:
+        - прогресса по завершённым карточкам (_count_enriched не растёт);
+        - активности контроллера (total_successes + total_failures не растёт).
+
+        Если хотя бы один из индикаторов показывает рост — воркеры активны,
+        таймер стагнации сбрасывается. Это предотвращает ложные срабатывания
+        при обработке «тяжёлых» карточек (busy=busy → скользящее окно 60 запросов),
+        когда ни одна карточка не завершилась, но API-запросы идут активно.
+
+        При обнаружении реальной стагнации:
+        1. Отменяет все незавершённые задачи.
+        2. Устанавливает stagnation_event — сигнал основному коду,
+           что ожидание задач нужно прервать принудительно.
+
+        Args:
+            all_listings: Все карточки (для подсчёта прогресса).
+            worker_tasks: Задачи воркеров для отмены.
+            stagnation_event: Event для сигнализации основному коду.
+            label: Метка раунда (для логов).
+            controller: Контроллер параллелизма (для проверки активности).
+        """
         last_enriched_count = EnrichStrategies._count_enriched(all_listings)
         last_progress_time = time.monotonic()
+
+        # Начальное значение активности контроллера
+        last_controller_activity: int = 0
+        if controller is not None:
+            stats = controller.stats
+            last_controller_activity = (
+                stats["total_successes"] + stats["total_failures"]
+            )
 
         try:
             while True:
                 await asyncio.sleep(_STAGNATION_CHECK_INTERVAL_SECONDS)
 
+                # ── Проверка 1: прогресс по завершённым карточкам ──
                 current_count = EnrichStrategies._count_enriched(all_listings)
+                enrichment_progressed = current_count > last_enriched_count
 
-                if current_count > last_enriched_count:
+                # ── Проверка 2: активность контроллера (API-запросы идут) ──
+                controller_progressed = False
+                current_controller_activity: int = 0
+                if controller is not None:
+                    stats = controller.stats
+                    current_controller_activity = (
+                        stats["total_successes"] + stats["total_failures"]
+                    )
+                    controller_progressed = (
+                        current_controller_activity > last_controller_activity
+                    )
+
+                # ── Решение: есть ли прогресс? ──
+                has_progress = enrichment_progressed or controller_progressed
+
+                if has_progress:
+                    # Прогресс есть — сбрасываем таймер стагнации
                     last_enriched_count = current_count
+                    last_controller_activity = current_controller_activity
                     last_progress_time = time.monotonic()
+
                     logger.debug(
                         "watchdog_прогресс",
                         step=f"раунд={label}, обогащено={current_count}, "
-                             f"всего={len(all_listings)}",
+                             f"всего={len(all_listings)}, "
+                             f"активность_контроллера="
+                             f"{'да' if controller_progressed else 'нет'}, "
+                             f"новых_обогащений="
+                             f"{'да' if enrichment_progressed else 'нет'}",
                     )
                 else:
+                    # Прогресса нет — считаем длительность стагнации
                     stagnation_duration = time.monotonic() - last_progress_time
 
                     logger.debug(
                         "watchdog_нет_прогресса",
                         step=f"раунд={label}, обогащено={current_count}, "
                              f"стагнация={format_duration(stagnation_duration)}, "
-                             f"лимит={format_duration(_STAGNATION_TIMEOUT_SECONDS)}",
+                             f"лимит={format_duration(_STAGNATION_TIMEOUT_SECONDS)}, "
+                             f"активность_контроллера=нет",
                     )
 
                     if stagnation_duration >= _STAGNATION_TIMEOUT_SECONDS:
@@ -440,6 +514,10 @@ class EnrichStrategies:
                             "watchdog_воркеры_отменены",
                             step=f"раунд={label}, отменено={len(pending_tasks)}",
                         )
+
+                        # Сигнализируем основному коду: стагнация обнаружена,
+                        # не ждать завершения задач бесконечно.
+                        stagnation_event.set()
                         return
 
         except asyncio.CancelledError:
@@ -449,6 +527,96 @@ class EnrichStrategies:
             )
 
     @staticmethod
+    async def _await_tasks_with_watchdog(
+        all_tasks: list[asyncio.Task],
+        stagnation_event: asyncio.Event,
+    ) -> None:
+        """Ожидает завершения задач с защитой от бесконечного зависания.
+
+        Если watchdog обнаружил стагнацию и установил stagnation_event —
+        даёт задачам ограниченное время (_WATCHDOG_GRACE_PERIOD_SECONDS)
+        на завершение, после чего прекращает ожидание и возвращает
+        управление вызывающему коду.
+
+        Args:
+            all_tasks: Список задач воркеров.
+            stagnation_event: Event от watchdog'а (сигнал стагнации).
+        """
+        if not all_tasks:
+            return
+
+        # Создаём задачу-наблюдатель за Event от watchdog'а
+        async def _wait_for_stagnation() -> None:
+            await stagnation_event.wait()
+
+        stagnation_waiter = asyncio.create_task(
+            _wait_for_stagnation(),
+            name="stagnation-waiter",
+        )
+
+        # Создаём задачу ожидания всех воркеров
+        async def _wait_all_tasks() -> None:
+            await asyncio.wait(all_tasks)
+
+        tasks_waiter = asyncio.create_task(
+            _wait_all_tasks(),
+            name="tasks-waiter",
+        )
+
+        # Ожидаем первое из двух событий:
+        # - Все воркеры завершились штатно (tasks_waiter)
+        # - Watchdog обнаружил стагнацию (stagnation_waiter)
+        done, _pending = await asyncio.wait(
+            [tasks_waiter, stagnation_waiter],
+            return_when=asyncio.FIRST_COMPLETED,
+        )
+
+        if stagnation_waiter in done:
+            # ── Watchdog сработал — задачи зависли ──
+            logger.warning(
+                "watchdog_grace_period_начат",
+                step=f"ожидание={format_duration(_WATCHDOG_GRACE_PERIOD_SECONDS)}, "
+                     f"задач={len(all_tasks)}",
+            )
+
+            # Даём задачам grace period для мягкого завершения
+            still_pending = [t for t in all_tasks if not t.done()]
+            if still_pending:
+                await asyncio.wait(
+                    still_pending, timeout=_WATCHDOG_GRACE_PERIOD_SECONDS
+                )
+
+            # Проверяем сколько задач так и не завершилось
+            final_pending = [t for t in all_tasks if not t.done()]
+            if final_pending:
+                logger.warning(
+                    "watchdog_grace_period_завершён_есть_зависшие",
+                    step=f"зависших={len(final_pending)}, "
+                         f"завершённых={len(all_tasks) - len(final_pending)}, "
+                         f"продолжаем_pipeline=да",
+                )
+            else:
+                logger.info(
+                    "watchdog_grace_period_все_задачи_завершились",
+                    step=f"задач={len(all_tasks)}",
+                )
+
+            # Отменяем tasks_waiter
+            if not tasks_waiter.done():
+                tasks_waiter.cancel()
+                try:
+                    await tasks_waiter
+                except (asyncio.CancelledError, Exception):
+                    pass
+        else:
+            # ── Все задачи завершились штатно — watchdog не сработал ──
+            stagnation_waiter.cancel()
+            try:
+                await stagnation_waiter
+            except asyncio.CancelledError:
+                pass
+
+    @staticmethod
     async def _warmup_browser(
         browser_service: BrowserService,
         proxy: ProxyConfig | None,
@@ -456,7 +624,13 @@ class EnrichStrategies:
         all_proxies: list[ProxyConfig],
         proxy_service: "ProxyService | None" = None,
     ) -> tuple[bool, ProxyConfig | None]:
-        """Прогревает браузер с retry и возможной заменой прокси.
+        """Проверяет готовность браузера с retry и возможной заменой прокси.
+
+        Вместо навигации на главную страницу sutochno.ru проверяет
+        только что браузер жив (renderer отвечает). Первая реальная
+        навигация произойдёт при загрузке карточки через
+        front/searchapp/detail/{id} — это экономит 10–15 секунд
+        на каждый старт воркера.
 
         Args:
             browser_service: Экземпляр браузера (уже запущенный).
@@ -479,9 +653,15 @@ class EnrichStrategies:
                          f"прокси={current_proxy or 'без_прокси'}",
                 )
 
-                await browser_service.navigate("https://sutochno.ru")
-                await browser_service.scroll_page()
-                await asyncio.sleep(10)
+                # Проверяем что браузер жив — renderer отвечает на evaluate.
+                # Навигация на главную не нужна: первая карточка загрузится
+                # напрямую через front/searchapp/detail/{id}.
+                is_alive = await browser_service.is_alive()
+
+                if not is_alive:
+                    raise RuntimeError(
+                        "Renderer браузера не отвечает после запуска"
+                    )
 
                 logger.info(
                     "воркер_прогрет",
@@ -587,8 +767,7 @@ class EnrichStrategies:
 
         Прокси, которые были забанены в основном раунде, могли
         разблокироваться к моменту retry. Эта функция проверяет их
-        через proxy_service и для рабочих — запускает новые браузеры
-        с прогревом.
+        через proxy_service и для рабочих — запускает новые браузеры.
 
         Проверка выполняется через proxy_service.check_single_proxy()
         с ограничением параллелизма (_MAX_CONCURRENT_PROXY_CHECKS).
@@ -604,7 +783,7 @@ class EnrichStrategies:
 
         Returns:
             Список кортежей (worker_idx, browser_service, proxy) для
-            ожившых прокси с запущенными и прогретыми браузерами.
+            ожившых прокси с запущенными браузерами.
         """
         if not proxy_service or not failed_proxy_configs:
             return []
@@ -775,7 +954,8 @@ class EnrichStrategies:
                  f", контроллер: floor={controller.floor}"
                  f", ceiling={controller.ceiling}"
                  f", start={controller.current_limit}"
-                 f", watchdog={format_duration(_STAGNATION_TIMEOUT_SECONDS)}",
+                 f", watchdog={format_duration(_STAGNATION_TIMEOUT_SECONDS)}"
+                 f", grace_period={format_duration(_WATCHDOG_GRACE_PERIOD_SECONDS)}",
         )
 
         # ── Запуск фонового мониторинга RAM ──
@@ -822,34 +1002,34 @@ class EnrichStrategies:
             for _, chunk, _ in worker_configs:
                 all_listings_flat.extend(chunk)
 
+            # ── Event для сигнализации watchdog → основной код ──
+            stagnation_event = asyncio.Event()
+
             # ── Запуск watchdog'а — детектор стагнации ──
             watchdog_task = asyncio.create_task(
                 EnrichStrategies._stagnation_watchdog(
                     all_listings=all_listings_flat,
                     worker_tasks=all_tasks,
+                    stagnation_event=stagnation_event,
                     label="основной",
+                    controller=controller,
                 ),
                 name="stagnation-watchdog",
             )
             background_tasks.append(watchdog_task)
 
-            # ── Ожидаем завершения ВСЕХ воркеров ──
-            if all_tasks:
-                done, pending = await asyncio.wait(all_tasks)
-
-                for task in pending:
-                    task.cancel()
-                if pending:
-                    await asyncio.wait(pending, timeout=10.0)
-            else:
-                done = set()
+            # ── Ожидаем завершения ВСЕХ воркеров (с защитой от зависания) ──
+            await EnrichStrategies._await_tasks_with_watchdog(
+                all_tasks, stagnation_event
+            )
 
             # ── Отменяем watchdog ──
-            watchdog_task.cancel()
-            try:
-                await watchdog_task
-            except asyncio.CancelledError:
-                pass
+            if not watchdog_task.done():
+                watchdog_task.cancel()
+                try:
+                    await watchdog_task
+                except asyncio.CancelledError:
+                    pass
 
             # Собираем результаты из завершённых задач
             results: list = []
@@ -863,6 +1043,8 @@ class EnrichStrategies:
                     else:
                         results.append(task.result())
                 else:
+                    # Задача всё ещё pending (не успела за grace period).
+                    # Трактуем как отменённую — результатов от неё нет.
                     results.append(asyncio.CancelledError())
 
             # Обрабатываем результаты основного раунда
@@ -1030,25 +1212,32 @@ class EnrichStrategies:
                 for _, chunk, _ in retry_configs:
                     retry_listings_flat.extend(chunk)
 
+                # ── Event для retry watchdog ──
+                retry_stagnation_event = asyncio.Event()
+
                 # ── Запуск watchdog для retry-раунда ──
                 retry_watchdog_task = asyncio.create_task(
                     EnrichStrategies._stagnation_watchdog(
                         all_listings=retry_listings_flat,
                         worker_tasks=retry_tasks,
+                        stagnation_event=retry_stagnation_event,
                         label=f"retry_{retry_round}",
+                        controller=controller,
                     ),
                     name=f"stagnation-watchdog-retry-{retry_round}",
                 )
 
-                # ── Ожидаем завершения retry-воркеров ──
-                if retry_tasks:
-                    await asyncio.wait(retry_tasks)
+                # ── Ожидаем завершения retry-воркеров (с защитой от зависания) ──
+                await EnrichStrategies._await_tasks_with_watchdog(
+                    retry_tasks, retry_stagnation_event
+                )
 
-                retry_watchdog_task.cancel()
-                try:
-                    await retry_watchdog_task
-                except asyncio.CancelledError:
-                    pass
+                if not retry_watchdog_task.done():
+                    retry_watchdog_task.cancel()
+                    try:
+                        await retry_watchdog_task
+                    except asyncio.CancelledError:
+                        pass
 
                 # Собираем результаты retry
                 retry_results: list = []
