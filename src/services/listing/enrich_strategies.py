@@ -295,8 +295,9 @@ class EnrichStrategies:
     async def _restart_browser_with_proxy_check(self) -> bool:
         """Перезапускает браузер с проверкой и возможной заменой прокси.
 
-        После перезапуска не выполняет навигацию на главную страницу —
-        первая карточка загружается напрямую через front/searchapp/detail/{id}.
+        После перезапуска выполняет навигацию на главную для установки
+        сессионных cookies — без них фронтенд карточки не отправляет
+        API-запросы и токен не перехватывается.
 
         Returns:
             True если браузер успешно перезапущен, False — если не удалось.
@@ -360,6 +361,11 @@ class EnrichStrategies:
 
         try:
             await self._browser.start(proxy=active_proxy)
+
+            # Навигация на главную — устанавливает сессионные cookies.
+            # Без этого фронтенд карточки не инициализирует API-запросы.
+            await self._browser.navigate("https://sutochno.ru")
+            await asyncio.sleep(2)
 
             logger.info(
                 "браузер_перезапущен",
@@ -624,13 +630,14 @@ class EnrichStrategies:
         all_proxies: list[ProxyConfig],
         proxy_service: "ProxyService | None" = None,
     ) -> tuple[bool, ProxyConfig | None]:
-        """Проверяет готовность браузера с retry и возможной заменой прокси.
+        """Прогревает браузер навигацией на главную для установки cookies.
 
-        Вместо навигации на главную страницу sutochno.ru проверяет
-        только что браузер жив (renderer отвечает). Первая реальная
-        навигация произойдёт при загрузке карточки через
-        front/searchapp/detail/{id} — это экономит 10–15 секунд
-        на каждый старт воркера.
+        Загружает sutochno.ru один раз — это устанавливает сессионные
+        cookies и антибот-токены, без которых фронтенд карточки не
+        инициализирует API-запросы (и токен не перехватывается).
+
+        Без прокрутки и длительного ожидания — только навигация + 2 сек.
+        Экономия ~8 секунд по сравнению с полным прогревом (scroll + 10 сек).
 
         Args:
             browser_service: Экземпляр браузера (уже запущенный).
@@ -653,15 +660,11 @@ class EnrichStrategies:
                          f"прокси={current_proxy or 'без_прокси'}",
                 )
 
-                # Проверяем что браузер жив — renderer отвечает на evaluate.
-                # Навигация на главную не нужна: первая карточка загрузится
-                # напрямую через front/searchapp/detail/{id}.
-                is_alive = await browser_service.is_alive()
-
-                if not is_alive:
-                    raise RuntimeError(
-                        "Renderer браузера не отвечает после запуска"
-                    )
+                # Навигация на главную — устанавливает сессионные cookies.
+                # Без этого фронтенд карточки не отправляет API-запросы
+                # и токен не перехватывается через route interception.
+                await browser_service.navigate("https://sutochno.ru")
+                await asyncio.sleep(2)
 
                 logger.info(
                     "воркер_прогрет",
