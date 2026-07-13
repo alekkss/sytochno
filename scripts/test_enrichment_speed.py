@@ -1,6 +1,13 @@
 """Диагностический скрипт — измерение скорости и стабильности Этапа 2.
 
-Для каждой карточки из списка ID:
+Прогрев браузера выполняется через тот же метод, что и в боевом
+пайплайне — EnrichStrategies._warmup_browser() (навигация на главную
+sutochno.ru + пауза, до 2 попыток с заменой прокси при неудаче).
+Метод переиспользуется напрямую, а не дублируется — это гарантирует,
+что диагностика измеряет ту же самую «прогретую» сессию, что и боевой
+парсинг.
+
+Для каждой карточки из списка ID (после прогрева воркера):
 1. Загружает страницу и перехватывает токен — замеряет время.
 2. Делает тестовый API-запрос (getPricesAndAvailabilities на 2 ночи) — замеряет время.
 3. Логирует причину ошибки при неудаче.
@@ -12,12 +19,15 @@
 """
 
 import asyncio
+import os
 import statistics
 import sys
 import time
 from dataclasses import dataclass, field
 from datetime import date, timedelta
 from pathlib import Path
+
+import openpyxl
 
 # ── Добавляем корень проекта в sys.path ──
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
@@ -28,37 +38,34 @@ from src.config.logger import configure, get_logger
 from src.config.settings import Settings
 from src.models.proxy import ProxyConfig
 from src.services.browser_service import BrowserService
+from src.services.listing.enrich_strategies import EnrichStrategies
 from src.services.proxy_service import ProxyService
 
 logger = get_logger("test_speed")
 
-# ── Список ID карточек для тестирования ──
-TEST_IDS: list[str] = [
-    "2298659", "2305672", "20353", "728489", "2056536",
-    "1915947", "1686733", "1862243", "2047403", "2271993",
-    "1735249", "2325412", "956337", "2069377", "2205242",
-    "1534367", "2288071", "2223254", "966819", "1856774",
-    "2179010", "1491671", "2257776", "1351541", "573675",
-    "1534230", "1642380", "2025468", "762965", "2223620",
-    "1060959", "1337691", "2083706", "1073321", "2175550",
-    "1931754", "2078662", "1883791", "2000444", "1279831",
-    "471475", "1419503", "1185431", "1873281", "2220427",
-    "2303295", "982831", "2010577", "2056435", "1741035",
-    "1595421", "1513877", "1410491", "653397", "1344789",
-    "1899116", "1978873", "1229857", "1395421", "1286229",
-    "843453", "2065466", "1223705", "2015659", "2242484",
-    "2042902", "2089219", "854247", "706483", "2029771",
-    "1914067", "1671358", "2276195", "2263360", "1529294",
-    "1957161", "26885", "2300621", "2295779", "1066651",
-    "1961988", "2216752", "2274177", "1069721", "2076215",
-    "1093725", "1497144", "287676", "2120791", "886753",
-    "2319996", "954561", "1911872", "1437111", "2308892",
-    "1543587", "1405925", "1723130", "2294684", "1732863",
-]
+# ── Источник списка ID карточек для тестирования ──
+# ID больше не хардкодятся в скрипте — читаются из Excel-отчёта проекта.
+# Путь и название столбца настраиваются через .env, чтобы не привязывать
+# скрипт к конкретному расположению файла.
+_IDS_SOURCE_PATH_ENV: str = "IDS_SOURCE_XLSX_PATH"
+_IDS_SOURCE_COLUMN_ENV: str = "IDS_SOURCE_COLUMN_NAME"
 
-# Максимальное количество карточек для теста (из TEST_IDS).
+# Дефолтный путь — относительно корня проекта (см. .env.example).
+_DEFAULT_IDS_SOURCE_PATH: str = "sutochno_report.xlsx"
+_DEFAULT_IDS_SOURCE_COLUMN: str = "ID объявления"
+
+# Максимальное количество карточек для теста (из файла с ID).
 # Установите 0 для обработки всех.
-MAX_TEST_CARDS: int = 100
+MAX_TEST_CARDS: int = 1000
+
+# Переопределение количества параллельных вкладок для диагностики.
+# 0 = использовать settings.max_tabs (значение MAX_TABS из .env),
+# как в боевом пайплайне.
+# По итогам первого прогона: волна из 5 одновременных вкладок на
+# свежем прокси почти всегда проваливается целиком (см. data/
+# diag_enrichment_speed_with_warmup.csv, воркеры 3-6, волна 0).
+# Снижаем до 2, не меняя боевой MAX_TABS в .env.
+_DIAG_MAX_TABS_OVERRIDE: int = 2
 
 # URL шаблон для карточки (прямой URL фронтенда)
 _ENRICHMENT_URL_TEMPLATE: str = (
@@ -139,6 +146,22 @@ class CardDiagResult:
 
 
 @dataclass
+class WorkerWarmupInfo:
+    """Результат прогрева браузера воркера (EnrichStrategies._warmup_browser).
+
+    Прогрев выполняется ДО обработки карточек — навигация на главную
+    страницу sutochno.ru устанавливает сессионные cookies, без которых
+    фронтенд карточки не инициализирует API-запросы.
+    """
+
+    worker_idx: int
+    proxy_label: str
+    success: bool = False
+    time_s: float = 0.0
+    error: str = ""
+
+
+@dataclass
 class WorkerStats:
     """Статистика одного воркера."""
 
@@ -183,6 +206,101 @@ def _classify_page_error(error_msg: str, timeout_ms: int) -> str:
         return f"net_error: {error_msg[:80]}"
 
     return f"{error_msg[:100]}"
+
+
+# ── Загрузка ID объявлений из Excel-отчёта ──
+
+
+def load_test_ids_from_xlsx(path: Path, column_name: str) -> list[str]:
+    """Загружает список ID объявлений из Excel-отчёта проекта.
+
+    Ищет столбец column_name в первой строке (заголовки) активного
+    листа, затем читает все непустые значения ниже него как ID.
+    Дубликаты отбрасываются, порядок появления в файле сохраняется.
+
+    Args:
+        path: Путь к xlsx-файлу.
+        column_name: Точное название столбца с ID объявления.
+
+    Returns:
+        Список ID в виде строк.
+
+    Raises:
+        RuntimeError: Если файл не найден, не открывается, столбец
+            не найден или в столбце нет ни одного ID.
+    """
+    if not path.exists():
+        raise RuntimeError(
+            f"Файл с ID объявлений не найден: {path}. "
+            f"Проверьте переменную {_IDS_SOURCE_PATH_ENV} в .env."
+        )
+
+    try:
+        workbook = openpyxl.load_workbook(path, read_only=True, data_only=True)
+    except Exception as e:
+        raise RuntimeError(
+            f"Не удалось открыть xlsx-файл {path}: {type(e).__name__}: {e}"
+        ) from e
+
+    try:
+        sheet = workbook.active
+        header_row = next(
+            sheet.iter_rows(min_row=1, max_row=1, values_only=True), None
+        )
+
+        if not header_row:
+            raise RuntimeError(f"Файл {path} пуст — нет строки заголовков.")
+
+        column_index: int | None = None
+        for idx, header in enumerate(header_row):
+            if header is not None and str(header).strip() == column_name:
+                column_index = idx
+                break
+
+        if column_index is None:
+            available = [str(h) for h in header_row if h is not None]
+            raise RuntimeError(
+                f"Столбец '{column_name}' не найден в файле {path}. "
+                f"Доступные столбцы: {available}. "
+                f"Проверьте переменную {_IDS_SOURCE_COLUMN_ENV} в .env."
+            )
+
+        ids: list[str] = []
+        seen: set[str] = set()
+
+        for row in sheet.iter_rows(min_row=2, values_only=True):
+            if column_index >= len(row):
+                continue
+
+            raw_value = row[column_index]
+            if raw_value is None or str(raw_value).strip() == "":
+                continue
+
+            # Excel хранит числовые ID как float (например 2298659.0) —
+            # приводим к целому перед строковым представлением, иначе
+            # ID перестанет совпадать с тем, что ожидает API sutochno.ru.
+            if isinstance(raw_value, float) and raw_value.is_integer():
+                object_id = str(int(raw_value))
+            else:
+                object_id = str(raw_value).strip()
+
+            if object_id and object_id not in seen:
+                seen.add(object_id)
+                ids.append(object_id)
+    finally:
+        workbook.close()
+
+    if not ids:
+        raise RuntimeError(
+            f"В столбце '{column_name}' файла {path} не найдено ни одного ID."
+        )
+
+    logger.info(
+        "id_загружены_из_xlsx",
+        step=f"файл={path}, столбец='{column_name}'",
+        total=len(ids),
+    )
+    return ids
 
 
 # ── Диагностика одной карточки ──
@@ -416,12 +534,17 @@ async def run_worker(
     settings: Settings,
     proxy: ProxyConfig | None = None,
     max_tabs: int = 1,
-) -> tuple[list[CardDiagResult], BrowserService]:
-    """Воркер — запускает браузер и сразу идёт на карточки (без прогрева).
+    proxy_service: ProxyService | None = None,
+    all_proxies: list[ProxyConfig] | None = None,
+) -> tuple[list[CardDiagResult], BrowserService, WorkerWarmupInfo]:
+    """Воркер — запускает браузер, прогревает его и идёт на карточки.
 
-    Первая карточка каждого воркера устанавливает TCP/TLS-туннель
-    через прокси — она будет медленнее остальных. Это даёт реальную
-    картину «холодного старта» vs «горячего туннеля».
+    Прогрев выполняется через EnrichStrategies._warmup_browser() —
+    тот же метод, что и в боевом пайплайне (навигация на главную
+    sutochno.ru + пауза, до 2 попыток с заменой прокси при неудаче).
+    Метод переиспользуется напрямую, а не дублируется — это гарантирует,
+    что первая карточка воркера обрабатывается в такой же «прогретой»
+    сессии, как и в продовом enrich_listings_parallel, а не в холодной.
 
     ВАЖНО: возвращает BrowserService вместе с результатами.
     Остановка браузера выполняется централизованно в main() —
@@ -434,14 +557,20 @@ async def run_worker(
         settings: Настройки приложения.
         proxy: Прокси (None = без прокси).
         max_tabs: Количество параллельных вкладок.
+        proxy_service: Сервис прокси — используется _warmup_browser
+            для проверки/замены прокси при неудачном прогреве.
+        all_proxies: Полный список прокси всех воркеров — нужен
+            _warmup_browser для исключения занятых при поиске замены.
 
     Returns:
-        Кортеж (список результатов диагностики, BrowserService).
+        Кортеж (список результатов диагностики, BrowserService,
+        результат прогрева).
     """
     results: list[CardDiagResult] = []
     browser_service = BrowserService(settings=settings)
     nav_timeout = settings.navigation_timeout
     proxy_label = str(proxy) if proxy else "без_прокси"
+    warmup_info = WorkerWarmupInfo(worker_idx=worker_idx, proxy_label=proxy_label)
     launch_slot_held = False
     cards_processed = 0
 
@@ -450,11 +579,11 @@ async def run_worker(
         await _acquire_launch_slot(worker_idx)
         launch_slot_held = True
 
-        # ── Фаза 2: Запуск браузера (без прогрева) ──
+        # ── Фаза 2: Запуск браузера ──
         logger.info(
             "воркер_запуск_браузера",
             step=f"в={worker_idx}, прокси={proxy_label}, "
-                 f"карточек={len(card_ids)}, без_прогрева=да",
+                 f"карточек={len(card_ids)}",
         )
 
         await browser_service.start(proxy=proxy)
@@ -469,7 +598,44 @@ async def run_worker(
             step=f"в={worker_idx}, прокси={proxy_label}",
         )
 
-        # ── Фаза 3: Обработка карточек (первая = холодный старт) ──
+        # ── Фаза 2.5: Прогрев браузера (как в боевом пайплайне) ──
+        # EnrichStrategies._warmup_browser может заменить прокси на
+        # рабочую из пула, если исходная не отвечает — поэтому proxy
+        # и proxy_label обновляются по результату вызова.
+        warmup_start = time.perf_counter()
+        try:
+            warmup_ok, active_proxy = await EnrichStrategies._warmup_browser(
+                browser_service=browser_service,
+                proxy=proxy,
+                worker_idx=worker_idx,
+                all_proxies=all_proxies or [],
+                proxy_service=proxy_service,
+            )
+        except Exception as e:
+            warmup_ok = False
+            active_proxy = proxy
+            warmup_info.error = f"{type(e).__name__}: {str(e)[:150]}"
+
+        warmup_info.time_s = time.perf_counter() - warmup_start
+        warmup_info.success = warmup_ok
+        proxy = active_proxy
+        proxy_label = str(proxy) if proxy else "без_прокси"
+        warmup_info.proxy_label = proxy_label
+
+        if not warmup_ok:
+            logger.error(
+                "воркер_прогрев_не_удался_обработка_отменена",
+                step=f"в={worker_idx}, время={warmup_info.time_s:.1f}с",
+            )
+            return (results, browser_service, warmup_info)
+
+        logger.info(
+            "воркер_прогрет",
+            step=f"в={worker_idx}, прокси={proxy_label}, "
+                 f"время={warmup_info.time_s:.1f}с",
+        )
+
+        # ── Фаза 3: Обработка карточек (первая = после прогрева) ──
         for chunk_start in range(0, len(card_ids), max_tabs):
             chunk = card_ids[chunk_start: chunk_start + max_tabs]
 
@@ -558,7 +724,7 @@ async def run_worker(
         step=f"в={worker_idx}, всего={len(results)}, "
              f"ok={ok_total}, err={len(results) - ok_total}",
     )
-    return (results, browser_service)
+    return (results, browser_service, warmup_info)
 
 
 # ── Централизованная остановка браузеров ──
@@ -704,11 +870,55 @@ async def _cleanup_pending_tasks() -> None:
 # ── Вывод сводной таблицы ──
 
 
-def print_summary(all_results: list[CardDiagResult], elapsed: float) -> None:
-    """Выводит сводную таблицу диагностики в консоль."""
+def print_summary(
+    all_results: list[CardDiagResult],
+    elapsed: float,
+    warmup_infos: list["WorkerWarmupInfo"] | None = None,
+) -> None:
+    """Выводит сводную таблицу диагностики в консоль.
+
+    Args:
+        all_results: Результаты диагностики по карточкам.
+        elapsed: Общее время выполнения (секунды).
+        warmup_infos: Результаты прогрева браузеров по воркерам
+            (EnrichStrategies._warmup_browser).
+    """
+    warmup_infos = warmup_infos or []
+
+    if warmup_infos:
+        warmup_ok = sum(1 for w in warmup_infos if w.success)
+        warmup_total = len(warmup_infos)
+        warmup_times = [w.time_s for w in warmup_infos]
+
+        sep_w = "=" * 72
+        print(f"\n{sep_w}")
+        print("  ПРОГРЕВ БРАУЗЕРОВ (EnrichStrategies._warmup_browser)")
+        print(sep_w)
+        print(
+            f"\n  Успешно прогрето: {warmup_ok}/{warmup_total} "
+            f"({warmup_ok / warmup_total * 100:.1f}%)"
+        )
+        if warmup_times:
+            mn, mx = min(warmup_times), max(warmup_times)
+            avg = statistics.mean(warmup_times)
+            med = statistics.median(warmup_times)
+            print(
+                f"  Время прогрева: мин={mn:.1f}с, медиана={med:.1f}с, "
+                f"среднее={avg:.1f}с, макс={mx:.1f}с"
+            )
+
+        failed_warmups = [w for w in warmup_infos if not w.success]
+        if failed_warmups:
+            print(f"\n  Воркеры, не прошедшие прогрев:")
+            for w in failed_warmups:
+                print(
+                    f"    в={w.worker_idx}, прокси={w.proxy_label}, "
+                    f"ошибка={w.error or 'неизвестна'}"
+                )
+
     total = len(all_results)
     if total == 0:
-        print("\n  Нет результатов для отображения.\n")
+        print("\n  Нет результатов для отображения (после прогрева не осталось карточек).\n")
         return
 
     page_ok = sum(1 for r in all_results if r.page_loaded)
@@ -719,7 +929,7 @@ def print_summary(all_results: list[CardDiagResult], elapsed: float) -> None:
     token_times = [r.token_wait_time_s for r in all_results if r.token_captured]
     api_times = [r.api_response_time_s for r in all_results if r.api_success]
 
-    # Отдельно первые карточки (холодный старт)
+    # Отдельно первые карточки воркера (обрабатываются сразу после прогрева)
     first_cards = [r for r in all_results if r.is_first_card]
     first_page_times = [r.page_load_time_s for r in first_cards if r.page_loaded]
     other_page_times = [
@@ -769,7 +979,7 @@ def print_summary(all_results: list[CardDiagResult], elapsed: float) -> None:
     sep = "=" * 72
 
     print(f"\n{sep}")
-    print("  ДИАГНОСТИКА ЭТАПА 2 — СВОДКА (без прогрева)")
+    print("  ДИАГНОСТИКА ЭТАПА 2 — СВОДКА (с прогревом)")
     print(sep)
 
     print(f"\n  Общее время:         {elapsed:.1f} сек ({elapsed / 60:.1f} мин)")
@@ -802,12 +1012,12 @@ def print_summary(all_results: list[CardDiagResult], elapsed: float) -> None:
     print(_stats_line(api_times, "API-запрос                 "))
     print(_stats_line(token_times, "Ожидание токена            "))
 
-    # ── Сравнение холодного старта и горячего туннеля ──
+    # ── Сравнение первой карточки (сразу после прогрева) и остальных ──
     print(f"\n{'─' * 72}")
-    print("  ХОЛОДНЫЙ СТАРТ vs ГОРЯЧИЙ ТУННЕЛЬ")
+    print("  ПЕРВАЯ КАРТОЧКА (ПОСЛЕ ПРОГРЕВА) vs ОСТАЛЬНЫЕ")
     print(f"{'─' * 72}")
-    print(_stats_line(first_page_times, "Первая карточка (холодная) "))
-    print(_stats_line(other_page_times, "Остальные (горячий туннель)"))
+    print(_stats_line(first_page_times, "Первая карточка (после прогрева)"))
+    print(_stats_line(other_page_times, "Остальные (тот же туннель)      "))
 
     first_ok = sum(1 for r in first_cards if r.page_loaded)
     first_total = len(first_cards)
@@ -924,16 +1134,37 @@ async def main() -> None:
 
     settings = Settings.load()
 
-    card_ids = TEST_IDS[:MAX_TEST_CARDS] if MAX_TEST_CARDS > 0 else TEST_IDS
+    # ── Загрузка ID объявлений из Excel-отчёта проекта ──
+    ids_source_path = Path(
+        os.getenv(_IDS_SOURCE_PATH_ENV, _DEFAULT_IDS_SOURCE_PATH)
+    )
+    if not ids_source_path.is_absolute():
+        ids_source_path = PROJECT_ROOT / ids_source_path
+
+    ids_source_column = os.getenv(
+        _IDS_SOURCE_COLUMN_ENV, _DEFAULT_IDS_SOURCE_COLUMN
+    )
+
+    print(f"\n  Источник ID: {ids_source_path}")
+    print(f"  Столбец с ID: '{ids_source_column}'")
+
+    all_ids = load_test_ids_from_xlsx(ids_source_path, ids_source_column)
+    print(f"  Загружено ID из файла: {len(all_ids)}")
+
+    card_ids = all_ids[:MAX_TEST_CARDS] if MAX_TEST_CARDS > 0 else all_ids
     total_cards = len(card_ids)
 
-    print(f"\n  Диагностика Этапа 2 (БЕЗ ПРОГРЕВА): {total_cards} карточек")
+    print(f"\n  Диагностика Этапа 2 (с прогревом, как в проекте): {total_cards} карточек")
     print(f"  Таймаут навигации: {settings.navigation_timeout} мс")
     print(f"  Ожидание токена: {_TOKEN_WAIT_SECONDS} сек")
-    print(f"  Прогрев: ОТКЛЮЧЁН (первая карточка = холодный старт)")
+    print(
+        "  Прогрев: EnrichStrategies._warmup_browser "
+        "(навигация на https://sutochno.ru + пауза, до 2 попыток)"
+    )
 
     # ── Загрузка и проверка прокси ──
     proxies: list[ProxyConfig] = []
+    proxy_service: ProxyService | None = None
     if settings.use_proxy:
         proxy_service = ProxyService(settings=settings)
         raw_proxies = proxy_service.load_proxies()
@@ -946,7 +1177,14 @@ async def main() -> None:
             print("  Нет рабочих прокси. Запуск без прокси.")
 
     # ── Конфигурация воркеров ──
-    max_tabs = settings.max_tabs
+    max_tabs = (
+        _DIAG_MAX_TABS_OVERRIDE if _DIAG_MAX_TABS_OVERRIDE > 0 else settings.max_tabs
+    )
+    if _DIAG_MAX_TABS_OVERRIDE > 0 and _DIAG_MAX_TABS_OVERRIDE != settings.max_tabs:
+        print(
+            f"  Вкладок: {max_tabs} (оверрайд для теста; "
+            f"в .env MAX_TABS={settings.max_tabs})"
+        )
 
     if proxies:
         max_workers = min(len(proxies), settings.max_proxy_workers)
@@ -964,6 +1202,18 @@ async def main() -> None:
         chunks = [card_ids]
         max_workers = 1
         print(f"  Режим: без прокси, 1 воркер, {max_tabs} вкладок")
+
+    # Полный список реальных ProxyConfig (без None) — передаётся в
+    # _warmup_browser для исключения занятых прокси при поиске замены.
+    all_proxy_configs: list[ProxyConfig] = [p for p in active_proxies if p is not None]
+
+    # ── Резервируем стартовые прокси ДО запуска конкурентных воркеров ──
+    # Без этого шага параллельный get_replacement_proxy из разных воркеров
+    # мог бы выбрать прокси, уже статически отданную другому воркеру
+    # (см. фикс гонки в proxy_service.py / enrich_strategies.py).
+    if proxy_service is not None:
+        for p in all_proxy_configs:
+            await proxy_service.claim_proxy(p)
 
     print(f"  Одновременный запуск браузеров: {_MAX_CONCURRENT_BROWSER_LAUNCHES}")
     print(f"  Stagger между запусками: {_BROWSER_LAUNCH_STAGGER_SECONDS} сек")
@@ -992,6 +1242,8 @@ async def main() -> None:
                 settings=settings,
                 proxy=proxy,
                 max_tabs=max_tabs,
+                proxy_service=proxy_service,
+                all_proxies=all_proxy_configs,
             ),
             name=f"diag-worker-{i + 1}",
         )
@@ -1001,22 +1253,24 @@ async def main() -> None:
         "все_задачи_созданы",
         step=f"воркеров={len(worker_tasks)}, "
              f"семафор={_MAX_CONCURRENT_BROWSER_LAUNCHES}, "
-             f"прогрев=отключён",
+             f"прогрев=включён (EnrichStrategies._warmup_browser)",
     )
 
     # ── Ожидание завершения ──
     all_results: list[CardDiagResult] = []
     browsers_to_stop: list[tuple[BrowserService, int]] = []
+    warmup_infos: list[WorkerWarmupInfo] = []
 
     if worker_tasks:
         task_results = await asyncio.gather(*worker_tasks, return_exceptions=True)
 
         for i, res in enumerate(task_results):
             worker_idx = i + 1
-            if isinstance(res, tuple) and len(res) == 2:
-                card_results, browser_svc = res
+            if isinstance(res, tuple) and len(res) == 3:
+                card_results, browser_svc, warmup_info = res
                 all_results.extend(card_results)
                 browsers_to_stop.append((browser_svc, worker_idx))
+                warmup_infos.append(warmup_info)
             elif isinstance(res, BaseException):
                 logger.error(
                     "воркер_исключение",
@@ -1030,10 +1284,10 @@ async def main() -> None:
     # ── Вывод сводки ПЕРЕД остановкой браузеров ──
     # Сводка выводится сразу — пользователь видит результаты,
     # пока браузеры останавливаются в фоне.
-    print_summary(all_results, overall_elapsed)
+    print_summary(all_results, overall_elapsed, warmup_infos)
 
     # ── CSV ──
-    csv_path = Path("data/diag_enrichment_speed_no_warmup.csv")
+    csv_path = Path("data/diag_enrichment_speed_with_warmup.csv")
     csv_path.parent.mkdir(parents=True, exist_ok=True)
 
     with open(csv_path, "w", encoding="utf-8") as f:
@@ -1053,7 +1307,18 @@ async def main() -> None:
                 f"{r.api_busy_status},{r.total_time_s:.3f}\n"
             )
 
+    warmup_csv_path = Path("data/diag_warmup_summary.csv")
+    with open(warmup_csv_path, "w", encoding="utf-8") as f:
+        f.write("worker,proxy,success,time_s,error\n")
+        for w in warmup_infos:
+            we = w.error.replace(",", ";").replace('"', "'")
+            f.write(
+                f"{w.worker_idx},{w.proxy_label},{w.success},"
+                f"{w.time_s:.3f},{we}\n"
+            )
+
     print(f"  Детальные результаты: {csv_path}")
+    print(f"  Результаты прогрева: {warmup_csv_path}")
     print(f"  Логи: logs/test_enrichment_speed.log\n")
 
     # ── Централизованная остановка всех браузеров ──

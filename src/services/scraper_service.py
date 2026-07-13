@@ -16,6 +16,10 @@
   4. Продолжает с того же offset (не с начала).
   5. Если прокси тоже упала — берёт следующую из пула.
   6. Если пул исчерпан — возвращает то, что собрано.
+
+После завершения scrape_catalog() браузер НЕ закрывается — страница
+и токен остаются живыми для batch-обогащения. Вызывающий код сам
+управляет жизненным циклом браузера.
 """
 
 import asyncio
@@ -105,6 +109,9 @@ class ScraperService:
 
     Дедупликация выполняется по external_id в процессе сбора.
     При сбоях автоматически переключается на прокси.
+
+    После завершения scrape_catalog() браузер остаётся запущенным —
+    страница и токен доступны для batch-обогащения.
     """
 
     def __init__(
@@ -149,7 +156,7 @@ class ScraperService:
 
         return self._proxies[0]
 
-    async def scrape_catalog(self) -> list[RawListing]:
+    async def scrape_catalog(self) -> tuple[list[RawListing], str | None]:
         """Основной метод — обходит все URL поиска и собирает объявления.
 
         Для каждой ссылки:
@@ -158,8 +165,14 @@ class ScraperService:
         3. Через fetch() с пагинацией собирает все ID.
         4. Через searchObjectsByLocation получает полные данные.
 
+        После завершения браузер НЕ закрывается — страница с живой
+        сессией и токен доступны для batch-обогащения карточек.
+
         Returns:
-            Список уникальных объявлений со всех ссылок.
+            Кортеж из двух элементов:
+            - Список уникальных объявлений со всех ссылок.
+            - Токен API (перехвачен из заголовков) или None, если
+              токен не удалось получить.
         """
         self._seen_ids.clear()
         self._duplicates_count = 0
@@ -211,18 +224,18 @@ class ScraperService:
 
         if not all_ids:
             logger.warning("не_собрано_ни_одного_id")
-            return []
+            return [], None
 
         # ── Фаза B: Получение полных данных ──
         if api_headers is None:
             logger.error("нет_заголовков_api_для_получения_данных")
-            return []
+            return [], None
 
         # Нужна живая страница для fetch() — если браузер закрыт, открываем
         page = await self._ensure_browser_page(current_proxy)
         if page is None:
             logger.error("не_удалось_открыть_браузер_для_получения_данных")
-            return []
+            return [], None
 
         listings = await self._fetch_full_listings(
             page=page,
@@ -231,17 +244,32 @@ class ScraperService:
             current_proxy=current_proxy,
         )
 
-        # Закрываем браузер после сбора
-        await self._browser.stop()
+        # ── Извлекаем токен из перехваченных заголовков ──
+        captured_token = api_headers.get("token") or api_headers.get("Token")
+
+        if captured_token:
+            logger.info(
+                "токен_api_извлечён_из_каталога",
+                step=f"длина={len(captured_token)}",
+            )
+        else:
+            logger.warning(
+                "токен_api_не_найден_в_заголовках",
+                step=f"ключи={list(api_headers.keys())}",
+            )
+
+        # Браузер НЕ закрываем — страница и токен нужны для batch-обогащения.
+        # Вызывающий код (pipeline в __main__.py) сам управляет жизненным циклом.
 
         logger.info(
             "парсинг_каталога_завершён",
             total_listings=len(listings),
             total_ids=len(all_ids),
             duplicates=self._duplicates_count,
+            token_available=captured_token is not None,
         )
 
-        return listings
+        return listings, captured_token
 
     # ── Фаза A: Сбор ID ──────────────────────────────────────
 

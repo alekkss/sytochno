@@ -327,7 +327,7 @@ class EnrichStrategies:
             )
 
             is_current_working = await self._proxy_service.check_single_proxy(
-                current_proxy
+                current_proxy, fast=True
             )
 
             if is_current_working:
@@ -344,7 +344,6 @@ class EnrichStrategies:
 
                 replacement = await self._proxy_service.get_replacement_proxy(
                     current_proxy=current_proxy,
-                    in_use_proxies=[],
                 )
 
                 if replacement is not None:
@@ -643,14 +642,20 @@ class EnrichStrategies:
             browser_service: Экземпляр браузера (уже запущенный).
             proxy: Текущая прокси воркера (может быть None).
             worker_idx: Номер воркера (для логов).
-            all_proxies: Полный список прокси всех воркеров (для исключения).
+            all_proxies: Устаревший параметр, больше не используется —
+                занятость прокси теперь централизованно отслеживается
+                внутри ProxyService (claim_proxy/get_replacement_proxy)
+                под блокировкой. Раньше каждый воркер вычислял "занятые"
+                прокси локально из этого списка, и несколько воркеров
+                могли одновременно выбрать один и тот же "свободный"
+                прокси — это и вызывало каскадные сбои. Параметр оставлен
+                для обратной совместимости вызовов.
             proxy_service: Сервис прокси (опциональный).
 
         Returns:
             Кортеж (success, active_proxy).
         """
         current_proxy = proxy
-        in_use_by_others = [p for p in all_proxies if p != proxy]
 
         for attempt in range(1, _MAX_WARMUP_ATTEMPTS + 1):
             try:
@@ -688,7 +693,7 @@ class EnrichStrategies:
 
                 if current_proxy is not None and proxy_service is not None:
                     is_current_ok = await proxy_service.check_single_proxy(
-                        current_proxy
+                        current_proxy, fast=True
                     )
 
                     if not is_current_ok:
@@ -697,9 +702,12 @@ class EnrichStrategies:
                             step=f"воркер={worker_idx}, прокси={current_proxy}",
                         )
 
+                        # get_replacement_proxy теперь сам атомарно резервирует
+                        # кандидата (под блокировкой в ProxyService) и снимает
+                        # current_proxy с пула рабочих — передавать список
+                        # "занятых" прокси вручную больше не нужно.
                         replacement = await proxy_service.get_replacement_proxy(
                             current_proxy=current_proxy,
-                            in_use_proxies=in_use_by_others,
                         )
 
                         if replacement is not None:
@@ -720,9 +728,6 @@ class EnrichStrategies:
                                 )
 
                             current_proxy = replacement
-                            in_use_by_others = [
-                                p for p in all_proxies if p != current_proxy
-                            ]
 
                             try:
                                 await browser_service.start(proxy=current_proxy)
@@ -745,6 +750,14 @@ class EnrichStrategies:
             "прогрев_все_попытки_исчерпаны",
             step=f"воркер={worker_idx}, попыток={_MAX_WARMUP_ATTEMPTS}",
         )
+
+        # Прогрев так и не удался с current_proxy — снимаем резерв и
+        # удаляем её из пула рабочих, иначе она останется "занятой" в
+        # ProxyService, но никем реально не используемой, и просто
+        # выпадет из оборота до конца прогона.
+        if current_proxy is not None and proxy_service is not None:
+            await proxy_service.mark_dead(current_proxy)
+
         return (False, current_proxy)
 
     @staticmethod
@@ -810,7 +823,7 @@ class EnrichStrategies:
 
         async def _check_one(proxy: ProxyConfig) -> tuple[ProxyConfig, bool]:
             async with semaphore:
-                is_ok = await proxy_service.check_single_proxy(proxy)
+                is_ok = await proxy_service.check_single_proxy(proxy, fast=True)
                 return (proxy, is_ok)
 
         check_tasks = [_check_one(p) for p in to_check]
@@ -841,6 +854,14 @@ class EnrichStrategies:
 
         for i, proxy in enumerate(revived_proxies):
             worker_idx = 200 * retry_round + i + 1
+
+            # Резервируем прокси сразу после успешной проверки — до того,
+            # как для неё поднимется браузер. Иначе параллельный
+            # get_replacement_proxy в другом воркере мог бы схватить
+            # ту же самую только что ожившую прокси.
+            if proxy_service is not None:
+                await proxy_service.claim_proxy(proxy)
+
             browser_service = BrowserService(settings=settings)
 
             try:
@@ -863,8 +884,11 @@ class EnrichStrategies:
                         step=f"воркер={worker_idx}, прокси={active_proxy or proxy}",
                     )
                 else:
-                    # Прогрев не удался — останавливаем и пропускаем
+                    # Прогрев не удался — останавливаем, снимаем резерв
+                    # и удаляем прокси из пула рабочих.
                     await safe_stop_browser(browser_service, worker_idx)
+                    if proxy_service is not None:
+                        await proxy_service.mark_dead(proxy)
 
             except Exception as e:
                 logger.warning(
@@ -873,6 +897,8 @@ class EnrichStrategies:
                     error_type=type(e).__name__,
                     step=f"воркер={worker_idx}, прокси={proxy}",
                 )
+                if proxy_service is not None:
+                    await proxy_service.mark_dead(proxy)
                 try:
                     await browser_service.stop()
                 except Exception:
@@ -930,6 +956,15 @@ class EnrichStrategies:
         safe_workers = memory_monitor.calculate_safe_workers(requested_workers)
 
         active_proxies = proxies[:safe_workers]
+
+        # ── Резервируем стартовые прокси ДО запуска конкурентных воркеров ──
+        # Без этого шага параллельный поиск замены (get_replacement_proxy),
+        # вызываемый из разных воркеров сразу после старта, мог бы выбрать
+        # прокси, которая на самом деле уже отдана другому воркеру статически
+        # (просто ещё не успела провалить проверку).
+        if proxy_service is not None:
+            for p in active_proxies:
+                await proxy_service.claim_proxy(p)
 
         chunks = ProxyServiceClass.distribute_listings(listings, len(active_proxies))
 
@@ -1538,7 +1573,11 @@ class EnrichStrategies:
         monitor = ConnectionMonitor()
         current_proxy: ProxyConfig | None = proxy
 
-        in_use_by_others = [p for p in all_proxies if p != proxy]
+        # Занятость прокси больше не считается локально по снимку
+        # all_proxies — это и было источником гонки, когда несколько
+        # воркеров одновременно выбирали один и тот же "свободный" прокси.
+        # Теперь резервирование прокси централизовано и защищено
+        # блокировкой внутри ProxyService (claim_proxy/get_replacement_proxy).
 
         # ── Определяем, нужно ли создавать браузер ──
         if existing_browser is not None:
@@ -1575,8 +1614,6 @@ class EnrichStrategies:
                         step=f"воркер={worker_idx}, время={format_duration(worker_elapsed)}",
                     )
                     return (listings, worker_elapsed, browser_service)
-
-                in_use_by_others = [p for p in all_proxies if p != current_proxy]
 
             except Exception as e:
                 worker_elapsed = time.perf_counter() - worker_start
@@ -1670,7 +1707,7 @@ class EnrichStrategies:
 
                     if current_proxy is not None and proxy_service is not None:
                         is_current_ok = await proxy_service.check_single_proxy(
-                            current_proxy
+                            current_proxy, fast=True
                         )
 
                         if is_current_ok:
@@ -1679,9 +1716,12 @@ class EnrichStrategies:
                                 step=f"воркер={worker_idx}, прокси={current_proxy}",
                             )
                         else:
+                            # get_replacement_proxy сам атомарно резервирует
+                            # кандидата под блокировкой и снимает current_proxy
+                            # с пула рабочих — вручную передавать "занятые"
+                            # прокси больше не нужно.
                             replacement = await proxy_service.get_replacement_proxy(
                                 current_proxy=current_proxy,
-                                in_use_proxies=in_use_by_others,
                             )
 
                             if replacement is not None:
@@ -1692,9 +1732,6 @@ class EnrichStrategies:
                                          f"новая={replacement}",
                                 )
                                 current_proxy = replacement
-                                in_use_by_others = [
-                                    p for p in all_proxies if p != current_proxy
-                                ]
                             else:
                                 logger.warning(
                                     "воркер_замена_не_найдена",
@@ -1723,10 +1760,6 @@ class EnrichStrategies:
                                 step=f"воркер={worker_idx}",
                             )
                             break
-
-                        in_use_by_others = [
-                            p for p in all_proxies if p != current_proxy
-                        ]
 
                         monitor = ConnectionMonitor()
                         listing_service = ListingService(

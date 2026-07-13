@@ -20,11 +20,25 @@ _MAX_CONCURRENT_CHECKS: int = 3
 
 # Таймаут навигации при проверке прокси (мс).
 # Увеличен по сравнению со стандартным — прокси могут быть медленными.
+# Используется при первоначальной проверке всего пула (check_proxies) —
+# там точность важнее скорости, прокси проверяются один раз при старте.
 _CHECK_NAVIGATION_TIMEOUT_MS: int = 60000
 
 # Время ожидания после загрузки страницы (секунды).
 # Достаточно убедиться, что контент подгрузился.
 _CHECK_SETTLE_DELAY: float = 5.0
+
+# ── Быстрая проверка (для поиска замены во время восстановления) ──
+# get_replacement_proxy() и recovery-логика в enrich_strategies.py
+# перебирают кандидатов ПОСЛЕДОВАТЕЛЬНО — один неотвечающий кандидат
+# при полном таймауте (60с + 5с устаканивания) стоит ~65 секунд.
+# Если подряd попадаются несколько мёртвых кандидатов, прогрев/восстановление
+# воркера растягивается на 200-300+ секунд (подтверждено логами прогона).
+# Для этого сценария точность менее важна, чем скорость: ложно отбракованная
+# медленная-но-живая прокси просто не будет использована в этом раунде,
+# тогда как реально мёртвая прокси не должна стоить минуты на отбраковку.
+_FAST_CHECK_NAVIGATION_TIMEOUT_MS: int = 12000
+_FAST_CHECK_SETTLE_DELAY: float = 2.0
 
 # Уменьшенный viewport для проверки прокси — Full HD не нужен,
 # экономим ~30% памяти на рендеринг страницы при каждой проверке.
@@ -45,6 +59,7 @@ _CHECK_BROWSER_ARGS: list[str] = [
 ]
 
 
+
 class ProxyService:
     """Сервис для работы с прокси-серверами.
 
@@ -63,6 +78,22 @@ class ProxyService:
         """
         self._settings = settings
         self._working_proxies: list[ProxyConfig] = []
+
+        # ── Централизованный реестр занятых прокси ──
+        # Раньше "занятость" прокси каждый воркер вычислял локально
+        # (in_use_proxies из статичного снимка all_proxies) — из-за этого
+        # несколько воркеров могли ОДНОВРЕМЕННО решить, что один и тот же
+        # прокси свободен, и захватить его параллельно. Один прокси получал
+        # в разы больше соединений, чем допустимо, и сам начинал отваливаться,
+        # что запускало каскад повторных замен.
+        #
+        # self._lock гарантирует, что резервирование кандидата (добавление
+        # его server_url в self._claimed_urls) — атомарная операция без
+        # сетевых вызовов внутри критической секции. Сама проверка прокси
+        # (check_single_proxy, секунды) выполняется уже ВНЕ блокировки —
+        # иначе все проверки прокси сериализовались бы в один поток.
+        self._lock: asyncio.Lock = asyncio.Lock()
+        self._claimed_urls: set[str] = set()
 
     @property
     def working_proxies(self) -> list[ProxyConfig]:
@@ -192,7 +223,9 @@ class ProxyService:
         )
         return working
 
-    async def check_single_proxy(self, proxy: ProxyConfig) -> bool:
+    async def check_single_proxy(
+        self, proxy: ProxyConfig, fast: bool = False
+    ) -> bool:
         """Проверяет одну прокси на работоспособность.
 
         Открывает браузер с прокси, переходит на sutochno.ru,
@@ -205,10 +238,25 @@ class ProxyService:
 
         Args:
             proxy: Прокси для проверки.
+            fast: Если True — используется сокращённый таймаут навигации
+                (_FAST_CHECK_NAVIGATION_TIMEOUT_MS) и минимальная пауза
+                устаканивания вместо полной (_CHECK_NAVIGATION_TIMEOUT_MS).
+                Предназначено для сценария поиска замены прокси во время
+                восстановления воркера (get_replacement_proxy и recovery-
+                логика), где кандидаты перебираются последовательно и
+                полный таймаут на каждого мёртвого кандидата (~65 секунд)
+                растягивает восстановление на минуты. Обычная (нефастовая)
+                проверка остаётся для первоначальной проверки всего пула
+                прокси при старте — там точность важнее скорости.
 
         Returns:
             True если прокси работает, False — если нет.
         """
+        navigation_timeout_ms = (
+            _FAST_CHECK_NAVIGATION_TIMEOUT_MS if fast else _CHECK_NAVIGATION_TIMEOUT_MS
+        )
+        settle_delay = _FAST_CHECK_SETTLE_DELAY if fast else _CHECK_SETTLE_DELAY
+
         playwright = None
         browser = None
         context = None
@@ -241,18 +289,20 @@ class ProxyService:
             await context.add_init_script(_STEALTH_INIT_SCRIPT)
 
             page = await context.new_page()
-            page.set_default_navigation_timeout(_CHECK_NAVIGATION_TIMEOUT_MS)
+            page.set_default_navigation_timeout(navigation_timeout_ms)
 
             # Переходим на главную страницу sutochno.ru
             await page.goto("https://sutochno.ru", wait_until="domcontentloaded")
 
-            # Прокручиваем страницу
+            # Прокручиваем страницу. В быстром режиме — без промежуточной
+            # паузы между шагами скролла, только финальное устаканивание.
             await page.evaluate("window.scrollTo(0, document.body.scrollHeight / 2)")
-            await asyncio.sleep(2)
+            if not fast:
+                await asyncio.sleep(2)
             await page.evaluate("window.scrollTo(0, document.body.scrollHeight)")
 
             # Ждём стабилизации контента
-            await asyncio.sleep(_CHECK_SETTLE_DELAY)
+            await asyncio.sleep(settle_delay)
 
             # Проверяем что страница загрузилась (есть контент)
             content = await page.content()
@@ -292,78 +342,131 @@ class ProxyService:
                 except Exception:
                     pass
 
+    async def claim_proxy(self, proxy: ProxyConfig) -> None:
+        """Резервирует прокси как используемую.
+
+        Вызывается при начальном статичном распределении прокси по
+        воркерам — ДО старта конкурентной обработки. Это гарантирует,
+        что последующий поиск замены (get_replacement_proxy), вызываемый
+        параллельно из разных воркеров, не выберет прокси, которая уже
+        занята с самого начала прогона.
+
+        Args:
+            proxy: Прокси для резервирования.
+        """
+        async with self._lock:
+            self._claimed_urls.add(proxy.server_url)
+
+    async def release_proxy(self, proxy: ProxyConfig | None) -> None:
+        """Снимает резерв с прокси — она снова доступна для замены.
+
+        Args:
+            proxy: Прокси для освобождения. None игнорируется (удобно
+                вызывать без дополнительной проверки на стороне вызывающего).
+        """
+        if proxy is None:
+            return
+        async with self._lock:
+            self._claimed_urls.discard(proxy.server_url)
+
+    async def mark_dead(self, proxy: ProxyConfig) -> None:
+        """Удаляет прокси из пула рабочих и снимает с неё резерв.
+
+        Вызывается, когда прокси провалила проверку — она не должна
+        больше предлагаться как кандидат ни на начальное распределение,
+        ни на замену.
+
+        Args:
+            proxy: Прокси, провалившая проверку.
+        """
+        async with self._lock:
+            self._claimed_urls.discard(proxy.server_url)
+            if proxy in self._working_proxies:
+                self._working_proxies.remove(proxy)
+
+    async def _claim_next_candidate(
+        self, exclude: set[str]
+    ) -> ProxyConfig | None:
+        """Атомарно выбирает и резервирует первый свободный рабочий прокси.
+
+        Резервирование (добавление в self._claimed_urls) происходит
+        внутри блокировки без каких-либо сетевых вызовов — это единственное
+        место, где решается, какому воркеру достанется кандидат. Именно
+        атомарность этого шага устраняет гонку за один и тот же прокси.
+
+        Args:
+            exclude: Server_url прокси, которые нельзя выбирать
+                (текущая неработающая прокси и т.п.).
+
+        Returns:
+            Зарезервированный ProxyConfig или None, если свободных
+            кандидатов не осталось.
+        """
+        async with self._lock:
+            for candidate in self._working_proxies:
+                if candidate.server_url in exclude:
+                    continue
+                if candidate.server_url in self._claimed_urls:
+                    continue
+                self._claimed_urls.add(candidate.server_url)
+                return candidate
+        return None
+
     async def get_replacement_proxy(
         self,
         current_proxy: ProxyConfig | None,
         in_use_proxies: list[ProxyConfig] | None = None,
     ) -> ProxyConfig | None:
-        """Ищет рабочую замену для текущей прокси из пула.
+        """Атомарно резервирует и проверяет рабочую замену для прокси.
 
-        Перебирает рабочие прокси, исключая текущую и занятые другими
-        воркерами. Для каждого кандидата выполняет проверку через
-        check_single_proxy. Возвращает первую прошедшую проверку.
+        В отличие от предыдущей реализации, занятость прокси отслеживается
+        централизованно (self._claimed_urls) под блокировкой, а не
+        вычисляется каждым воркером локально из статичного снимка списка
+        прокси всех воркеров. Это устраняет гонку: раньше несколько
+        воркеров могли одновременно посчитать один и тот же прокси
+        свободным и захватить его параллельно.
+
+        Текущая прокси (current_proxy) считается уже провалившей проверку
+        на момент вызова этого метода — она немедленно удаляется из пула
+        рабочих (mark_dead), а не просто освобождается.
 
         Args:
-            current_proxy: Текущая прокси, которая не прошла проверку
-                (исключается из кандидатов).
-            in_use_proxies: Список прокси, занятых другими воркерами
-                (исключаются из кандидатов).
+            current_proxy: Текущая прокси, которая не прошла проверку.
+            in_use_proxies: Устаревший параметр, оставлен только для
+                обратной совместимости старых вызовов. Дополнительно
+                исключает перечисленные прокси из кандидатов. Обычно
+                передавать не нужно — занятость теперь отслеживается
+                внутри сервиса через claim_proxy/release_proxy.
 
         Returns:
-            Рабочая прокси для замены или None если замена не найдена.
+            Зарезервированная рабочая прокси или None, если рабочих
+            кандидатов не осталось.
         """
-        if in_use_proxies is None:
-            in_use_proxies = []
-
-        # Собираем множество прокси, которые нельзя использовать
-        excluded: set[str] = set()
         if current_proxy is not None:
-            excluded.add(current_proxy.server_url)
-        for proxy in in_use_proxies:
-            excluded.add(proxy.server_url)
+            await self.mark_dead(current_proxy)
 
-        # Ищем кандидатов среди рабочих прокси
-        candidates = [
-            p for p in self._working_proxies
-            if p.server_url not in excluded
-        ]
+        legacy_exclude = {p.server_url for p in (in_use_proxies or [])}
 
-        if not candidates:
-            logger.warning(
-                "нет_кандидатов_для_замены",
-                step=f"рабочих={len(self._working_proxies)}, "
-                     f"исключено={len(excluded)}",
-            )
-            return None
+        while True:
+            candidate = await self._claim_next_candidate(exclude=legacy_exclude)
 
-        logger.info(
-            "поиск_замены_прокси",
-            step=f"кандидатов={len(candidates)}",
-        )
-
-        # Проверяем кандидатов последовательно — возвращаем первую рабочую
-        for candidate in candidates:
-            is_working = await self.check_single_proxy(candidate)
-            if is_working:
-                logger.info(
-                    "замена_прокси_найдена",
-                    step=str(candidate),
-                )
-                return candidate
-            else:
+            if candidate is None:
                 logger.warning(
-                    "кандидат_не_прошёл_проверку",
-                    step=str(candidate),
+                    "нет_кандидатов_для_замены",
+                    step=f"рабочих={len(self._working_proxies)}",
                 )
-                # Убираем из списка рабочих — она больше не работает
-                if candidate in self._working_proxies:
-                    self._working_proxies.remove(candidate)
+                return None
 
-        logger.warning(
-            "замена_прокси_не_найдена",
-            step=f"проверено={len(candidates)}, ни одна не работает",
-        )
-        return None
+            logger.info("поиск_замены_прокси", step=f"кандидат={candidate}")
+
+            is_working = await self.check_single_proxy(candidate, fast=True)
+
+            if is_working:
+                logger.info("замена_прокси_найдена", step=str(candidate))
+                return candidate
+
+            logger.warning("кандидат_не_прошёл_проверку", step=str(candidate))
+            await self.mark_dead(candidate)
 
     @staticmethod
     def distribute_listings(

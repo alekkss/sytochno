@@ -17,6 +17,7 @@ from src.services.browser_service import BrowserService
 from src.services.comparison_export_service import ComparisonExportService
 from src.services.comparison_service import ComparisonService
 from src.services.export_service import ExportService
+from src.services.listing.batch_enrichment_service import BatchEnrichmentService
 from src.services.listing.concurrency_controller import ConcurrencyController
 from src.services.listing_service import ListingService
 from src.services.proxy_service import ProxyService
@@ -41,14 +42,6 @@ def _create_concurrency_controller(
     В последовательном режиме или режиме вкладок без прокси —
     контроллер не нужен (нечего адаптировать).
 
-    Расчёт ceiling:
-    - Если CONCURRENCY_MAX задан явно (> 0) — используется как есть.
-    - Если 0 (автоматически) — ceiling = количество_прокси × max_tabs.
-
-    Расчёт start:
-    - Если CONCURRENCY_START задан явно (> 0) — используется как есть.
-    - Если 0 (автоматически) — start = ceiling // 2 (безопасный рампинг).
-
     Args:
         settings: Настройки приложения.
         working_proxies: Список рабочих прокси.
@@ -59,7 +52,6 @@ def _create_concurrency_controller(
     if not settings.use_proxy or not working_proxies:
         return None
 
-    # Расчёт максимального параллелизма
     max_workers = min(len(working_proxies), settings.max_proxy_workers)
 
     if settings.concurrency_max > 0:
@@ -69,7 +61,6 @@ def _create_concurrency_controller(
 
     floor = settings.concurrency_min
 
-    # Гарантируем: floor <= ceiling
     if floor > ceiling:
         floor = ceiling
 
@@ -82,6 +73,50 @@ def _create_concurrency_controller(
     )
 
 
+def _count_enriched(listings: list) -> int:
+    """Подсчитывает количество обогащённых карточек.
+
+    Args:
+        listings: Список карточек.
+
+    Returns:
+        Количество карточек с данными календаря или цен.
+    """
+    count = 0
+    for listing in listings:
+        if listing.enrichment_skip_reason is not None:
+            continue
+        if listing.calendar_60_days and any(c == 1 for c in listing.calendar_60_days):
+            count += 1
+        elif listing.prices_60_days and any(p > 0 for p in listing.prices_60_days):
+            count += 1
+    return count
+
+
+def _count_unenriched(listings: list) -> int:
+    """Подсчитывает количество необогащённых карточек (без фатальных).
+
+    Args:
+        listings: Список карточек.
+
+    Returns:
+        Количество карточек без данных и без фатальной причины.
+    """
+    count = 0
+    for listing in listings:
+        if listing.enrichment_skip_reason is not None:
+            continue
+        has_calendar = listing.calendar_60_days and any(
+            c == 1 for c in listing.calendar_60_days
+        )
+        has_prices = listing.prices_60_days and any(
+            p > 0 for p in listing.prices_60_days
+        )
+        if not has_calendar and not has_prices:
+            count += 1
+    return count
+
+
 async def run() -> None:
     """Основной асинхронный pipeline приложения.
 
@@ -90,17 +125,12 @@ async def run() -> None:
     2. Инициализацию базы данных.
     3. Загрузку и проверку прокси (если USE_PROXY=true).
     4. Создание контроллера адаптивного параллелизма.
-    5. Парсинг каталога через API (searchObjectsOnMap → searchObjectsByLocation).
-       При блокировке IP — автоматическое переключение на прокси.
-    6. Запуск браузера для обогащения карточек.
-    7. Обогащение объявлений данными календаря.
-    8. Сохранение результатов в SQLite.
-    9. Сохранение снимков текущего прогона.
-    10. Сравнение с предыдущими снимками и экспорт отчёта изменений.
-    11. Экспорт основного отчёта в Excel (перезаписывается).
-    12. Экспорт датированного снимка Excel (накапливается).
-    13. Повторное обогащение необработанных карточек через прокси.
-    14. Корректное завершение работы.
+    5. Парсинг каталога через API.
+    6. Batch-обогащение через API:
+       - С прокси: параллельно через N прокси-браузеров.
+       - Без прокси: один браузер с токеном от каталога.
+    7. Fallback: поштучное обогащение необработанных карточек.
+    8. Сохранение, снимки, сравнение, экспорт.
     """
     # --- Шаг 1: Загрузка конфигурации ---
     try:
@@ -129,7 +159,7 @@ async def run() -> None:
     snapshot_repository = SQLiteSnapshotRepository(db_path=settings.db_path)
     snapshot_repository.initialize()
 
-    # --- Шаг 4: Загрузка и проверка прокси (до создания сервисов) ---
+    # --- Шаг 4: Загрузка и проверка прокси ---
     working_proxies: list[ProxyConfig] = []
     proxy_service: ProxyService | None = None
 
@@ -170,7 +200,7 @@ async def run() -> None:
                  f"start={concurrency_controller.current_limit}",
         )
 
-    # --- Шаг 6: Создание сервисов (Dependency Injection) ---
+    # --- Шаг 6: Создание сервисов ---
     browser_service = BrowserService(settings=settings)
     scraper_service = ScraperService(
         settings=settings,
@@ -188,52 +218,182 @@ async def run() -> None:
     snapshot_service = SnapshotService(repository=snapshot_repository)
     comparison_service = ComparisonService()
 
-    # Папка для отчётов сравнения — рядом с основным Excel-файлом
     export_dir = str(Path(settings.export_path).parent)
     comparison_export_service = ComparisonExportService(export_dir=export_dir)
 
-    # Флаг: был ли запущен браузер для обогащения
+    batch_enrichment_service = BatchEnrichmentService()
+
     enrichment_browser_started = False
 
     try:
         # --- Шаг 7: Парсинг каталога через API (Этап 1) ---
-        # ScraperService сам управляет браузером: запускает для каждой ссылки,
-        # перехватывает API URL, собирает ID через fetch(), получает полные данные.
-        # При блокировке IP — переключается на прокси из пула.
-        # После завершения браузер закрыт.
         logger.info(
             "начало_парсинга_каталога",
             step="scraping",
             urls_count=len(settings.search_urls),
             proxies_available=len(working_proxies),
         )
-        listings = await scraper_service.scrape_catalog()
+        listings, catalog_token = await scraper_service.scrape_catalog()
 
         if not listings:
             logger.warning("объявления_не_найдены")
+            await browser_service.stop()
             return
 
         logger.info(
             "каталог_собран",
             total=len(listings),
+            token_available=catalog_token is not None,
             step="scraping",
         )
 
-        # --- Шаг 8: Запуск браузера для обогащения (Этап 2) ---
-        # Браузер после Этапа 1 закрыт — запускаем новый для обогащения.
-        await browser_service.start()
-        enrichment_browser_started = True
+        # --- Шаг 8: Batch-обогащение через API (Этап 2a) ---
+        batch_enriched_count = 0
 
-        # --- Шаг 9: Обогащение — парсинг карточек (календарь + цены) ---
-        listings = await _enrich_with_proxy_or_sequential(
-            settings=settings,
-            listings=listings,
-            listing_service=listing_service,
-            working_proxies=working_proxies,
-            proxy_service=proxy_service,
-            concurrency_controller=concurrency_controller,
-            logger=logger,
-        )
+        if settings.use_proxy and working_proxies:
+            # ── Параллельный batch: N прокси-браузеров ──
+            # Каждый воркер сам загружает страницу поиска и получает токен.
+            # Браузер каталога больше не нужен — закрываем.
+            await browser_service.stop()
+
+            # Первый URL поиска — для загрузки страницы в воркерах
+            first_search_url = settings.search_urls[0]
+
+            logger.info(
+                "начало_batch_обогащения_parallel",
+                total=len(listings),
+                step=f"воркеров={min(len(working_proxies), settings.max_proxy_workers)}",
+            )
+
+            try:
+                await batch_enrichment_service.enrich_batch_parallel(
+                    settings=settings,
+                    listings=listings,
+                    proxies=working_proxies,
+                    search_url=first_search_url,
+                    proxy_service=proxy_service,
+                )
+
+                batch_enriched_count = _count_enriched(listings)
+                batch_fatal_count = sum(
+                    1 for l in listings
+                    if l.enrichment_skip_reason is not None
+                )
+                batch_unenriched = _count_unenriched(listings)
+
+                logger.info(
+                    "batch_обогащение_parallel_завершено",
+                    step=f"обогащено={batch_enriched_count}, "
+                         f"фатальных={batch_fatal_count}, "
+                         f"для_fallback={batch_unenriched}",
+                )
+
+            except Exception as e:
+                logger.warning(
+                    "ошибка_batch_обогащения_parallel",
+                    error=str(e)[:300],
+                    error_type=type(e).__name__,
+                    step="batch_enrichment",
+                )
+
+        elif catalog_token is not None:
+            # ── Однопоточный batch: токен от каталога ──
+            try:
+                catalog_page_alive = await browser_service.is_alive()
+
+                if catalog_page_alive:
+                    catalog_page = browser_service.page
+
+                    logger.info(
+                        "начало_batch_обогащения",
+                        total=len(listings),
+                        step="batch_enrichment",
+                    )
+
+                    await batch_enrichment_service.enrich_batch(
+                        page=catalog_page,
+                        token=catalog_token,
+                        listings=listings,
+                    )
+
+                    batch_enriched_count = _count_enriched(listings)
+                    batch_fatal_count = sum(
+                        1 for l in listings
+                        if l.enrichment_skip_reason is not None
+                    )
+                    batch_unenriched = _count_unenriched(listings)
+
+                    logger.info(
+                        "batch_обогащение_завершено",
+                        step=f"обогащено={batch_enriched_count}, "
+                             f"фатальных={batch_fatal_count}, "
+                             f"для_fallback={batch_unenriched}",
+                    )
+                else:
+                    logger.warning(
+                        "браузер_каталога_не_жив_пропуск_batch",
+                        step="batch_enrichment",
+                    )
+
+            except Exception as e:
+                logger.warning(
+                    "ошибка_batch_обогащения",
+                    error=str(e)[:300],
+                    error_type=type(e).__name__,
+                    step="batch_enrichment",
+                )
+
+            # Закрываем браузер каталога
+            await browser_service.stop()
+        else:
+            logger.info(
+                "токен_каталога_отсутствует_пропуск_batch",
+                step="batch_enrichment",
+            )
+            await browser_service.stop()
+
+        # --- Шаг 9: Fallback — поштучное обогащение необогащённых ---
+        unenriched_count = _count_unenriched(listings)
+
+        if unenriched_count > 0:
+            logger.info(
+                "начало_fallback_обогащения",
+                total=len(listings),
+                step=f"необогащённых={unenriched_count}, "
+                     f"уже_обогащено_batch={batch_enriched_count}",
+            )
+
+            unenriched_listings = [
+                l for l in listings
+                if l.enrichment_skip_reason is None
+                and not (l.calendar_60_days and any(c == 1 for c in l.calendar_60_days))
+                and not (l.prices_60_days and any(p > 0 for p in l.prices_60_days))
+            ]
+
+            if unenriched_listings:
+                await browser_service.start()
+                enrichment_browser_started = True
+
+                unenriched_listings = await _enrich_with_proxy_or_sequential(
+                    settings=settings,
+                    listings=unenriched_listings,
+                    listing_service=listing_service,
+                    working_proxies=working_proxies,
+                    proxy_service=proxy_service,
+                    concurrency_controller=concurrency_controller,
+                    logger=logger,
+                )
+
+                logger.info(
+                    "fallback_обогащение_завершено",
+                    total=len(unenriched_listings),
+                    step="enrichment",
+                )
+        else:
+            logger.info(
+                "все_карточки_обогащены_batch_fallback_не_нужен",
+                step=f"обогащено={batch_enriched_count}",
+            )
 
         logger.info(
             "карточки_обработаны",
@@ -250,12 +410,12 @@ async def run() -> None:
             step="storage",
         )
 
-        # --- Шаг 11: Остановка основного браузера (перед повторным обогащением) ---
+        # --- Шаг 11: Остановка основного браузера ---
         if enrichment_browser_started:
             await browser_service.stop()
             enrichment_browser_started = False
 
-        # --- Шаг 12: Повторное обогащение необработанных карточек через прокси ---
+        # --- Шаг 12: Повторное обогащение через прокси ---
         if working_proxies:
             await _retry_empty_listings(
                 settings=settings,
@@ -274,12 +434,12 @@ async def run() -> None:
                     step=f"пустых_карточек={empty_count}",
                 )
 
-        # --- Шаг 13: Сохранение снимков текущего прогона ---
+        # --- Шаг 13: Сохранение снимков ---
         logger.info("сохранение_снимков", step="snapshots")
         all_listings = repository.get_all()
         snapshot_service.save_snapshots(all_listings)
 
-        # --- Шаг 14: Сравнение снимков и экспорт отчёта изменений ---
+        # --- Шаг 14: Сравнение снимков ---
         all_events = _run_comparison(
             listings=all_listings,
             snapshot_repository=snapshot_repository,
@@ -305,10 +465,9 @@ async def run() -> None:
                 step="comparison_export",
             )
 
-        # --- Шаг 15: Экспорт отчётов в Excel ---
+        # --- Шаг 15: Экспорт отчётов ---
         logger.info("экспорт_в_excel", step="export")
 
-        # Основной отчёт — перезаписывается при каждом запуске
         export_path = export_service.export(all_listings)
         logger.info(
             "основной_отчёт_сохранён",
@@ -317,7 +476,6 @@ async def run() -> None:
             step="export",
         )
 
-        # Датированный снимок — накапливается, имя содержит дату и время парсинга.
         run_timestamp = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
         base_name = Path(settings.export_path).stem
         snapshot_filename = f"{base_name}_{run_timestamp}.xlsx"
@@ -341,11 +499,15 @@ async def run() -> None:
         )
         sys.exit(1)
     finally:
-        # --- Шаг 16: Корректное завершение ---
         if enrichment_browser_started:
             await browser_service.stop()
 
-        # Финальная статистика контроллера параллелизма
+        try:
+            if await browser_service.is_alive():
+                await browser_service.stop()
+        except Exception:
+            pass
+
         if concurrency_controller is not None:
             logger.info("─" * 50)
             logger.info("финальная_статистика_контроллера_параллелизма")
@@ -366,57 +528,12 @@ async def _retry_empty_listings(
     concurrency_controller: ConcurrencyController | None,
     logger: "any",  # type: ignore[name-defined]
 ) -> None:
-    """Цикл повторного обогащения карточек с пустыми данными через прокси.
-
-    Повторяет обогащение до тех пор, пока:
-    - Все карточки заполнены (пустых не осталось).
-    - Или количество кандидатов на раунд меньше settings.retry_min_cards_threshold
-      (досрочное завершение — дальше обрабатывать невыгодно).
-    - Или прогресс остановился (раунд не обогатил ни одной новой карточки).
-    - Или все оставшиеся пустые карточки попали в чёрный список.
-    - Или достигнут лимит раундов (_MAX_RETRY_ROUNDS).
-
-    Механизм чёрного списка (два уровня):
-    1. Мгновенное исключение — карточки с enrichment_skip_reason != None
-       (удалённые объявления, min_nights >= 60, битая страница)
-       исключаются сразу, без ожидания нескольких раундов.
-    2. Порог провалов — если карточка не обогатилась settings.blacklist_threshold
-       раундов подряд — она исключается из дальнейших попыток.
-
-    Порог досрочного завершения (retry_min_cards_threshold):
-    - Проверяется на любом раунде (в том числе первом) ПЕРЕД началом обработки.
-    - Если количество кандидатов (после мгновенных исключений и чёрного списка)
-      меньше порога — цикл прерывается досрочно, программа переходит
-      к следующему этапу pipeline (снимки, сравнение, экспорт).
-    - Значение 0 в настройках отключает эту проверку.
-
-    При следующем запуске программы оба списка сбрасываются.
-
-    После каждого раунда:
-    - Обогащённые карточки сохраняются в базу данных.
-    - Заново загружается список пустых карточек для следующего раунда.
-    - Карточки из чёрного списка исключаются из этого списка.
-
-    Args:
-        settings: Настройки приложения.
-        repository: Репозиторий объявлений.
-        working_proxies: Список проверенных рабочих прокси.
-        proxy_service: Сервис прокси (для передачи в воркеры).
-        snapshot_service: Сервис снимков (для сохранения после каждого раунда).
-        concurrency_controller: Глобальный контроллер параллелизма (опциональный).
-            Переиспользуется между раундами — адаптация продолжается непрерывно.
-        logger: Логгер.
-    """
+    """Цикл повторного обогащения карточек с пустыми данными через прокси."""
     threshold = settings.blacklist_threshold
     min_cards_threshold = settings.retry_min_cards_threshold
 
-    # Счётчик последовательных провалов: external_id → количество раундов без успеха
     fail_counts: dict[str, int] = {}
-
-    # Множество заблокированных карточек (исключённых из дальнейших попыток)
     blacklisted_ids: set[str] = set()
-
-    # Статистика причин мгновенного исключения
     skip_reasons_stats: dict[str, int] = {}
 
     logger.info(
@@ -428,7 +545,6 @@ async def _retry_empty_listings(
     )
 
     for round_num in range(1, _MAX_RETRY_ROUNDS + 1):
-        # Получаем карточки с пустыми данными из базы
         empty_listings = repository.get_empty_listings()
 
         if not empty_listings:
@@ -438,9 +554,6 @@ async def _retry_empty_listings(
             )
             return
 
-        # ── Мгновенное исключение карточек с enrichment_skip_reason ──
-        # Карточки, помеченные на предыдущих этапах (основной прогон или
-        # предыдущие раунды) как необогащаемые, сразу идут в чёрный список.
         instantly_excluded = 0
         for listing in empty_listings:
             if (
@@ -450,7 +563,6 @@ async def _retry_empty_listings(
                 blacklisted_ids.add(listing.external_id)
                 instantly_excluded += 1
 
-                # Статистика по причинам
                 reason = listing.enrichment_skip_reason
                 skip_reasons_stats[reason] = skip_reasons_stats.get(reason, 0) + 1
 
@@ -461,7 +573,6 @@ async def _retry_empty_listings(
                 total=f"причины={skip_reasons_stats}",
             )
 
-        # Исключаем карточки из чёрного списка
         candidates = [
             listing for listing in empty_listings
             if listing.external_id not in blacklisted_ids
@@ -478,12 +589,6 @@ async def _retry_empty_listings(
             )
             return
 
-        # ── Проверка порога досрочного завершения ──
-        # Выполняется ПЕРЕД обработкой раунда: если кандидатов меньше
-        # заданного порога, продолжать бессмысленно — оставшийся «хвост»
-        # обычно состоит из проблемных карточек, которые всё равно
-        # не обогатятся. Программа сразу переходит к следующему этапу
-        # (снимки → сравнение → экспорт). Значение 0 отключает проверку.
         if 0 < min_cards_threshold and len(candidates) < min_cards_threshold:
             logger.info(
                 "повторное_обогащение_завершено_досрочно_по_порогу",
@@ -496,9 +601,7 @@ async def _retry_empty_listings(
             )
             return
 
-        logger.info(
-            "═" * 60,
-        )
+        logger.info("═" * 60)
         logger.info(
             "начало_раунда_повторного_обогащения",
             step=f"раунд={round_num}/{_MAX_RETRY_ROUNDS}",
@@ -506,14 +609,11 @@ async def _retry_empty_listings(
                   f"исключено={excluded_count}",
         )
 
-        # Ограничиваем количество воркеров
         max_workers = settings.max_proxy_workers
         proxies_to_use = working_proxies[:max_workers]
 
-        # Запоминаем ID кандидатов этого раунда — для подсчёта провалов
         candidate_ids = {listing.external_id for listing in candidates}
 
-        # Обогащаем через прокси-браузеры с тем же контроллером
         enriched_listings = await ListingService.enrich_listings_parallel(
             settings=settings,
             listings=candidates,
@@ -522,7 +622,6 @@ async def _retry_empty_listings(
             concurrency_controller=concurrency_controller,
         )
 
-        # ── Мгновенное исключение карточек, помеченных ВО ВРЕМЯ этого раунда ──
         newly_skipped = 0
         for listing in enriched_listings:
             if (
@@ -542,32 +641,23 @@ async def _retry_empty_listings(
                 total=f"причины={skip_reasons_stats}",
             )
 
-        # Подсчитываем, сколько карточек были реально обогащены в этом раунде
         newly_enriched = [
             listing for listing in enriched_listings
             if _is_listing_enriched(listing)
         ]
 
-        # ID успешно обогащённых карточек
         enriched_ids = {listing.external_id for listing in newly_enriched}
-
-        # ID карточек, которые не обогатились в этом раунде
-        # (исключая те, что уже в чёрном списке — их не считаем как провал)
         failed_ids = candidate_ids - enriched_ids - blacklisted_ids
 
-        # Обновляем счётчики провалов
         for ext_id in enriched_ids:
-            # Успех — сбрасываем счётчик (на случай если раньше проваливалась)
             fail_counts.pop(ext_id, None)
 
         for ext_id in failed_ids:
             fail_counts[ext_id] = fail_counts.get(ext_id, 0) + 1
 
-            # Проверяем порог — если достигнут, добавляем в чёрный список
             if fail_counts[ext_id] >= threshold:
                 blacklisted_ids.add(ext_id)
 
-        # Количество новых карточек в чёрном списке по порогу провалов
         newly_blacklisted_by_threshold = len([
             ext_id for ext_id in failed_ids
             if fail_counts.get(ext_id, 0) >= threshold
@@ -582,7 +672,6 @@ async def _retry_empty_listings(
                   f"всего_в_чёрном_списке={len(blacklisted_ids)}",
         )
 
-        # Сохраняем обогащённые карточки в базу
         if newly_enriched:
             repository.upsert_many(newly_enriched)
             logger.info(
@@ -591,8 +680,6 @@ async def _retry_empty_listings(
                 step=f"раунд={round_num}",
             )
 
-        # Проверка прогресса — если ни одна карточка не обогащена
-        # и нет новых мгновенно исключённых, прекращаем
         if not newly_enriched and newly_skipped == 0:
             logger.warning(
                 "повторное_обогащение_остановлено_нет_прогресса",
@@ -602,10 +689,8 @@ async def _retry_empty_listings(
             )
             return
 
-        # Проверяем, остались ли ещё кандидаты для следующего раунда
         remaining_candidates = len(failed_ids) - newly_blacklisted_by_threshold
         if remaining_candidates <= 0:
-            # Все оставшиеся пустые карточки уже в чёрном списке
             logger.info(
                 "повторное_обогащение_завершено",
                 step=f"раундов={round_num}, "
@@ -614,7 +699,6 @@ async def _retry_empty_listings(
             )
             return
 
-        # Пауза перед следующим раундом — даём антибот-защите «остыть»
         logger.info(
             "пауза_между_раундами",
             step=f"пауза={_RETRY_ROUND_PAUSE_SECONDS}с, "
@@ -622,7 +706,6 @@ async def _retry_empty_listings(
         )
         await asyncio.sleep(_RETRY_ROUND_PAUSE_SECONDS)
 
-    # Лимит раундов исчерпан
     final_empty = repository.get_empty_listings()
     logger.warning(
         "лимит_раундов_повторного_обогащения_исчерпан",
@@ -634,17 +717,7 @@ async def _retry_empty_listings(
 
 
 def _is_listing_enriched(listing: "RawListing") -> bool:
-    """Проверяет, содержит ли карточка данные календаря и/или цен.
-
-    Карточка считается обогащённой, если хотя бы одна цена > 0
-    или хотя бы один день занят (calendar = 1).
-
-    Args:
-        listing: Объявление для проверки.
-
-    Returns:
-        True если карточка содержит данные.
-    """
+    """Проверяет, содержит ли карточка данные календаря и/или цен."""
     if listing.calendar_60_days and any(c == 1 for c in listing.calendar_60_days):
         return True
     if listing.prices_60_days and any(p > 0 for p in listing.prices_60_days):
@@ -658,27 +731,9 @@ def _run_comparison(
     comparison_service: ComparisonService,
     logger: "any",  # type: ignore[name-defined]
 ) -> list[AnyEvent]:
-    """Сравнивает последние два снимка для каждого объявления.
-
-    Использует батчевую загрузку снимков — один вызов get_last_two_batch
-    загружает все необходимые данные двумя SQL-запросами, вместо
-    N×3 запросов при поштучной обработке.
-
-    Для 18284 объявлений: ~5 часов → ~10-30 секунд.
-
-    Args:
-        listings: Список объявлений текущего прогона.
-        snapshot_repository: Репозиторий снимков.
-        comparison_service: Сервис сравнения.
-        logger: Логгер.
-
-    Returns:
-        Объединённый список всех событий по всем объявлениям,
-        отсортированный по дате заезда.
-    """
+    """Сравнивает последние два снимка для каждого объявления."""
     start_time = time.perf_counter()
 
-    # ── Шаг 1: Собираем все external_id с названиями ──
     id_title_map: dict[str, str] = {}
     for listing in listings:
         external_id: str = getattr(listing, "external_id", "")
@@ -687,13 +742,9 @@ def _run_comparison(
             id_title_map[external_id] = title
 
     if not id_title_map:
-        logger.info(
-            "сравнение_пропущено_нет_id",
-            step="comparison",
-        )
+        logger.info("сравнение_пропущено_нет_id", step="comparison")
         return []
 
-    # ── Шаг 2: Батчевая загрузка двух последних снимков для всех ID ──
     logger.info(
         "загрузка_снимков_для_сравнения",
         total=len(id_title_map),
@@ -713,7 +764,6 @@ def _run_comparison(
         step="comparison",
     )
 
-    # ── Шаг 3: Сравнение снимков для каждого объявления ──
     all_events: list[AnyEvent] = []
     compared = 0
     skipped = 0
@@ -758,28 +808,7 @@ async def _enrich_with_proxy_or_sequential(
     concurrency_controller: ConcurrencyController | None,
     logger: "any",  # type: ignore[name-defined]
 ) -> list:
-    """Обогащает карточки: параллельно через прокси, через вкладки или последовательно.
-
-    Прокси уже проверены на этапе инициализации — повторная проверка не нужна.
-
-    Логика выбора режима:
-    1. Если USE_PROXY=true и есть рабочие прокси — параллельно через прокси.
-       Каждый прокси-браузер использует MAX_TABS вкладок.
-    2. Если прокси выключены или нерабочие, MAX_TABS > 1 — параллельные вкладки.
-    3. Если MAX_TABS = 1 — последовательная обработка.
-
-    Args:
-        settings: Настройки приложения.
-        listings: Список карточек для обогащения.
-        listing_service: Сервис парсинга карточек.
-        working_proxies: Список проверенных рабочих прокси.
-        proxy_service: Сервис прокси с заполненным пулом (для передачи в воркеры).
-        concurrency_controller: Глобальный контроллер параллелизма (опциональный).
-        logger: Логгер.
-
-    Returns:
-        Список обогащённых карточек.
-    """
+    """Обогащает карточки: параллельно через прокси, через вкладки или последовательно."""
     if settings.use_proxy and working_proxies:
         max_workers = settings.max_proxy_workers
         proxies_to_use = working_proxies[:max_workers]
@@ -814,20 +843,7 @@ async def _enrich_without_proxy(
     listing_service: ListingService,
     logger: "any",  # type: ignore[name-defined]
 ) -> list:
-    """Обогащает карточки без прокси: через вкладки или последовательно.
-
-    Если MAX_TABS > 1 — параллельные вкладки в одном браузере.
-    Если MAX_TABS = 1 — последовательная обработка.
-
-    Args:
-        settings: Настройки приложения.
-        listings: Список карточек для обогащения.
-        listing_service: Сервис парсинга карточек.
-        logger: Логгер.
-
-    Returns:
-        Список обогащённых карточек.
-    """
+    """Обогащает карточки без прокси: через вкладки или последовательно."""
     if settings.max_tabs > 1:
         logger.info(
             "начало_парсинга_карточек_вкладки",
