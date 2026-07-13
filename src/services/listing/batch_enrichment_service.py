@@ -462,6 +462,16 @@ class BatchEnrichmentService:
     ) -> tuple[str | None, Page | None]:
         """Запускает браузер, загружает страницу поиска, перехватывает токен.
 
+        Route handler безопасно обрабатывает «Route is already handled!» —
+        эта ошибка возникает когда page.goto() таймаутит и Playwright
+        отменяет pending-запросы, а route handler всё ещё пытается
+        продолжить уже отменённый запрос.
+
+        После загрузки route снимается через page.unroute() —
+        это критически важно, иначе route handler будет перехватывать
+        fetch()-запросы из _fetch_batch() и вызывать «Route is already
+        handled!» при последующих page.evaluate().
+
         Args:
             browser_service: Сервис браузера.
             proxy: Прокси для запуска.
@@ -494,7 +504,15 @@ class BatchEnrichmentService:
                     )
                     if token:
                         captured_token.append(token)
-                await route.continue_()
+                # При таймауте page.goto() Playwright отменяет pending-запросы.
+                # Если route.continue_() вызывается для уже отменённого запроса —
+                # выбрасывается «Route is already handled!». Это не ошибка логики —
+                # безопасно игнорируем.
+                try:
+                    await route.continue_()
+                except Exception as e:
+                    if "Route is already handled" not in str(e):
+                        raise
 
             await page.route("**/api/json/**", _intercept)
 
@@ -503,7 +521,14 @@ class BatchEnrichmentService:
                 step=f"воркер={worker_idx}, попытка={attempt}",
             )
 
-            await page.goto(search_url, wait_until="domcontentloaded")
+            # Таймаут навигации: SPA sutochno.ru через медленные прокси
+            # загружается за 15–40 секунд. 45 секунд — компромисс
+            # между скоростью и стабильностью.
+            await page.goto(
+                search_url,
+                wait_until="domcontentloaded",
+                timeout=45000,
+            )
 
             # Ожидание перехвата токена
             elapsed = 0.0
@@ -513,7 +538,14 @@ class BatchEnrichmentService:
                 await asyncio.sleep(_TOKEN_POLL_INTERVAL)
                 elapsed += _TOKEN_POLL_INTERVAL
 
-            await page.unroute("**/api/json/**")
+            # Снимаем route handler — критически важно!
+            # Без этого handler будет перехватывать fetch()-запросы
+            # из _fetch_batch() и вызывать «Route is already handled!»
+            # при последующих page.evaluate().
+            try:
+                await page.unroute("**/api/json/**")
+            except Exception:
+                pass
 
             # Дополнительное ожидание для стабилизации сессии
             await asyncio.sleep(_POST_LOAD_WAIT)
@@ -541,6 +573,12 @@ class BatchEnrichmentService:
                 error_type=type(e).__name__,
                 step=f"воркер={worker_idx}, попытка={attempt}",
             )
+            # Снимаем route при ошибке — чтобы не мешал при retry
+            try:
+                if browser_service._page is not None:  # noqa: SLF001
+                    await browser_service.page.unroute("**/api/json/**")
+            except Exception:
+                pass
             return None, None
 
     # ══════════════════════════════════════════════════════════
