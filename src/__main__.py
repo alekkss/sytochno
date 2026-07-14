@@ -1,6 +1,8 @@
 """Точка входа приложения — сборка зависимостей и запуск pipeline."""
 
 import asyncio
+import json
+import signal
 import sys
 import time
 from datetime import datetime, timezone
@@ -21,6 +23,82 @@ from src.services.listing.batch_enrichment_service import BatchEnrichmentService
 from src.services.proxy_service import ProxyService
 from src.services.scraper_service import ScraperService
 from src.services.snapshot_service import SnapshotService
+
+
+# ── Константы цикла ──────────────────────────────────────────
+
+# Пауза между прогонами (секунды)
+_CYCLE_PAUSE_SECONDS: int = 120
+
+# Путь к JSON-файлу статуса прогона (относительно data/)
+_RUN_STATUS_FILENAME: str = "last_run_status.json"
+
+# Флаг остановки цикла (устанавливается через SIGTERM/SIGINT)
+_shutdown_requested: bool = False
+
+
+def _request_shutdown(signum: int, frame: "any") -> None:  # type: ignore[name-defined]
+    """Обработчик сигналов SIGTERM и SIGINT — запрашивает остановку цикла.
+
+    Устанавливает глобальный флаг, который проверяется в паузе между прогонами
+    и перед стартом нового прогона. Текущий прогон не прерывается — он
+    завершается штатно, после чего цикл останавливается.
+
+    Args:
+        signum: Номер сигнала.
+        frame: Текущий стек-фрейм (не используется).
+    """
+    global _shutdown_requested  # noqa: PLW0603
+    _shutdown_requested = True
+
+
+def _write_run_status(
+    data_dir: str,
+    status: str,
+    started_at: str,
+    finished_at: str,
+    listings_count: int = 0,
+    events_count: int = 0,
+    error: str | None = None,
+    run_number: int = 0,
+) -> None:
+    """Записывает результат прогона в JSON-файл для чтения админкой.
+
+    Файл перезаписывается при каждом прогоне. Админка мониторит
+    изменение файла (по полю run_number или finished_at) и создаёт
+    запись в истории запусков.
+
+    Args:
+        data_dir: Путь к папке data/ парсера.
+        status: Статус прогона ("success", "failed", "cancelled").
+        started_at: Время начала прогона (ISO 8601, UTC).
+        finished_at: Время завершения прогона (ISO 8601, UTC).
+        listings_count: Количество объявлений в БД после прогона.
+        events_count: Количество событий (брони + отмены).
+        error: Текст ошибки (только для status="failed").
+        run_number: Порядковый номер прогона в текущей сессии.
+    """
+    status_path = Path(data_dir) / _RUN_STATUS_FILENAME
+
+    data = {
+        "status": status,
+        "started_at": started_at,
+        "finished_at": finished_at,
+        "listings_count": listings_count,
+        "events_count": events_count,
+        "error": error,
+        "run_number": run_number,
+    }
+
+    try:
+        status_path.parent.mkdir(parents=True, exist_ok=True)
+        status_path.write_text(
+            json.dumps(data, ensure_ascii=False, indent=2),
+            encoding="utf-8",
+        )
+    except OSError:
+        # Не критично — админка просто не увидит этот прогон
+        pass
 
 
 def _count_enriched(listings: list) -> int:
@@ -211,25 +289,18 @@ async def _batch_retry_without_proxy(
 
 
 async def run() -> None:
-    """Основной асинхронный pipeline приложения.
+    """Один прогон pipeline — сбор каталога, обогащение, снимки, экспорт.
 
-    Последовательно выполняет:
-    1. Загрузку конфигурации.
-    2. Инициализацию базы данных.
-    3. Загрузку и проверку прокси (если USE_PROXY=true).
-    4. Парсинг каталога через API.
-    5. Batch-обогащение через API:
-       - С прокси: параллельно через N прокси-браузеров.
-       - Без прокси: один браузер с токеном от каталога.
-    6. Batch-retry: один воркер без прокси для необработанных (однократно).
-    7. Сохранение, снимки, сравнение, экспорт.
+    Возвращает управление после завершения. Не содержит цикла —
+    цикл реализован в run_loop(). Это позволяет корректно обрабатывать
+    критические ошибки на уровне цикла.
+
+    Raises:
+        RuntimeError: При ошибке загрузки конфигурации.
+        Exception: Любая критическая ошибка pipeline.
     """
     # --- Шаг 1: Загрузка конфигурации ---
-    try:
-        settings = Settings.load()
-    except RuntimeError as e:
-        print(f"[ОШИБКА] {e}", file=sys.stderr)  # noqa: T201
-        sys.exit(1)
+    settings = Settings.load()
 
     # --- Шаг 2: Конфигурация логирования ---
     configure_logging(
@@ -238,7 +309,7 @@ async def run() -> None:
     )
     logger = get_logger("main")
     logger.info(
-        "приложение_запущено",
+        "прогон_начат",
         step="init",
         search_urls_count=len(settings.search_urls),
         max_pages=settings.max_pages,
@@ -535,15 +606,6 @@ async def run() -> None:
             step="export",
         )
 
-    except KeyboardInterrupt:
-        logger.warning("прервано_пользователем")
-    except Exception as e:
-        logger.exception(
-            "критическая_ошибка",
-            error=str(e),
-            error_type=type(e).__name__,
-        )
-        sys.exit(1)
     finally:
         try:
             if await browser_service.is_alive():
@@ -553,7 +615,196 @@ async def run() -> None:
 
         repository.close()
         snapshot_repository.close()
-        logger.info("приложение_завершено", step="shutdown")
+
+
+async def run_loop() -> None:
+    """Бесконечный цикл прогонов парсера.
+
+    Выполняет run() в цикле с паузой _CYCLE_PAUSE_SECONDS между прогонами.
+    При критической ошибке — записывает статус "failed" и завершает процесс.
+    При SIGTERM/SIGINT — корректно завершает текущий прогон и выходит.
+
+    Каждый прогон записывает результат в JSON-файл (data/last_run_status.json),
+    который админка мониторит для отображения истории запусков.
+    """
+    global _shutdown_requested  # noqa: PLW0603
+
+    # Регистрируем обработчики сигналов для корректной остановки
+    signal.signal(signal.SIGTERM, _request_shutdown)
+    signal.signal(signal.SIGINT, _request_shutdown)
+
+    # Загружаем settings один раз для определения data_dir
+    try:
+        settings = Settings.load()
+    except RuntimeError as e:
+        print(f"[ОШИБКА] {e}", file=sys.stderr)  # noqa: T201
+        sys.exit(1)
+
+    configure_logging(
+        log_level=settings.log_level,
+        log_file_path=settings.log_file_path,
+    )
+    logger = get_logger("main")
+
+    data_dir = str(Path(settings.export_path).parent)
+    run_number = 0
+
+    logger.info(
+        "цикл_парсера_запущен",
+        step=f"пауза_между_прогонами={_CYCLE_PAUSE_SECONDS}с",
+    )
+
+    while not _shutdown_requested:
+        run_number += 1
+        started_at = datetime.now(timezone.utc)
+        started_at_iso = started_at.isoformat()
+
+        logger.info("═" * 60)
+        logger.info(
+            "начало_прогона",
+            step=f"прогон={run_number}",
+        )
+
+        run_start_time = time.perf_counter()
+
+        try:
+            await run()
+
+            run_elapsed = time.perf_counter() - run_start_time
+            finished_at_iso = datetime.now(timezone.utc).isoformat()
+
+            # Читаем статистику из БД для JSON-статуса
+            listings_count = 0
+            events_count = 0
+            try:
+                repo = SQLiteListingRepository(db_path=settings.db_path)
+                repo.initialize()
+                listings_count = len(repo.get_all())
+                repo.close()
+            except Exception:
+                pass
+
+            # Считаем события из последнего отчёта сравнения
+            try:
+                comparison_dir = Path(data_dir)
+                comparison_files = sorted(
+                    comparison_dir.glob("comparison_report_*.xlsx"),
+                    reverse=True,
+                )
+                if comparison_files:
+                    from openpyxl import load_workbook
+
+                    wb = load_workbook(
+                        str(comparison_files[0]), read_only=True
+                    )
+                    ws = wb.active
+                    events_count = max(0, ws.max_row - 1) if ws.max_row else 0
+                    wb.close()
+            except Exception:
+                pass
+
+            _write_run_status(
+                data_dir=data_dir,
+                status="success",
+                started_at=started_at_iso,
+                finished_at=finished_at_iso,
+                listings_count=listings_count,
+                events_count=events_count,
+                run_number=run_number,
+            )
+
+            logger.info(
+                "прогон_завершён_успешно",
+                step=f"прогон={run_number}, "
+                     f"время={_format_duration(run_elapsed)}, "
+                     f"объявлений={listings_count}, "
+                     f"событий={events_count}",
+            )
+
+        except KeyboardInterrupt:
+            finished_at_iso = datetime.now(timezone.utc).isoformat()
+            _write_run_status(
+                data_dir=data_dir,
+                status="cancelled",
+                started_at=started_at_iso,
+                finished_at=finished_at_iso,
+                run_number=run_number,
+            )
+            logger.warning(
+                "прогон_прерван_пользователем",
+                step=f"прогон={run_number}",
+            )
+            break
+
+        except Exception as e:
+            run_elapsed = time.perf_counter() - run_start_time
+            finished_at_iso = datetime.now(timezone.utc).isoformat()
+
+            error_msg = f"{type(e).__name__}: {e}"
+
+            _write_run_status(
+                data_dir=data_dir,
+                status="failed",
+                started_at=started_at_iso,
+                finished_at=finished_at_iso,
+                error=error_msg[:500],
+                run_number=run_number,
+            )
+
+            logger.exception(
+                "критическая_ошибка_прогона",
+                error=str(e),
+                error_type=type(e).__name__,
+                step=f"прогон={run_number}, "
+                     f"время={_format_duration(run_elapsed)}",
+            )
+            sys.exit(1)
+
+        # ── Проверка флага остановки перед паузой ──
+        if _shutdown_requested:
+            logger.info(
+                "остановка_запрошена_после_прогона",
+                step=f"прогон={run_number}",
+            )
+            break
+
+        # ── Пауза между прогонами с проверкой SIGTERM каждую секунду ──
+        logger.info(
+            "пауза_между_прогонами",
+            step=f"пауза={_CYCLE_PAUSE_SECONDS}с, "
+                 f"следующий_прогон={run_number + 1}",
+        )
+
+        for _ in range(_CYCLE_PAUSE_SECONDS):
+            if _shutdown_requested:
+                logger.info(
+                    "остановка_запрошена_во_время_паузы",
+                    step=f"прогон={run_number}",
+                )
+                break
+            await asyncio.sleep(1.0)
+
+    logger.info(
+        "цикл_парсера_завершён",
+        step=f"прогонов_выполнено={run_number}",
+    )
+
+
+def _format_duration(seconds: float) -> str:
+    """Форматирует длительность в человекочитаемый вид.
+
+    Args:
+        seconds: Длительность в секундах.
+
+    Returns:
+        Строка вида «Xм Yс» или «Yс».
+    """
+    total = int(seconds)
+    minutes = total // 60
+    secs = total % 60
+    if minutes > 0:
+        return f"{minutes}м {secs}с"
+    return f"{secs}с"
 
 
 def _run_comparison(
@@ -631,8 +882,8 @@ def _run_comparison(
 
 
 def main() -> None:
-    """Синхронная точка входа — запускает asyncio event loop."""
-    asyncio.run(run())
+    """Синхронная точка входа — запускает бесконечный цикл прогонов."""
+    asyncio.run(run_loop())
 
 
 if __name__ == "__main__":
