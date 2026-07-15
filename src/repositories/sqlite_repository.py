@@ -79,7 +79,11 @@ class SQLiteListingRepository(BaseListingRepository):
                 has_instant_booking INTEGER NOT NULL DEFAULT 0,
                 calendar_60_days TEXT NOT NULL DEFAULT '[]',
                 prices_60_days TEXT NOT NULL DEFAULT '[]',
-                snapshot_date TEXT NOT NULL
+                snapshot_date TEXT NOT NULL,
+                lat REAL,
+                lng REAL,
+                rooms INTEGER,
+                property_type TEXT
             )
         """)
         conn.execute("""
@@ -91,8 +95,9 @@ class SQLiteListingRepository(BaseListingRepository):
     def _migrate(self) -> None:
         """Миграция: добавляет отсутствующие столбцы для обратной совместимости.
 
-        Проверяет наличие столбцов calendar_60_days и prices_60_days,
-        добавляет их при отсутствии.
+        Проверяет наличие столбцов и добавляет их при отсутствии.
+        Безопасно для повторного вызова — ALTER TABLE IF NOT EXISTS
+        эмулируется через проверку PRAGMA table_info.
         """
         conn = self._get_connection()
         cursor = conn.execute("PRAGMA table_info(listings)")
@@ -112,6 +117,26 @@ class SQLiteListingRepository(BaseListingRepository):
             conn.commit()
             logger.info("миграция_выполнена", step="добавлен_столбец_prices_60_days")
 
+        if "lat" not in columns:
+            conn.execute("ALTER TABLE listings ADD COLUMN lat REAL")
+            conn.commit()
+            logger.info("миграция_выполнена", step="добавлен_столбец_lat")
+
+        if "lng" not in columns:
+            conn.execute("ALTER TABLE listings ADD COLUMN lng REAL")
+            conn.commit()
+            logger.info("миграция_выполнена", step="добавлен_столбец_lng")
+
+        if "rooms" not in columns:
+            conn.execute("ALTER TABLE listings ADD COLUMN rooms INTEGER")
+            conn.commit()
+            logger.info("миграция_выполнена", step="добавлен_столбец_rooms")
+
+        if "property_type" not in columns:
+            conn.execute("ALTER TABLE listings ADD COLUMN property_type TEXT")
+            conn.commit()
+            logger.info("миграция_выполнена", step="добавлен_столбец_property_type")
+
     def upsert(self, listing: RawListing) -> None:
         """Сохраняет или обновляет объявление по external_id.
 
@@ -124,8 +149,9 @@ class SQLiteListingRepository(BaseListingRepository):
             INSERT INTO listings (
                 external_id, title, url, price_per_night, rating,
                 review_count, area_m2, guests, address, metro_station,
-                has_instant_booking, calendar_60_days, prices_60_days, snapshot_date
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                has_instant_booking, calendar_60_days, prices_60_days, snapshot_date,
+                lat, lng, rooms, property_type
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT(external_id) DO UPDATE SET
                 title = excluded.title,
                 url = excluded.url,
@@ -139,7 +165,11 @@ class SQLiteListingRepository(BaseListingRepository):
                 has_instant_booking = excluded.has_instant_booking,
                 calendar_60_days = excluded.calendar_60_days,
                 prices_60_days = excluded.prices_60_days,
-                snapshot_date = excluded.snapshot_date
+                snapshot_date = excluded.snapshot_date,
+                lat = excluded.lat,
+                lng = excluded.lng,
+                rooms = excluded.rooms,
+                property_type = excluded.property_type
             """,
             self._listing_to_row(listing),
         )
@@ -165,8 +195,9 @@ class SQLiteListingRepository(BaseListingRepository):
             INSERT INTO listings (
                 external_id, title, url, price_per_night, rating,
                 review_count, area_m2, guests, address, metro_station,
-                has_instant_booking, calendar_60_days, prices_60_days, snapshot_date
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                has_instant_booking, calendar_60_days, prices_60_days, snapshot_date,
+                lat, lng, rooms, property_type
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT(external_id) DO UPDATE SET
                 title = excluded.title,
                 url = excluded.url,
@@ -180,7 +211,11 @@ class SQLiteListingRepository(BaseListingRepository):
                 has_instant_booking = excluded.has_instant_booking,
                 calendar_60_days = excluded.calendar_60_days,
                 prices_60_days = excluded.prices_60_days,
-                snapshot_date = excluded.snapshot_date
+                snapshot_date = excluded.snapshot_date,
+                lat = excluded.lat,
+                lng = excluded.lng,
+                rooms = excluded.rooms,
+                property_type = excluded.property_type
             """,
             rows,
         )
@@ -329,6 +364,7 @@ class SQLiteListingRepository(BaseListingRepository):
         str, str, str, int | None, float | None,
         int | None, int | None, int | None, str | None, str | None,
         int, str, str, str,
+        float | None, float | None, int | None, str | None,
     ]:
         """Преобразует объект RawListing в кортеж для SQL-запроса.
 
@@ -353,6 +389,10 @@ class SQLiteListingRepository(BaseListingRepository):
             json.dumps(listing.calendar_60_days),
             json.dumps(listing.prices_60_days),
             listing.snapshot_date.isoformat(),
+            listing.lat,
+            listing.lng,
+            listing.rooms,
+            listing.property_type,
         )
 
     @staticmethod
@@ -373,6 +413,14 @@ class SQLiteListingRepository(BaseListingRepository):
         prices_raw = row["prices_60_days"]
         prices: list[int] = json.loads(prices_raw) if prices_raw else []
 
+        # Безопасное чтение новых столбцов — None если столбец ещё не существует
+        # (между миграцией и перезапуском парсера)
+        row_keys = row.keys()
+        lat = row["lat"] if "lat" in row_keys else None
+        lng = row["lng"] if "lng" in row_keys else None
+        rooms = row["rooms"] if "rooms" in row_keys else None
+        property_type = row["property_type"] if "property_type" in row_keys else None
+
         return RawListing(
             external_id=row["external_id"],
             title=row["title"],
@@ -388,4 +436,8 @@ class SQLiteListingRepository(BaseListingRepository):
             calendar_60_days=calendar,
             prices_60_days=prices,
             snapshot_date=datetime.fromisoformat(row["snapshot_date"]),
+            lat=lat,
+            lng=lng,
+            rooms=rooms,
+            property_type=property_type,
         )

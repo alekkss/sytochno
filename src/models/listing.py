@@ -23,6 +23,10 @@ class RawListing:
         prices_60_days: Массив цен за сутки на 60 дней (0 — день занят).
         url: Прямая ссылка на объявление.
         snapshot_date: Дата и время сбора данных.
+        lat: Широта объекта (координата на карте).
+        lng: Долгота объекта (координата на карте).
+        rooms: Количество комнат (0 — студия, 1, 2, 3, 4+).
+        property_type: Тип жилья из API («Квартира», «Комната», «Дом» и т.д.).
         enrichment_skip_reason: Причина невозможности обогащения (None = можно обогатить).
             Заполняется при обнаружении фатальных ошибок:
             - "min_nights_exceeded" — min_nights объекта превышает окно анализа (60 дней).
@@ -44,6 +48,10 @@ class RawListing:
     calendar_60_days: list[int] = field(default_factory=list)
     prices_60_days: list[int] = field(default_factory=list)
     snapshot_date: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
+    lat: float | None = None
+    lng: float | None = None
+    rooms: int | None = None
+    property_type: str | None = None
     enrichment_skip_reason: str | None = None
 
     @property

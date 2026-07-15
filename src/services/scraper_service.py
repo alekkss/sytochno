@@ -992,6 +992,9 @@ def _extract_objects(data) -> list[dict] | None:
 def _parse_api_object(obj: dict) -> RawListing | None:
     """Преобразует объект из searchObjectsByLocation в RawListing.
 
+    Извлекает все доступные поля из ответа API, включая координаты
+    (lat, lng), количество комнат (rooms) и тип жилья (property_type).
+
     Args:
         obj: Словарь объекта из API.
 
@@ -1030,20 +1033,45 @@ def _parse_api_object(obj: dict) -> RawListing | None:
     area_m2: int | None = None
     guests: int | None = None
     has_instant_booking: bool = False
+    rooms: int | None = None
 
     if isinstance(props, dict):
         area_m2 = props.get("area")
         guests = props.get("maxGuests")
         has_instant_booking = bool(props.get("bookingNow", False))
+        raw_rooms = props.get("rooms")
+        if raw_rooms is not None:
+            try:
+                rooms = int(raw_rooms)
+            except (ValueError, TypeError):
+                pass
 
-    # Адрес
+    # Тип жилья (верхнеуровневое поле «type»: «Квартира», «Комната», «Дом» и т.д.)
+    property_type: str | None = None
+    raw_type = obj.get("type")
+    if raw_type is not None:
+        property_type = str(raw_type).strip() or None
+
+    # Координаты и адрес
     location = obj.get("location", {})
     address: str | None = None
+    lat: float | None = None
+    lng: float | None = None
 
     if isinstance(location, dict):
         addr_data = location.get("address", {})
         if isinstance(addr_data, dict):
             address = addr_data.get("title")
+
+        # Координаты из location.lat / location.lng
+        raw_lat = location.get("lat")
+        raw_lng = location.get("lng")
+        if raw_lat is not None and raw_lng is not None:
+            try:
+                lat = float(raw_lat)
+                lng = float(raw_lng)
+            except (ValueError, TypeError):
+                pass
 
     # Метро
     metro_station: str | None = None
@@ -1078,6 +1106,10 @@ def _parse_api_object(obj: dict) -> RawListing | None:
             address=address,
             metro_station=metro_station,
             has_instant_booking=has_instant_booking,
+            lat=lat,
+            lng=lng,
+            rooms=rooms,
+            property_type=property_type,
         )
     except ValueError as e:
         logger.debug(
