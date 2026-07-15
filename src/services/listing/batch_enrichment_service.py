@@ -22,6 +22,8 @@
   - ошибка guests → повтор с guests=1.
   - сбой прокси → замена прокси, повтор загрузки страницы.
   - протухший токен → возврат необогащённых карточек для fallback.
+  - сетевые ошибки скользящего окна → до _SLIDING_RETRY_ROUNDS повторов
+    только по ошибочным ячейкам с паузой между раундами.
 """
 
 import asyncio
@@ -76,6 +78,17 @@ _MIN_NIGHTS_SKIP_THRESHOLD: int = 60
 
 # Количество ночей по умолчанию для скользящего окна
 _DEFAULT_SLIDING_NIGHTS: int = 2
+
+# Количество retry-раундов для ошибочных ячеек скользящего окна.
+# После основного прохода и адаптации min_nights — дополнительные
+# проходы только по оставшимся ячейкам со статусом -1.
+# Эти ошибки — сетевые (таймаут прокси, обрыв соединения),
+# а не логические — повторный запрос часто их устраняет.
+_SLIDING_RETRY_ROUNDS: int = 1
+
+# Пауза между retry-раундами скользящего окна (секунды).
+# Даёт прокси/серверу «отдышаться» после серии таймаутов.
+_SLIDING_RETRY_PAUSE: float = 3.0
 
 # ── Константы для параллельного режима ─────────────────────
 
@@ -821,6 +834,11 @@ class BatchEnrichmentService:
     ) -> dict[int, list[int]]:
         """Определяет занятость каждого дня для busy-объектов.
 
+        После основного прохода и адаптации min_nights выполняет
+        до _SLIDING_RETRY_ROUNDS повторных проходов только по ячейкам
+        со статусом -1 (сетевые ошибки). Это устраняет временные
+        сбои прокси без перезапуска браузера.
+
         Args:
             page: Страница Playwright.
             token: Токен API.
@@ -871,7 +889,64 @@ class BatchEnrichmentService:
                     page, token, still_failed, nights, today, calendars,
                 )
 
-        # Нормализация ошибок
+        # ── Retry ошибочных ячеек (сетевые сбои) ──
+        for retry_round in range(1, _SLIDING_RETRY_ROUNDS + 1):
+            # Подсчитываем оставшиеся ошибочные ячейки
+            error_count = sum(
+                1 for cal in calendars.values()
+                for c in cal if c == -1
+            )
+
+            if error_count == 0:
+                break
+
+            # Определяем объекты с хотя бы одной ошибочной ячейкой
+            retry_ids = [
+                obj_id for obj_id, cal in calendars.items()
+                if any(c == -1 for c in cal)
+            ]
+
+            logger.info(
+                "batch_скользящее_окно_retry",
+                step=f"раунд={retry_round}/{_SLIDING_RETRY_ROUNDS}, "
+                     f"ошибочных_дней={error_count}, "
+                     f"объектов={len(retry_ids)}",
+            )
+
+            # Пауза перед retry — даём прокси/серверу восстановиться
+            await asyncio.sleep(_SLIDING_RETRY_PAUSE)
+
+            # Повторный проход только по ошибочным ячейкам
+            # (метод _sliding_window_for_group уже пропускает ячейки != -1)
+            await self._sliding_window_for_group(
+                page, token, retry_ids, _DEFAULT_SLIDING_NIGHTS, today, calendars,
+            )
+
+            # Проверяем, помог ли retry
+            new_error_count = sum(
+                1 for cal in calendars.values()
+                for c in cal if c == -1
+            )
+
+            resolved = error_count - new_error_count
+            logger.info(
+                "batch_скользящее_окно_retry_результат",
+                step=f"раунд={retry_round}, "
+                     f"было_ошибок={error_count}, "
+                     f"исправлено={resolved}, "
+                     f"осталось={new_error_count}",
+            )
+
+            # Если retry не исправил ни одной ячейки — прекращаем
+            # (проблема не временная, дальнейшие попытки бессмысленны)
+            if resolved == 0:
+                logger.info(
+                    "batch_скользящее_окно_retry_стоп",
+                    step=f"раунд={retry_round}, нет_прогресса",
+                )
+                break
+
+        # Нормализация оставшихся ошибок
         error_count = 0
         for obj_id, cal in calendars.items():
             errors = sum(1 for c in cal if c == -1)
