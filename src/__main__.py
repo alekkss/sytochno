@@ -5,7 +5,7 @@ import json
 import signal
 import sys
 import time
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 from pathlib import Path
 
 from src.config.logger import configure as configure_logging
@@ -33,6 +33,10 @@ _CYCLE_PAUSE_SECONDS: int = 120
 # Путь к JSON-файлу статуса прогона (относительно data/)
 _RUN_STATUS_FILENAME: str = "last_run_status.json"
 
+# Часовой пояс Москвы (UTC+3) — для расчёта окна паузы
+_MSK_OFFSET: timedelta = timedelta(hours=3)
+_MSK_TZ: timezone = timezone(_MSK_OFFSET)
+
 # Флаг остановки цикла (устанавливается через SIGTERM/SIGINT)
 _shutdown_requested: bool = False
 
@@ -50,6 +54,117 @@ def _request_shutdown(signum: int, frame: "any") -> None:  # type: ignore[name-d
     """
     global _shutdown_requested  # noqa: PLW0603
     _shutdown_requested = True
+
+
+def _is_in_pause_window(
+    pause_start: tuple[int, int],
+    pause_end: tuple[int, int],
+) -> bool:
+    """Проверяет, попадает ли текущее время МСК в окно паузы.
+
+    Поддерживает окна, пересекающие полночь (например, 22:50–00:10).
+
+    Args:
+        pause_start: Начало паузы (часы, минуты) по МСК.
+        pause_end: Конец паузы (часы, минуты) по МСК.
+
+    Returns:
+        True если текущее время находится внутри окна паузы.
+    """
+    now_msk = datetime.now(_MSK_TZ)
+    current_minutes = now_msk.hour * 60 + now_msk.minute
+
+    start_minutes = pause_start[0] * 60 + pause_start[1]
+    end_minutes = pause_end[0] * 60 + pause_end[1]
+
+    if start_minutes <= end_minutes:
+        # Обычное окно (например, 02:00–06:00)
+        return start_minutes <= current_minutes < end_minutes
+    else:
+        # Окно пересекает полночь (например, 22:50–00:10)
+        return current_minutes >= start_minutes or current_minutes < end_minutes
+
+
+def _seconds_until_pause_end(pause_end: tuple[int, int]) -> int:
+    """Вычисляет количество секунд до конца паузы.
+
+    Args:
+        pause_end: Конец паузы (часы, минуты) по МСК.
+
+    Returns:
+        Количество секунд до момента pause_end. Если pause_end уже
+        «в прошлом» сегодня (окно через полночь) — считает до завтра.
+    """
+    now_msk = datetime.now(_MSK_TZ)
+
+    # Целевое время сегодня
+    target_today = now_msk.replace(
+        hour=pause_end[0],
+        minute=pause_end[1],
+        second=0,
+        microsecond=0,
+    )
+
+    if target_today > now_msk:
+        delta = target_today - now_msk
+    else:
+        # Конец паузы уже прошёл сегодня — значит это «завтра»
+        target_tomorrow = target_today + timedelta(days=1)
+        delta = target_tomorrow - now_msk
+
+    return int(delta.total_seconds())
+
+
+async def _wait_for_pause_end(
+    pause_start: tuple[int, int],
+    pause_end: tuple[int, int],
+    logger: "any",  # type: ignore[name-defined]
+) -> None:
+    """Ожидает окончания паузы, если текущее время попадает в окно.
+
+    Проверяет SIGTERM каждую секунду — при запросе остановки
+    выходит немедленно, не дожидаясь конца паузы.
+
+    Args:
+        pause_start: Начало паузы (часы, минуты) по МСК.
+        pause_end: Конец паузы (часы, минуты) по МСК.
+        logger: Логгер для записи состояния.
+    """
+    global _shutdown_requested
+
+    if not _is_in_pause_window(pause_start, pause_end):
+        return
+
+    wait_seconds = _seconds_until_pause_end(pause_end)
+    end_time_str = f"{pause_end[0]:02d}:{pause_end[1]:02d}"
+
+    logger.info(
+        "ночная_пауза_начата",
+        step=f"окно={pause_start[0]:02d}:{pause_start[1]:02d}–{end_time_str} МСК, "
+             f"ожидание≈{wait_seconds // 60}мин",
+    )
+
+    # Ожидаем с проверкой SIGTERM каждую секунду
+    elapsed = 0
+    while elapsed < wait_seconds:
+        if _shutdown_requested:
+            logger.info(
+                "остановка_запрошена_во_время_ночной_паузы",
+                step=f"ожидание_прервано_на={elapsed}с",
+            )
+            return
+
+        # Перепроверяем: вдруг время уже вышло из окна паузы
+        if not _is_in_pause_window(pause_start, pause_end):
+            break
+
+        await asyncio.sleep(1.0)
+        elapsed += 1
+
+    logger.info(
+        "ночная_пауза_завершена",
+        step=f"ожидание={elapsed}с",
+    )
 
 
 def _write_run_status(
@@ -624,6 +739,10 @@ async def run_loop() -> None:
     При критической ошибке — записывает статус "failed" и завершает процесс.
     При SIGTERM/SIGINT — корректно завершает текущий прогон и выходит.
 
+    Перед каждым прогоном проверяется ночная пауза (PAUSE_START–PAUSE_END).
+    Если текущее время МСК попадает в окно паузы — парсер ожидает до конца
+    паузы с проверкой SIGTERM каждую секунду.
+
     Каждый прогон записывает результат в JSON-файл (data/last_run_status.json),
     который админка мониторит для отображения истории запусков.
     """
@@ -633,7 +752,7 @@ async def run_loop() -> None:
     signal.signal(signal.SIGTERM, _request_shutdown)
     signal.signal(signal.SIGINT, _request_shutdown)
 
-    # Загружаем settings один раз для определения data_dir
+    # Загружаем settings один раз для определения data_dir и паузы
     try:
         settings = Settings.load()
     except RuntimeError as e:
@@ -649,12 +768,38 @@ async def run_loop() -> None:
     data_dir = str(Path(settings.export_path).parent)
     run_number = 0
 
-    logger.info(
-        "цикл_парсера_запущен",
-        step=f"пауза_между_прогонами={_CYCLE_PAUSE_SECONDS}с",
-    )
+    # Логируем настройки паузы
+    if settings.pause_start and settings.pause_end:
+        logger.info(
+            "цикл_парсера_запущен",
+            step=f"пауза_между_прогонами={_CYCLE_PAUSE_SECONDS}с, "
+                 f"ночная_пауза={settings.pause_start[0]:02d}:{settings.pause_start[1]:02d}"
+                 f"–{settings.pause_end[0]:02d}:{settings.pause_end[1]:02d} МСК",
+        )
+    else:
+        logger.info(
+            "цикл_парсера_запущен",
+            step=f"пауза_между_прогонами={_CYCLE_PAUSE_SECONDS}с, "
+                 f"ночная_пауза=отключена",
+        )
 
     while not _shutdown_requested:
+        # ── Проверка ночной паузы перед стартом прогона ──
+        if settings.pause_start and settings.pause_end:
+            await _wait_for_pause_end(
+                pause_start=settings.pause_start,
+                pause_end=settings.pause_end,
+                logger=logger,
+            )
+
+            # После ожидания паузы проверяем, не запросили ли остановку
+            if _shutdown_requested:
+                logger.info(
+                    "остановка_запрошена_после_ночной_паузы",
+                    step="shutdown",
+                )
+                break
+
         run_number += 1
         started_at = datetime.now(timezone.utc)
         started_at_iso = started_at.isoformat()
