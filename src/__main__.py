@@ -374,6 +374,7 @@ async def _batch_retry_without_proxy(
             page=page,
             token=token,
             listings=unenriched_listings,
+            search_url=search_url,
         )
 
         retry_enriched = _count_enriched(unenriched_listings)
@@ -575,6 +576,7 @@ async def run() -> None:
                         page=catalog_page,
                         token=catalog_token,
                         listings=listings,
+                        search_url=settings.search_urls[0],
                     )
 
                     batch_enriched_count = _count_enriched(listings)

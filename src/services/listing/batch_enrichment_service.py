@@ -22,6 +22,8 @@
   - ошибка guests → повтор с guests=1.
   - сбой прокси → замена прокси, повтор загрузки страницы.
   - протухший токен → возврат необогащённых карточек для fallback.
+  - "Execution context was destroyed" → перезагрузка страницы,
+    перехват нового токена и продолжение с того же места (до 3 попыток).
   - сетевые ошибки скользящего окна → до _SLIDING_RETRY_ROUNDS повторов
     только по ошибочным ячейкам с паузой между раундами.
 """
@@ -80,15 +82,22 @@ _MIN_NIGHTS_SKIP_THRESHOLD: int = 60
 _DEFAULT_SLIDING_NIGHTS: int = 2
 
 # Количество retry-раундов для ошибочных ячеек скользящего окна.
-# После основного прохода и адаптации min_nights — дополнительные
-# проходы только по оставшимся ячейкам со статусом -1.
-# Эти ошибки — сетевые (таймаут прокси, обрыв соединения),
-# а не логические — повторный запрос часто их устраняет.
 _SLIDING_RETRY_ROUNDS: int = 1
 
 # Пауза между retry-раундами скользящего окна (секунды).
-# Даёт прокси/серверу «отдышаться» после серии таймаутов.
 _SLIDING_RETRY_PAUSE: float = 3.0
+
+# Максимальное количество попыток восстановления контекста страницы.
+# При ошибке "Execution context was destroyed" страница перезагружается
+# и токен перехватывается заново. 3 попытки — компромисс между
+# надёжностью и временем ожидания.
+_CONTEXT_RECOVERY_ATTEMPTS: int = 3
+
+# Пауза перед перезагрузкой страницы после уничтожения контекста (секунды).
+_CONTEXT_RECOVERY_PAUSE: float = 3.0
+
+# Маркер ошибки уничтоженного контекста в ответе _fetch_batch()
+_CONTEXT_DESTROYED_MARKER: str = "context_destroyed"
 
 # ── Константы для параллельного режима ─────────────────────
 
@@ -164,6 +173,24 @@ class _WorkerResult:
     duration: float = 0.0
     failed: bool = False
     browser_service: BrowserService | None = None
+
+
+@dataclass
+class _PageContext:
+    """Контекст страницы для batch-запросов.
+
+    Мутируемый контейнер, позволяющий обновлять page и token
+    после восстановления контекста без изменения сигнатур методов.
+
+    Attributes:
+        page: Страница Playwright.
+        token: Сессионный токен API.
+        search_url: URL страницы поиска (для перезагрузки).
+    """
+
+    page: Page
+    token: str
+    search_url: str
 
 
 class BatchEnrichmentService:
@@ -436,10 +463,11 @@ class BatchEnrichmentService:
                  f"прокси={current_proxy}",
         )
 
+        # Создаём контекст страницы (мутируемый — обновляется при восстановлении)
+        ctx = _PageContext(page=page, token=token, search_url=search_url)
+
         # ── Фаза 1: Batch bulk ──
-        result.bulk_results = await self._phase_bulk(
-            page, token, object_ids, today,
-        )
+        result.bulk_results = await self._phase_bulk(ctx, object_ids, today)
 
         # Определяем busy-ID для фазы 2
         busy_ids: list[int] = []
@@ -450,7 +478,7 @@ class BatchEnrichmentService:
         # ── Фаза 2: Batch скользящее окно ──
         if busy_ids:
             result.calendars = await self._phase_sliding_window(
-                page, token, busy_ids, today,
+                ctx, busy_ids, today,
             )
 
         result.duration = time.perf_counter() - worker_start
@@ -474,16 +502,6 @@ class BatchEnrichmentService:
         attempt: int,
     ) -> tuple[str | None, Page | None]:
         """Запускает браузер, загружает страницу поиска, перехватывает токен.
-
-        Route handler безопасно обрабатывает «Route is already handled!» —
-        эта ошибка возникает когда page.goto() таймаутит и Playwright
-        отменяет pending-запросы, а route handler всё ещё пытается
-        продолжить уже отменённый запрос.
-
-        После загрузки route снимается через page.unroute() —
-        это критически важно, иначе route handler будет перехватывать
-        fetch()-запросы из _fetch_batch() и вызывать «Route is already
-        handled!» при последующих page.evaluate().
 
         Args:
             browser_service: Сервис браузера.
@@ -517,10 +535,6 @@ class BatchEnrichmentService:
                     )
                     if token:
                         captured_token.append(token)
-                # При таймауте page.goto() Playwright отменяет pending-запросы.
-                # Если route.continue_() вызывается для уже отменённого запроса —
-                # выбрасывается «Route is already handled!». Это не ошибка логики —
-                # безопасно игнорируем.
                 try:
                     await route.continue_()
                 except Exception as e:
@@ -534,9 +548,6 @@ class BatchEnrichmentService:
                 step=f"воркер={worker_idx}, попытка={attempt}",
             )
 
-            # Таймаут навигации: SPA sutochno.ru через медленные прокси
-            # загружается за 15–40 секунд. 45 секунд — компромисс
-            # между скоростью и стабильностью.
             await page.goto(
                 search_url,
                 wait_until="domcontentloaded",
@@ -551,10 +562,7 @@ class BatchEnrichmentService:
                 await asyncio.sleep(_TOKEN_POLL_INTERVAL)
                 elapsed += _TOKEN_POLL_INTERVAL
 
-            # Снимаем route handler — критически важно!
-            # Без этого handler будет перехватывать fetch()-запросы
-            # из _fetch_batch() и вызывать «Route is already handled!»
-            # при последующих page.evaluate().
+            # Снимаем route handler
             try:
                 await page.unroute("**/api/json/**")
             except Exception:
@@ -586,7 +594,6 @@ class BatchEnrichmentService:
                 error_type=type(e).__name__,
                 step=f"воркер={worker_idx}, попытка={attempt}",
             )
-            # Снимаем route при ошибке — чтобы не мешал при retry
             try:
                 if browser_service._page is not None:  # noqa: SLF001
                     await browser_service.page.unroute("**/api/json/**")
@@ -603,6 +610,7 @@ class BatchEnrichmentService:
         page: Page,
         token: str,
         listings: list[RawListing],
+        search_url: str | None = None,
     ) -> list[RawListing]:
         """Обогащает карточки batch-запросами через один браузер (без прокси).
 
@@ -610,6 +618,8 @@ class BatchEnrichmentService:
             page: Страница Playwright (со страницы поиска, с живой сессией).
             token: Сессионный токен API (перехвачен со страницы поиска).
             listings: Список карточек для обогащения.
+            search_url: URL страницы поиска (для восстановления контекста).
+                        Если None — восстановление при ошибке навигации невозможно.
 
         Returns:
             Тот же список карточек с заполненными данными.
@@ -632,8 +642,21 @@ class BatchEnrichmentService:
 
         all_ids = [int(l.external_id) for l in listings]
 
+        # Определяем URL для восстановления контекста
+        effective_search_url = search_url or ""
+        if not effective_search_url:
+            # Пробуем извлечь текущий URL страницы
+            try:
+                effective_search_url = page.url
+            except Exception:
+                effective_search_url = ""
+
+        ctx = _PageContext(
+            page=page, token=token, search_url=effective_search_url,
+        )
+
         # ── Фаза 1: Batch bulk ──
-        bulk_results = await self._phase_bulk(page, token, all_ids, today)
+        bulk_results = await self._phase_bulk(ctx, all_ids, today)
 
         busy_ids: list[int] = []
         self._apply_bulk_results(bulk_results, listings_map, today)
@@ -659,9 +682,7 @@ class BatchEnrichmentService:
 
         # ── Фаза 2: Batch скользящее окно ──
         if busy_ids:
-            calendars = await self._phase_sliding_window(
-                page, token, busy_ids, today,
-            )
+            calendars = await self._phase_sliding_window(ctx, busy_ids, today)
             self._apply_calendars(calendars, listings_map)
 
         elapsed = time.perf_counter() - start_time
@@ -685,6 +706,193 @@ class BatchEnrichmentService:
         )
 
         return listings
+
+    # ══════════════════════════════════════════════════════════
+    #  Восстановление контекста страницы
+    # ══════════════════════════════════════════════════════════
+
+    async def _recover_page_context(self, ctx: _PageContext) -> bool:
+        """Восстанавливает контекст страницы после навигации/уничтожения.
+
+        Перезагружает текущую страницу на search_url и перехватывает
+        новый токен API. Обновляет ctx.page и ctx.token in-place.
+
+        Args:
+            ctx: Контекст страницы (мутируется при успехе).
+
+        Returns:
+            True если контекст восстановлен, False при ошибке.
+        """
+        if not ctx.search_url:
+            logger.warning(
+                "восстановление_контекста_невозможно",
+                step="нет_search_url",
+            )
+            return False
+
+        logger.info(
+            "восстановление_контекста_страницы",
+            step=f"url={ctx.search_url[:80]}",
+        )
+
+        try:
+            page = ctx.page
+
+            # Перехватчик токена
+            captured_token: list[str] = []
+
+            async def _intercept(route, request):
+                if "sutochno.ru/api/json" in request.url and not captured_token:
+                    token = (
+                        request.headers.get("token")
+                        or request.headers.get("Token")
+                    )
+                    if token:
+                        captured_token.append(token)
+                try:
+                    await route.continue_()
+                except Exception as e:
+                    if "Route is already handled" not in str(e):
+                        raise
+
+            await page.route("**/api/json/**", _intercept)
+
+            # Перезагрузка страницы
+            await page.goto(
+                ctx.search_url,
+                wait_until="domcontentloaded",
+                timeout=45000,
+            )
+
+            # Ожидание перехвата токена
+            elapsed = 0.0
+            while elapsed < _TOKEN_INTERCEPT_TIMEOUT:
+                if captured_token:
+                    break
+                await asyncio.sleep(_TOKEN_POLL_INTERVAL)
+                elapsed += _TOKEN_POLL_INTERVAL
+
+            # Снимаем route handler
+            try:
+                await page.unroute("**/api/json/**")
+            except Exception:
+                pass
+
+            # Стабилизация сессии
+            await asyncio.sleep(_POST_LOAD_WAIT)
+
+            if not captured_token:
+                logger.warning(
+                    "восстановление_контекста_токен_не_перехвачен",
+                    step=f"ожидание={elapsed:.1f}с",
+                )
+                return False
+
+            # Обновляем контекст
+            ctx.token = captured_token[0]
+
+            logger.info(
+                "контекст_страницы_восстановлен",
+                step=f"новый_токен_длина={len(ctx.token)}, "
+                     f"ожидание={elapsed:.1f}с",
+            )
+
+            return True
+
+        except Exception as e:
+            logger.warning(
+                "ошибка_восстановления_контекста",
+                error=str(e)[:200],
+                error_type=type(e).__name__,
+            )
+            return False
+
+    async def _fetch_batch_with_recovery(
+        self,
+        ctx: _PageContext,
+        object_ids: list[int],
+        date_begin: str,
+        date_end: str,
+        guests: int = DEFAULT_GUESTS,
+    ) -> list[dict]:
+        """Выполняет batch-запрос с автоматическим восстановлением контекста.
+
+        При ошибке "Execution context was destroyed" (навигация уничтожила
+        контекст выполнения JS) — перезагружает страницу, перехватывает
+        новый токен и повторяет запрос. До _CONTEXT_RECOVERY_ATTEMPTS попыток.
+
+        Args:
+            ctx: Контекст страницы (мутируется при восстановлении).
+            object_ids: Список ID объявлений.
+            date_begin: Дата начала периода.
+            date_end: Дата конца периода.
+            guests: Количество гостей.
+
+        Returns:
+            Список словарей с результатом для каждого объекта.
+        """
+        for attempt in range(1, _CONTEXT_RECOVERY_ATTEMPTS + 1):
+            results = await self._fetch_batch(
+                ctx.page, ctx.token, object_ids, date_begin, date_end, guests,
+            )
+
+            # Проверяем, не было ли ошибки уничтожения контекста
+            if not self._is_context_destroyed_error(results):
+                return results
+
+            # Контекст уничтожен — пробуем восстановить
+            logger.warning(
+                "контекст_уничтожен_попытка_восстановления",
+                step=f"попытка={attempt}/{_CONTEXT_RECOVERY_ATTEMPTS}, "
+                     f"ids={len(object_ids)}",
+            )
+
+            if attempt < _CONTEXT_RECOVERY_ATTEMPTS:
+                await asyncio.sleep(_CONTEXT_RECOVERY_PAUSE)
+
+                recovered = await self._recover_page_context(ctx)
+                if not recovered:
+                    logger.warning(
+                        "восстановление_не_удалось",
+                        step=f"попытка={attempt}/{_CONTEXT_RECOVERY_ATTEMPTS}",
+                    )
+                    # Возвращаем ошибку — дальнейшие попытки бессмысленны
+                    return results
+
+        # Все попытки исчерпаны — возвращаем последний результат (с ошибкой)
+        logger.warning(
+            "все_попытки_восстановления_исчерпаны",
+            step=f"попыток={_CONTEXT_RECOVERY_ATTEMPTS}, ids={len(object_ids)}",
+        )
+        return results
+
+    @staticmethod
+    def _is_context_destroyed_error(results: list[dict]) -> bool:
+        """Проверяет, содержат ли результаты ошибку уничтожения контекста.
+
+        Args:
+            results: Результаты _fetch_batch().
+
+        Returns:
+            True если ошибка связана с навигацией/уничтожением контекста.
+        """
+        if not results:
+            return False
+
+        # Проверяем первый элемент — при уничтожении контекста
+        # ВСЕ элементы будут с одинаковой ошибкой
+        first = results[0]
+        error_text = first.get("error_text", "").lower()
+
+        context_markers = (
+            "execution context was destroyed",
+            "context was destroyed",
+            "most likely because of a navigation",
+            "navigation",
+            _CONTEXT_DESTROYED_MARKER,
+        )
+
+        return any(marker in error_text for marker in context_markers)
 
     # ══════════════════════════════════════════════════════════
     #  Применение результатов к карточкам
@@ -758,16 +966,14 @@ class BatchEnrichmentService:
 
     async def _phase_bulk(
         self,
-        page: Page,
-        token: str,
+        ctx: _PageContext,
         all_ids: list[int],
         today: date,
     ) -> list[_ObjectBulkResult]:
         """Отправляет batch bulk-запросы на 60 ночей.
 
         Args:
-            page: Страница Playwright.
-            token: Токен API.
+            ctx: Контекст страницы.
             all_ids: Все ID объявлений.
             today: Дата начала календаря.
 
@@ -784,8 +990,8 @@ class BatchEnrichmentService:
             batch = all_ids[batch_idx: batch_idx + BATCH_SIZE]
             batch_num = batch_idx // BATCH_SIZE + 1
 
-            results = await self._fetch_batch(
-                page, token, batch, date_begin, date_end,
+            results = await self._fetch_batch_with_recovery(
+                ctx, batch, date_begin, date_end,
                 guests=DEFAULT_GUESTS,
             )
 
@@ -802,8 +1008,8 @@ class BatchEnrichmentService:
                     all_results.append(classified)
 
             if retry_with_reduced_guests:
-                retry_results = await self._fetch_batch(
-                    page, token, retry_with_reduced_guests,
+                retry_results = await self._fetch_batch_with_recovery(
+                    ctx, retry_with_reduced_guests,
                     date_begin, date_end, guests=FALLBACK_GUESTS,
                 )
                 for result in retry_results:
@@ -827,21 +1033,14 @@ class BatchEnrichmentService:
 
     async def _phase_sliding_window(
         self,
-        page: Page,
-        token: str,
+        ctx: _PageContext,
         busy_ids: list[int],
         today: date,
     ) -> dict[int, list[int]]:
         """Определяет занятость каждого дня для busy-объектов.
 
-        После основного прохода и адаптации min_nights выполняет
-        до _SLIDING_RETRY_ROUNDS повторных проходов только по ячейкам
-        со статусом -1 (сетевые ошибки). Это устраняет временные
-        сбои прокси без перезапуска браузера.
-
         Args:
-            page: Страница Playwright.
-            token: Токен API.
+            ctx: Контекст страницы.
             busy_ids: ID объектов со статусом busy.
             today: Дата начала календаря.
 
@@ -859,7 +1058,7 @@ class BatchEnrichmentService:
 
         # Основная группа с nights=2
         await self._sliding_window_for_group(
-            page, token, list(busy_ids), _DEFAULT_SLIDING_NIGHTS, today, calendars,
+            ctx, list(busy_ids), _DEFAULT_SLIDING_NIGHTS, today, calendars,
         )
 
         # Адаптация min_nights для объектов с полным провалом
@@ -886,12 +1085,11 @@ class BatchEnrichmentService:
                     break
 
                 await self._sliding_window_for_group(
-                    page, token, still_failed, nights, today, calendars,
+                    ctx, still_failed, nights, today, calendars,
                 )
 
         # ── Retry ошибочных ячеек (сетевые сбои) ──
         for retry_round in range(1, _SLIDING_RETRY_ROUNDS + 1):
-            # Подсчитываем оставшиеся ошибочные ячейки
             error_count = sum(
                 1 for cal in calendars.values()
                 for c in cal if c == -1
@@ -900,7 +1098,6 @@ class BatchEnrichmentService:
             if error_count == 0:
                 break
 
-            # Определяем объекты с хотя бы одной ошибочной ячейкой
             retry_ids = [
                 obj_id for obj_id, cal in calendars.items()
                 if any(c == -1 for c in cal)
@@ -913,16 +1110,12 @@ class BatchEnrichmentService:
                      f"объектов={len(retry_ids)}",
             )
 
-            # Пауза перед retry — даём прокси/серверу восстановиться
             await asyncio.sleep(_SLIDING_RETRY_PAUSE)
 
-            # Повторный проход только по ошибочным ячейкам
-            # (метод _sliding_window_for_group уже пропускает ячейки != -1)
             await self._sliding_window_for_group(
-                page, token, retry_ids, _DEFAULT_SLIDING_NIGHTS, today, calendars,
+                ctx, retry_ids, _DEFAULT_SLIDING_NIGHTS, today, calendars,
             )
 
-            # Проверяем, помог ли retry
             new_error_count = sum(
                 1 for cal in calendars.values()
                 for c in cal if c == -1
@@ -937,8 +1130,6 @@ class BatchEnrichmentService:
                      f"осталось={new_error_count}",
             )
 
-            # Если retry не исправил ни одной ячейки — прекращаем
-            # (проблема не временная, дальнейшие попытки бессмысленны)
             if resolved == 0:
                 logger.info(
                     "batch_скользящее_окно_retry_стоп",
@@ -969,8 +1160,7 @@ class BatchEnrichmentService:
 
     async def _sliding_window_for_group(
         self,
-        page: Page,
-        token: str,
+        ctx: _PageContext,
         group_ids: list[int],
         nights: int,
         today: date,
@@ -979,8 +1169,7 @@ class BatchEnrichmentService:
         """Обрабатывает скользящее окно для группы объектов.
 
         Args:
-            page: Страница Playwright.
-            token: Токен API.
+            ctx: Контекст страницы.
             group_ids: ID объектов в группе.
             nights: Количество ночей в окне.
             today: Дата начала календаря.
@@ -1002,8 +1191,8 @@ class BatchEnrichmentService:
             for batch_start in range(0, len(pending_ids), BATCH_SIZE):
                 batch = pending_ids[batch_start: batch_start + BATCH_SIZE]
 
-                results = await self._fetch_batch(
-                    page, token, batch, date_begin, date_end,
+                results = await self._fetch_batch_with_recovery(
+                    ctx, batch, date_begin, date_end,
                     guests=DEFAULT_GUESTS,
                 )
 
@@ -1177,13 +1366,39 @@ class BatchEnrichmentService:
                 for oid in object_ids
             ]
         except Exception as e:
+            error_msg = str(e)
+
+            # Определяем, является ли ошибка уничтожением контекста
+            is_context_error = any(
+                marker in error_msg.lower()
+                for marker in (
+                    "execution context was destroyed",
+                    "context was destroyed",
+                    "most likely because of a navigation",
+                )
+            )
+
+            if is_context_error:
+                logger.warning(
+                    "batch_evaluate_контекст_уничтожен",
+                    step=f"ids={len(object_ids)}",
+                )
+                return [
+                    {
+                        "object_id": oid,
+                        "success": False,
+                        "error_text": _CONTEXT_DESTROYED_MARKER,
+                    }
+                    for oid in object_ids
+                ]
+
             logger.warning(
                 "batch_evaluate_исключение",
-                error=str(e)[:200],
+                error=error_msg[:200],
                 error_type=type(e).__name__,
             )
             return [
-                {"object_id": oid, "success": False, "error_text": str(e)[:100]}
+                {"object_id": oid, "success": False, "error_text": error_msg[:100]}
                 for oid in object_ids
             ]
 
@@ -1242,15 +1457,7 @@ class BatchEnrichmentService:
 
     @staticmethod
     def _distribute_ids(all_ids: list[int], worker_count: int) -> list[list[int]]:
-        """Распределяет ID поровну между воркерами.
-
-        Args:
-            all_ids: Все ID для распределения.
-            worker_count: Количество воркеров.
-
-        Returns:
-            Список списков ID — порция для каждого воркера.
-        """
+        """Распределяет ID поровну между воркерами."""
         chunks: list[list[int]] = [[] for _ in range(worker_count)]
         for idx, obj_id in enumerate(all_ids):
             chunks[idx % worker_count].append(obj_id)
