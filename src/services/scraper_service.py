@@ -17,6 +17,11 @@
   5. Если прокси тоже упала — берёт следующую из пула.
   6. Если пул исчерпан — возвращает то, что собрано.
 
+При серверной ошибке 5xx (500, 502, 503 и т.д.):
+  Парсер переходит в режим ожидания: ждёт 10 минут и повторяет
+  тот же запрос. Повторяет до исчерпания лимита (200 минут).
+  Это ошибка сервера, а не клиента — данные не теряются.
+
 После завершения scrape_catalog() браузер НЕ закрывается — страница
 и токен остаются живыми для batch-обогащения. Вызывающий код сам
 управляет жизненным циклом браузера.
@@ -71,6 +76,13 @@ _BATCH_RETRY_PAUSE: float = 2.0
 # Пауза после переключения прокси в Фазе B (секунды)
 _PROXY_SWITCH_PAUSE: float = 3.0
 
+# ── Ожидание при серверных ошибках 5xx ──
+# Пауза ожидания при ошибке 5xx (секунды) — 10 минут
+_SERVER_ERROR_WAIT_SECONDS: int = 600
+
+# Максимальное суммарное время ожидания серверных ошибок (минуты)
+_SERVER_ERROR_MAX_WAIT_MINUTES: int = 200
+
 # Маркеры ошибок API, при которых выполняется переключение на прокси
 _API_ERROR_MARKERS: tuple[str, ...] = (
     "Bad request",
@@ -109,6 +121,7 @@ class ScraperService:
 
     Дедупликация выполняется по external_id в процессе сбора.
     При сбоях автоматически переключается на прокси.
+    При серверных ошибках 5xx — ожидает восстановления сервера.
 
     После завершения scrape_catalog() браузер остаётся запущенным —
     страница и токен доступны для batch-обогащения.
@@ -133,6 +146,8 @@ class ScraperService:
         self._proxy_index: int = 0
         self._seen_ids: set[int] = set()
         self._duplicates_count: int = 0
+        # Суммарное время ожидания серверных ошибок 5xx за текущий прогон (секунды)
+        self._server_error_total_wait: int = 0
 
     def _get_next_proxy(
         self, exclude: ProxyConfig | None = None,
@@ -156,6 +171,54 @@ class ScraperService:
 
         return self._proxies[0]
 
+    async def _wait_for_server_recovery(self, context: str) -> bool:
+        """Ожидает восстановления сервера при ошибке 5xx.
+
+        Ждёт _SERVER_ERROR_WAIT_SECONDS (10 минут). Проверяет лимит
+        суммарного ожидания (_SERVER_ERROR_MAX_WAIT_MINUTES).
+
+        Args:
+            context: Контекст вызова для логирования (например, "фаза_A" или "фаза_B").
+
+        Returns:
+            True — можно повторить запрос.
+            False — лимит ожидания исчерпан, нужно прекращать.
+        """
+        max_wait_seconds = _SERVER_ERROR_MAX_WAIT_MINUTES * 60
+
+        if self._server_error_total_wait >= max_wait_seconds:
+            logger.error(
+                "лимит_ожидания_5xx_исчерпан",
+                context=context,
+                total_waited_minutes=self._server_error_total_wait // 60,
+                limit_minutes=_SERVER_ERROR_MAX_WAIT_MINUTES,
+            )
+            return False
+
+        wait_minutes = _SERVER_ERROR_WAIT_SECONDS // 60
+        remaining_minutes = (
+            (max_wait_seconds - self._server_error_total_wait) // 60
+        )
+
+        logger.warning(
+            "ошибка_сервера_5xx_ожидание",
+            context=context,
+            wait_minutes=wait_minutes,
+            total_waited_minutes=self._server_error_total_wait // 60,
+            remaining_minutes=remaining_minutes,
+        )
+
+        await asyncio.sleep(_SERVER_ERROR_WAIT_SECONDS)
+        self._server_error_total_wait += _SERVER_ERROR_WAIT_SECONDS
+
+        logger.info(
+            "ожидание_5xx_завершено_повтор_запроса",
+            context=context,
+            total_waited_minutes=self._server_error_total_wait // 60,
+        )
+
+        return True
+
     async def scrape_catalog(self) -> tuple[list[RawListing], str | None]:
         """Основной метод — обходит все URL поиска и собирает объявления.
 
@@ -176,6 +239,7 @@ class ScraperService:
         """
         self._seen_ids.clear()
         self._duplicates_count = 0
+        self._server_error_total_wait = 0
 
         all_ids: list[int] = []
         api_headers: dict[str, str] | None = None
@@ -267,6 +331,7 @@ class ScraperService:
             total_ids=len(all_ids),
             duplicates=self._duplicates_count,
             token_available=captured_token is not None,
+            server_error_wait_minutes=self._server_error_total_wait // 60,
         )
 
         return listings, captured_token
@@ -283,6 +348,7 @@ class ScraperService:
         """Собирает ID объявлений для одной ссылки поиска.
 
         При сбое переключается на прокси и продолжает с того же offset.
+        При серверной ошибке 5xx — ждёт 10 минут и повторяет запрос.
 
         Args:
             search_url: URL страницы поиска.
@@ -333,7 +399,34 @@ class ScraperService:
 
             result = await _fetch_get(page, paginated_url, api_headers)
 
-            # Проверяем ошибки
+            # ── Проверяем серверную ошибку 5xx ──
+            if _is_server_error(result):
+                status_code = _get_http_status(result)
+                logger.warning(
+                    "серверная_ошибка_5xx_фаза_A",
+                    url_index=url_index,
+                    offset=offset,
+                    status=status_code,
+                )
+
+                can_retry = await self._wait_for_server_recovery(
+                    context=f"фаза_A_url{url_index}_offset{offset}",
+                )
+
+                if not can_retry:
+                    logger.error(
+                        "лимит_ожидания_5xx_фаза_A_прерывание",
+                        url_index=url_index,
+                        offset=offset,
+                        collected=len(new_ids),
+                    )
+                    break
+
+                # Повторяем тот же запрос — не меняем offset, не считаем
+                # как consecutive_error
+                continue
+
+            # ── Проверяем обычные ошибки (клиентские, сетевые) ──
             if _is_error_response(result):
                 consecutive_errors += 1
                 error_msg = _extract_error_message(result)
@@ -592,7 +685,8 @@ class ScraperService:
     ) -> list[RawListing]:
         """Получает полные данные объявлений пачками по 50 ID.
 
-        При ошибках:
+        При серверных ошибках 5xx — ждёт 10 минут и повторяет запрос.
+        При клиентских/сетевых ошибках:
         1. Повторяет пачку до _BATCH_RETRY_ATTEMPTS раз с паузой.
         2. При _MAX_CONSECUTIVE_ERRORS подряд — переключается на прокси,
            перезапускает браузер и продолжает с той же пачки.
@@ -638,6 +732,31 @@ class ScraperService:
             for attempt in range(_BATCH_RETRY_ATTEMPTS):
                 result = await _fetch_get(page, url, headers)
 
+                # ── Проверяем серверную ошибку 5xx ──
+                if _is_server_error(result):
+                    status_code = _get_http_status(result)
+                    logger.warning(
+                        "серверная_ошибка_5xx_фаза_B",
+                        batch=f"{batch_num}/{total_batches}",
+                        status=status_code,
+                    )
+
+                    can_retry = await self._wait_for_server_recovery(
+                        context=f"фаза_B_пачка{batch_num}",
+                    )
+
+                    if not can_retry:
+                        logger.error(
+                            "лимит_ожидания_5xx_фаза_B_прерывание",
+                            batch=f"{batch_num}/{total_batches}",
+                            collected=len(listings),
+                        )
+                        return listings
+
+                    # Повторяем тот же attempt — не инкрементируем счётчик
+                    # (выходим из for и повторим while с тем же batch_index)
+                    break
+
                 if not _is_error_response(result):
                     # Успешный ответ — сбрасываем счётчик ошибок
                     consecutive_errors = 0
@@ -653,7 +772,7 @@ class ScraperService:
 
                     break
 
-                # Ошибка — логируем с деталями
+                # Обычная ошибка (не 5xx) — логируем с деталями
                 error_msg = _extract_error_message(result)
                 raw_preview = result.get("raw", "")
 
@@ -699,17 +818,23 @@ class ScraperService:
                 # Пауза перед retry пачки
                 if attempt < _BATCH_RETRY_ATTEMPTS - 1:
                     await asyncio.sleep(_BATCH_RETRY_PAUSE)
+            else:
+                # for завершился без break — все attempt исчерпаны
+                if not batch_success and consecutive_errors < _MAX_CONSECUTIVE_ERRORS:
+                    # Все retry пачки исчерпаны, но порог прокси не достигнут —
+                    # пропускаем пачку
+                    skipped_batches += 1
+                    logger.warning(
+                        "пачка_пропущена_после_retry",
+                        batch=f"{batch_num}/{total_batches}",
+                        skipped_ids=len(batch),
+                        total_skipped_batches=skipped_batches,
+                    )
 
-            if not batch_success and consecutive_errors < _MAX_CONSECUTIVE_ERRORS:
-                # Все retry пачки исчерпаны, но порог прокси не достигнут —
-                # пропускаем пачку
-                skipped_batches += 1
-                logger.warning(
-                    "пачка_пропущена_после_retry",
-                    batch=f"{batch_num}/{total_batches}",
-                    skipped_ids=len(batch),
-                    total_skipped_batches=skipped_batches,
-                )
+            # Если была ошибка 5xx и мы вышли через break —
+            # не двигаем batch_index, повторяем ту же пачку
+            if _is_server_error(result) and not batch_success:
+                continue
 
             # Переходим к следующей пачке только при успехе или пропуске
             # (не при переключении прокси — тогда повторяем текущую)
@@ -899,6 +1024,7 @@ async def _fetch_get(page: Page, url: str, headers: dict[str, str]) -> dict:
                     } catch (e) {
                         return {
                             success: false,
+                            status: resp.status,
                             error: 'JSON parse error',
                             raw: text.substring(0, 500)
                         };
@@ -913,15 +1039,55 @@ async def _fetch_get(page: Page, url: str, headers: dict[str, str]) -> dict:
         return {"success": False, "error": str(e)}
 
 
-def _is_error_response(result: dict) -> bool:
-    """Проверяет, является ли ответ ошибочным.
+def _is_server_error(result: dict) -> bool:
+    """Проверяет, является ли ответ серверной ошибкой 5xx.
+
+    Серверные ошибки (500, 502, 503, 504 и т.д.) означают проблему
+    на стороне сервера. Данные не потеряны — нужно подождать
+    и повторить запрос.
 
     Args:
         result: Результат _fetch_get.
 
     Returns:
-        True если ответ содержит ошибку.
+        True если HTTP-статус 5xx.
     """
+    status = _get_http_status(result)
+    return status is not None and 500 <= status < 600
+
+
+def _get_http_status(result: dict) -> int | None:
+    """Извлекает HTTP-статус из ответа fetch.
+
+    Args:
+        result: Результат _fetch_get.
+
+    Returns:
+        HTTP-статус или None, если статус не доступен.
+    """
+    status = result.get("status")
+    if isinstance(status, int):
+        return status
+    return None
+
+
+def _is_error_response(result: dict) -> bool:
+    """Проверяет, является ли ответ ошибочным (кроме 5xx).
+
+    Сначала исключает серверные ошибки 5xx — они обрабатываются
+    отдельно через _is_server_error. Затем проверяет клиентские
+    и сетевые ошибки.
+
+    Args:
+        result: Результат _fetch_get.
+
+    Returns:
+        True если ответ содержит ошибку (не 5xx).
+    """
+    # 5xx обрабатывается отдельно — здесь не считаем ошибкой
+    if _is_server_error(result):
+        return False
+
     if not result.get("success"):
         return True
 
