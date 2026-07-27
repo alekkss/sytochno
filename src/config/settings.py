@@ -198,6 +198,12 @@ class Settings:
     # Таймаут обработки одной карточки (секунды)
     enrich_timeout_seconds: int = 240
 
+    # Очистка ценовых выбросов (отклонение от медианы цены за м²)
+    # PRICE_DEVIATION_UP=100 означает: цена за м² > медиана × 2.0 → заградительная
+    # PRICE_DEVIATION_DOWN=50 означает: цена за м² < медиана × 0.5 → замануха
+    price_deviation_up: int = 100
+    price_deviation_down: int = 50
+
     # Ночная пауза (время по Москве, формат HH:MM)
     # Парсер не начинает новый прогон, если текущее время МСК
     # попадает в окно pause_start–pause_end.
@@ -248,6 +254,8 @@ class Settings:
             concurrency_max=_get_int("CONCURRENCY_MAX", "0"),
             concurrency_start=_get_int("CONCURRENCY_START", "0"),
             enrich_timeout_seconds=_get_int("ENRICH_TIMEOUT_SECONDS", "240"),
+            price_deviation_up=_get_int("PRICE_DEVIATION_UP", "100"),
+            price_deviation_down=_get_int("PRICE_DEVIATION_DOWN", "50"),
             pause_start=pause_start,
             pause_end=pause_end,
         )
@@ -351,6 +359,18 @@ class Settings:
             raise RuntimeError(
                 "ENRICH_TIMEOUT_SECONDS не может быть отрицательным. "
                 f"Получено: {settings.enrich_timeout_seconds}."
+            )
+
+        # Валидация порогов отклонения цены за м²
+        if settings.price_deviation_up < 1 or settings.price_deviation_up > 500:
+            raise RuntimeError(
+                "PRICE_DEVIATION_UP должен быть от 1 до 500 (проценты). "
+                f"Получено: {settings.price_deviation_up}."
+            )
+        if settings.price_deviation_down < 1 or settings.price_deviation_down > 99:
+            raise RuntimeError(
+                "PRICE_DEVIATION_DOWN должен быть от 1 до 99 (проценты). "
+                f"Получено: {settings.price_deviation_down}."
             )
 
         # Валидация паузы: обе должны быть заданы или обе пусты

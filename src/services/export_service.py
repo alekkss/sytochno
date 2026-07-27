@@ -28,6 +28,7 @@ _COLUMNS: list[dict[str, str | int]] = [
     {"header": "Занятость (%)", "width": 14},
     {"header": "Календарь 60 дней", "width": 65},
     {"header": "Средняя цена (руб./сут.)", "width": 22},
+    {"header": "Стоимость м² (руб./сут.)", "width": 22},
     {"header": "Цены 60 дней (руб./сут.)", "width": 65},
     {"header": "Ссылка", "width": 20},
     {"header": "Дата снимка", "width": 20},
@@ -159,20 +160,22 @@ class ExportService:
 
             ws.cell(row=row_idx, column=13, value=listing.average_price)
 
+            ws.cell(row=row_idx, column=14, value=listing.price_per_sqm)
+
             prices_str = (
                 ";".join(str(p) for p in listing.prices_60_days)
                 if listing.prices_60_days
                 else ""
             )
-            ws.cell(row=row_idx, column=14, value=prices_str)
+            ws.cell(row=row_idx, column=15, value=prices_str)
 
-            link_cell = ws.cell(row=row_idx, column=15, value="Открыть")
+            link_cell = ws.cell(row=row_idx, column=16, value="Открыть")
             link_cell.hyperlink = listing.url
             link_cell.font = link_font
 
             ws.cell(
                 row=row_idx,
-                column=16,
+                column=17,
                 value=listing.snapshot_date.strftime("%Y-%m-%d %H:%M"),
             )
 

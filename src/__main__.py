@@ -484,7 +484,10 @@ async def run() -> None:
     comparison_export_service = ComparisonExportService(export_dir=export_dir)
 
     batch_enrichment_service = BatchEnrichmentService()
-    data_cleaner_service = DataCleanerService()
+    data_cleaner_service = DataCleanerService(
+        price_deviation_up=settings.price_deviation_up,
+        price_deviation_down=settings.price_deviation_down,
+    )
 
     try:
         # --- Шаг 6: Парсинг каталога через API (Этап 1) ---
@@ -659,7 +662,7 @@ async def run() -> None:
             step="enrichment",
         )
 
-        # --- Шаг 8.5: Очистка технических блокировок ---
+        # --- Шаг 8.5: Очистка данных (технические блокировки + ценовые выбросы) ---
         clean_stats = data_cleaner_service.clean_listings(listings)
 
         if clean_stats["days_cleaned"] > 0:
@@ -667,6 +670,13 @@ async def run() -> None:
                 "технические_блокировки_удалены",
                 step=f"объявлений_с_блокировками={clean_stats['listings_cleaned']}, "
                      f"дней_очищено={clean_stats['days_cleaned']}",
+            )
+
+        if clean_stats["outlier_days_cleaned"] > 0:
+            logger.info(
+                "ценовые_выбросы_удалены",
+                step=f"объявлений_с_выбросами={clean_stats['outlier_listings_cleaned']}, "
+                     f"дней_очищено={clean_stats['outlier_days_cleaned']}",
             )
 
         # --- Шаг 9: Сохранение в базу данных ---
