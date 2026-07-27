@@ -18,6 +18,7 @@ from src.repositories.sqlite_repository import SQLiteListingRepository
 from src.services.browser_service import BrowserService
 from src.services.comparison_export_service import ComparisonExportService
 from src.services.comparison_service import ComparisonService
+from src.services.data_cleaner_service import DataCleanerService
 from src.services.export_service import ExportService
 from src.services.listing.batch_enrichment_service import BatchEnrichmentService
 from src.services.proxy_service import ProxyService
@@ -483,6 +484,7 @@ async def run() -> None:
     comparison_export_service = ComparisonExportService(export_dir=export_dir)
 
     batch_enrichment_service = BatchEnrichmentService()
+    data_cleaner_service = DataCleanerService()
 
     try:
         # --- Шаг 6: Парсинг каталога через API (Этап 1) ---
@@ -656,6 +658,16 @@ async def run() -> None:
             total=len(listings),
             step="enrichment",
         )
+
+        # --- Шаг 8.5: Очистка технических блокировок ---
+        clean_stats = data_cleaner_service.clean_listings(listings)
+
+        if clean_stats["days_cleaned"] > 0:
+            logger.info(
+                "технические_блокировки_удалены",
+                step=f"объявлений_с_блокировками={clean_stats['listings_cleaned']}, "
+                     f"дней_очищено={clean_stats['days_cleaned']}",
+            )
 
         # --- Шаг 9: Сохранение в базу данных ---
         logger.info("сохранение_в_бд", step="storage")
