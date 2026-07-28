@@ -26,6 +26,9 @@
     перехват нового токена и продолжение с того же места (до 3 попыток).
   - сетевые ошибки скользящего окна → до _SLIDING_RETRY_ROUNDS повторов
     только по ошибочным ячейкам с паузой между раундами.
+  - ошибка min_nights в скользящем окне → адаптивный retry с извлечённым
+    количеством ночей. Хвостовые дни (required > remaining) наследуют
+    статус от ближайшего проверенного соседа.
 """
 
 import asyncio
@@ -88,9 +91,6 @@ _SLIDING_RETRY_ROUNDS: int = 1
 _SLIDING_RETRY_PAUSE: float = 3.0
 
 # Максимальное количество попыток восстановления контекста страницы.
-# При ошибке "Execution context was destroyed" страница перезагружается
-# и токен перехватывается заново. 3 попытки — компромисс между
-# надёжностью и временем ожидания.
 _CONTEXT_RECOVERY_ATTEMPTS: int = 3
 
 # Пауза перед перезагрузкой страницы после уничтожения контекста (секунды).
@@ -1039,6 +1039,14 @@ class BatchEnrichmentService:
     ) -> dict[int, list[int]]:
         """Определяет занятость каждого дня для busy-объектов.
 
+        Трёхэтапный процесс:
+        1. Основной проход с nights=2.
+        2. Адаптивный retry — для дней с ошибкой min_nights повторяет
+           запрос с извлечённым требуемым количеством ночей.
+        3. Нормализация хвостовых дней — дни в конце окна, которые
+           невозможно проверить (required_nights > remaining_days),
+           наследуют статус от ближайшего проверенного соседа слева.
+
         Args:
             ctx: Контекст страницы.
             busy_ids: ID объектов со статусом busy.
@@ -1056,51 +1064,87 @@ class BatchEnrichmentService:
             obj_id: [-1] * DAYS_COUNT for obj_id in busy_ids
         }
 
-        # Основная группа с nights=2
+        # Словарь для хранения требуемого min_nights по каждому объекту и дню.
+        # Формат: {object_id: {day_offset: required_nights}}
+        min_nights_map: dict[int, dict[int, int]] = {
+            obj_id: {} for obj_id in busy_ids
+        }
+
+        # ── Основной проход с nights=2 ──
         await self._sliding_window_for_group(
             ctx, list(busy_ids), _DEFAULT_SLIDING_NIGHTS, today, calendars,
+            min_nights_map=min_nights_map,
         )
 
-        # Адаптация min_nights для объектов с полным провалом
-        failed_ids = [
-            obj_id for obj_id, cal in calendars.items()
-            if all(c == -1 for c in cal)
+        # ── Адаптивный retry по min_nights ──
+        # Собираем объекты, у которых есть дни с ошибкой min_nights
+        ids_with_min_nights = [
+            obj_id for obj_id in busy_ids
+            if min_nights_map[obj_id]
         ]
 
-        if failed_ids:
+        if ids_with_min_nights:
+            # Группируем по уникальным значениям required_nights
+            nights_groups: dict[int, list[int]] = {}
+            for obj_id in ids_with_min_nights:
+                for _day_offset, req_nights in min_nights_map[obj_id].items():
+                    if req_nights not in nights_groups:
+                        nights_groups[req_nights] = []
+                    if obj_id not in nights_groups[req_nights]:
+                        nights_groups[req_nights].append(obj_id)
+
             logger.info(
-                "batch_скользящее_окно_адаптация",
-                step=f"не_определённых={len(failed_ids)}",
+                "batch_скользящее_окно_адаптация_min_nights",
+                step=f"объектов={len(ids_with_min_nights)}, "
+                     f"группы_nights={sorted(nights_groups.keys())}",
             )
 
-            for nights in MIN_NIGHTS_VARIANTS:
-                if nights <= _DEFAULT_SLIDING_NIGHTS:
+            # Обрабатываем каждую группу min_nights
+            for nights_val in sorted(nights_groups.keys()):
+                group_ids = nights_groups[nights_val]
+
+                # Фильтруем: только объекты, у которых есть -1 дни
+                # с этим конкретным required_nights
+                pending_ids = [
+                    obj_id for obj_id in group_ids
+                    if any(
+                        calendars[obj_id][d] == -1
+                        and min_nights_map[obj_id].get(d) == nights_val
+                        for d in range(DAYS_COUNT)
+                    )
+                ]
+
+                if not pending_ids:
                     continue
 
-                still_failed = [
-                    obj_id for obj_id in failed_ids
-                    if all(c == -1 for c in calendars[obj_id])
-                ]
-                if not still_failed:
-                    break
-
-                await self._sliding_window_for_group(
-                    ctx, still_failed, nights, today, calendars,
+                logger.info(
+                    "batch_адаптация_группа",
+                    step=f"nights={nights_val}, объектов={len(pending_ids)}",
                 )
 
-        # ── Retry ошибочных ячеек (сетевые сбои) ──
+                await self._sliding_window_for_group_adaptive(
+                    ctx, pending_ids, nights_val, today, calendars,
+                    min_nights_map=min_nights_map,
+                )
+
+        # ── Retry ошибочных ячеек (сетевые сбои, не min_nights) ──
         for retry_round in range(1, _SLIDING_RETRY_ROUNDS + 1):
-            error_count = sum(
-                1 for cal in calendars.values()
-                for c in cal if c == -1
-            )
+            # Считаем только ячейки, которые НЕ являются min_nights ошибками
+            error_count = 0
+            for obj_id, cal in calendars.items():
+                for d, c in enumerate(cal):
+                    if c == -1 and d not in min_nights_map.get(obj_id, {}):
+                        error_count += 1
 
             if error_count == 0:
                 break
 
             retry_ids = [
                 obj_id for obj_id, cal in calendars.items()
-                if any(c == -1 for c in cal)
+                if any(
+                    c == -1 and d not in min_nights_map.get(obj_id, {})
+                    for d, c in enumerate(cal)
+                )
             ]
 
             logger.info(
@@ -1114,12 +1158,14 @@ class BatchEnrichmentService:
 
             await self._sliding_window_for_group(
                 ctx, retry_ids, _DEFAULT_SLIDING_NIGHTS, today, calendars,
+                min_nights_map=min_nights_map,
             )
 
-            new_error_count = sum(
-                1 for cal in calendars.values()
-                for c in cal if c == -1
-            )
+            new_error_count = 0
+            for obj_id, cal in calendars.items():
+                for d, c in enumerate(cal):
+                    if c == -1 and d not in min_nights_map.get(obj_id, {}):
+                        new_error_count += 1
 
             resolved = error_count - new_error_count
             logger.info(
@@ -1137,19 +1183,25 @@ class BatchEnrichmentService:
                 )
                 break
 
-        # Нормализация оставшихся ошибок
-        error_count = 0
-        for obj_id, cal in calendars.items():
-            errors = sum(1 for c in cal if c == -1)
-            if errors > 0:
-                error_count += errors
-            calendars[obj_id] = [0 if c == -1 else c for c in cal]
+        # ── Нормализация хвостовых дней (min_nights > remaining) ──
+        self._normalize_tail_days(calendars, min_nights_map)
 
-        if error_count > 0:
+        # ── Нормализация оставшихся сетевых ошибок ──
+        network_error_count = 0
+        for obj_id, cal in calendars.items():
+            for d, c in enumerate(cal):
+                if c == -1:
+                    network_error_count += 1
+
+        if network_error_count > 0:
             logger.warning(
-                "batch_скользящее_окно_ошибки",
-                step=f"ошибочных_дней={error_count}",
+                "batch_скользящее_окно_ошибки_сетевые",
+                step=f"ошибочных_дней={network_error_count}",
             )
+            for obj_id in calendars:
+                calendars[obj_id] = [
+                    0 if c == -1 else c for c in calendars[obj_id]
+                ]
 
         logger.info(
             "batch_скользящее_окно_завершено",
@@ -1165,8 +1217,13 @@ class BatchEnrichmentService:
         nights: int,
         today: date,
         calendars: dict[int, list[int]],
+        min_nights_map: dict[int, dict[int, int]] | None = None,
     ) -> None:
         """Обрабатывает скользящее окно для группы объектов.
+
+        При ошибке min_nights: оставляет день как -1 и сохраняет
+        требуемое количество ночей в min_nights_map для последующей
+        адаптивной обработки.
 
         Args:
             ctx: Контекст страницы.
@@ -1174,6 +1231,8 @@ class BatchEnrichmentService:
             nights: Количество ночей в окне.
             today: Дата начала календаря.
             calendars: Общий словарь календарей (мутируется).
+            min_nights_map: Словарь {obj_id: {day: required_nights}}.
+                            Мутируется при ошибках min_nights.
         """
         for day_offset in range(DAYS_COUNT):
             day = today + timedelta(days=day_offset)
@@ -1210,7 +1269,17 @@ class BatchEnrichmentService:
                     else:
                         error_text = raw.get("error_text", "")
                         if self._is_min_nights_error(error_text):
-                            calendars[obj_id][day_offset] = 0
+                            # НЕ помечаем как 0 — оставляем -1
+                            # Сохраняем требуемое min_nights для адаптации
+                            required = self._extract_min_nights(error_text)
+                            if (
+                                required is not None
+                                and min_nights_map is not None
+                            ):
+                                if obj_id not in min_nights_map:
+                                    min_nights_map[obj_id] = {}
+                                min_nights_map[obj_id][day_offset] = required
+                            # Оставляем calendars[obj_id][day_offset] = -1
 
                 if batch_start + BATCH_SIZE < len(pending_ids):
                     await asyncio.sleep(BATCH_PAUSE)
@@ -1224,6 +1293,154 @@ class BatchEnrichmentService:
                     step=f"день={day_offset + 1}/{DAYS_COUNT}, "
                          f"nights={nights}, объектов={len(group_ids)}",
                 )
+
+    async def _sliding_window_for_group_adaptive(
+        self,
+        ctx: _PageContext,
+        group_ids: list[int],
+        nights: int,
+        today: date,
+        calendars: dict[int, list[int]],
+        min_nights_map: dict[int, dict[int, int]] | None = None,
+    ) -> None:
+        """Адаптивное скользящее окно — retry с увеличенным nights.
+
+        Обрабатывает только дни, которые остались -1 и имеют
+        совпадающий required_nights. Пропускает дни, где до конца
+        60-дневного горизонта не хватает ночей (они будут нормализованы
+        отдельно в _normalize_tail_days).
+
+        Args:
+            ctx: Контекст страницы.
+            group_ids: ID объектов для обработки.
+            nights: Количество ночей для запроса.
+            today: Дата начала календаря.
+            calendars: Общий словарь календарей (мутируется).
+            min_nights_map: Словарь {obj_id: {day: required_nights}}.
+        """
+        for day_offset in range(DAYS_COUNT):
+            # Проверяем, хватает ли дней до конца горизонта
+            remaining_days = DAYS_COUNT - day_offset
+            if nights > remaining_days:
+                # Хвостовые дни — будут обработаны в _normalize_tail_days
+                continue
+
+            day = today + timedelta(days=day_offset)
+            end_day = day + timedelta(days=nights)
+            date_begin = f"{day.isoformat()} 14:00:00"
+            date_end = f"{end_day.isoformat()} 11:00:00"
+
+            # Только объекты, у которых этот день = -1 И required_nights
+            # совпадает
+            pending_ids = [
+                obj_id for obj_id in group_ids
+                if calendars[obj_id][day_offset] == -1
+                and min_nights_map is not None
+                and min_nights_map.get(obj_id, {}).get(day_offset) == nights
+            ]
+            if not pending_ids:
+                continue
+
+            for batch_start in range(0, len(pending_ids), BATCH_SIZE):
+                batch = pending_ids[batch_start: batch_start + BATCH_SIZE]
+
+                results = await self._fetch_batch_with_recovery(
+                    ctx, batch, date_begin, date_end,
+                    guests=DEFAULT_GUESTS,
+                )
+
+                for raw in results:
+                    obj_id = raw.get("object_id")
+                    if obj_id is None or obj_id not in calendars:
+                        continue
+
+                    if raw.get("success"):
+                        busy = raw.get("busy")
+                        if busy == "busy":
+                            calendars[obj_id][day_offset] = 1
+                        elif busy == "unbusy":
+                            calendars[obj_id][day_offset] = 0
+                    else:
+                        error_text = raw.get("error_text", "")
+                        if self._is_min_nights_error(error_text):
+                            # Всё ещё min_nights даже с увеличенным окном.
+                            # Извлекаем новое значение — может быть ещё больше.
+                            new_required = self._extract_min_nights(error_text)
+                            if (
+                                new_required is not None
+                                and new_required > nights
+                                and min_nights_map is not None
+                            ):
+                                min_nights_map[obj_id][day_offset] = new_required
+                            # Оставляем -1 — будет нормализован позже
+
+                if batch_start + BATCH_SIZE < len(pending_ids):
+                    await asyncio.sleep(BATCH_PAUSE)
+
+            if day_offset < DAYS_COUNT - 1:
+                await asyncio.sleep(BATCH_PAUSE)
+
+    @staticmethod
+    def _normalize_tail_days(
+        calendars: dict[int, list[int]],
+        min_nights_map: dict[int, dict[int, int]],
+    ) -> None:
+        """Нормализует хвостовые дни наследованием от соседей.
+
+        Для дней, которые невозможно проверить (required_nights > remaining_days),
+        наследует статус от ближайшего проверенного соседа слева.
+        Если слева нет проверенных дней — считает занятым (1).
+
+        Args:
+            calendars: Словарь календарей (мутируется).
+            min_nights_map: Словарь с информацией о min_nights ошибках.
+        """
+        normalized_count = 0
+
+        for obj_id, cal in calendars.items():
+            obj_min_nights = min_nights_map.get(obj_id, {})
+
+            for day_offset in range(DAYS_COUNT):
+                if cal[day_offset] != -1:
+                    continue
+
+                # Это неразрешённый день. Проверяем, является ли он
+                # "хвостовым" (min_nights > remaining)
+                if day_offset not in obj_min_nights:
+                    # Не min_nights ошибка — оставляем для сетевой нормализации
+                    continue
+
+                required = obj_min_nights[day_offset]
+                remaining = DAYS_COUNT - day_offset
+
+                if required > remaining:
+                    # Хвостовой день — наследуем от ближайшего соседа слева
+                    inherited_value = 1  # По умолчанию — занят
+                    for prev in range(day_offset - 1, -1, -1):
+                        if cal[prev] != -1:
+                            inherited_value = cal[prev]
+                            break
+
+                    cal[day_offset] = inherited_value
+                    normalized_count += 1
+                else:
+                    # Не хвостовой, но всё ещё -1 после адаптации.
+                    # Наследуем от соседа (скорее всего занят — API не дал
+                    # ответ даже с правильным nights).
+                    inherited_value = 1
+                    for prev in range(day_offset - 1, -1, -1):
+                        if cal[prev] != -1:
+                            inherited_value = cal[prev]
+                            break
+
+                    cal[day_offset] = inherited_value
+                    normalized_count += 1
+
+        if normalized_count > 0:
+            logger.info(
+                "batch_хвостовые_дни_нормализованы",
+                step=f"нормализовано={normalized_count}",
+            )
 
     # ══════════════════════════════════════════════════════════
     #  Низкоуровневый fetch
