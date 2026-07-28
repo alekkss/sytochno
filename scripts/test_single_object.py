@@ -4,6 +4,7 @@
 1. Bulk-запрос на 60 ночей — показывает сырой detail[] и результат PriceParser.
 2. Скользящее окно (60 дней) — показывает busy/unbusy для каждого дня.
    При ошибке min_nights — повторяет запрос с требуемым количеством ночей.
+   Хвостовые дни (required_nights > remaining) наследуют от соседа слева.
 3. Итоговый календарь и цены (как в основной программе).
 
 Запуск:
@@ -29,7 +30,7 @@ from src.services.listing.price_parser import PriceParser
 # ── Настройки ──────────────────────────────────────────────
 
 # ID объекта для диагностики
-TEST_OBJECT_ID: int = 265366
+TEST_OBJECT_ID: int = 2298659
 
 # Количество ночей в скользящем окне (как в основной программе)
 SLIDING_WINDOW_NIGHTS: int = 2
@@ -64,6 +65,37 @@ def _extract_min_nights_from_error(error_text: str) -> int | None:
         if 2 <= num <= 999:
             return num
     return None
+
+
+def _normalize_tail_days(calendar: list[int]) -> list[int]:
+    """Нормализует хвостовые дни наследованием от ближайшего соседа слева.
+
+    Дни со значением -1 (неопределённые) получают статус ближайшего
+    проверенного соседа слева. Если слева нет проверенных — считается занятым (1).
+
+    Логика идентична BatchEnrichmentService._normalize_tail_days().
+
+    Args:
+        calendar: Список из 60 значений (0, 1, -1).
+
+    Returns:
+        Нормализованный список без -1.
+    """
+    result = list(calendar)
+    for i in range(len(result)):
+        if result[i] != -1:
+            continue
+
+        # Ищем ближайшего соседа слева
+        inherited = 1  # По умолчанию — занят
+        for prev in range(i - 1, -1, -1):
+            if result[prev] != -1:
+                inherited = result[prev]
+                break
+
+        result[i] = inherited
+
+    return result
 
 
 async def _fetch_day(
@@ -416,10 +448,14 @@ async def main() -> None:
                 f"(60 дней)..."
             )
             print(
-                f"  Объект busy — определяем занятость каждого дня..."
+                "  Объект busy — определяем занятость каждого дня..."
             )
             print(
-                f"  При ошибке min_nights — повторяем с требуемым nights"
+                "  При ошибке min_nights — повторяем с требуемым nights"
+            )
+            print(
+                "  Хвостовые дни (required > remaining) — "
+                "наследуют от соседа слева"
             )
             print(f"  {'─' * 60}")
 
@@ -458,18 +494,20 @@ async def main() -> None:
                         actual_nights_used = required
                         await asyncio.sleep(0.3)
                     else:
-                        # Не хватает дней — пробуем максимально возможное
+                        # Хвостовой день — помечаем как -1 (наследуем позже)
                         retry_info = (
-                            f" -> retry nights={remaining_days} "
-                            f"(не хватает для {required})"
+                            f" -> ХВОСТ (required={required} > "
+                            f"remaining={remaining_days})"
                         )
-                        if remaining_days >= 2:
-                            res = await _fetch_day(
-                                page, token, TEST_OBJECT_ID, day,
-                                remaining_days,
-                            )
-                            actual_nights_used = remaining_days
-                            await asyncio.sleep(0.3)
+                        # Не делаем retry — оставляем -1
+                        res = {
+                            "status": "tail",
+                            "busy": None,
+                            "price": 0,
+                            "error": "",
+                            "raw_errors": [],
+                            "required_nights": required,
+                        }
 
                 # Определяем финальный статус дня
                 if res["status"] == "ok":
@@ -480,9 +518,14 @@ async def main() -> None:
                         calendar.append(0)
                         marker = "🟢 свободен"
                 elif res["status"] == "min_nights":
-                    # После retry всё ещё min_nights
-                    calendar.append(0)
-                    marker = "🟡 min_nights (свободен?)"
+                    # После retry с правильным nights всё ещё min_nights
+                    # — оставляем -1, нормализуем позже
+                    calendar.append(-1)
+                    marker = "🟡 min_nights (наследуем)"
+                elif res["status"] == "tail":
+                    # Хвостовой день — наследуем от соседа
+                    calendar.append(-1)
+                    marker = "🟡 ХВОСТ (наследуем)"
                 else:
                     calendar.append(-1)
                     marker = "⚠️  ОШИБКА "
@@ -500,18 +543,38 @@ async def main() -> None:
                     f"{error_part}"
                 )
 
+            # ── Нормализация хвостовых дней ──
+            tail_count = sum(1 for c in calendar if c == -1)
+            if tail_count > 0:
+                print(f"\n  {'─' * 60}")
+                print(
+                    f"  Нормализация: {tail_count} дней наследуют "
+                    f"от ближайшего соседа слева"
+                )
+
+            final_calendar = _normalize_tail_days(calendar)
+
+            # Показываем что унаследовали хвостовые дни
+            if tail_count > 0:
+                for i in range(DAYS_COUNT):
+                    if calendar[i] == -1:
+                        day = today + timedelta(days=i)
+                        inherited = final_calendar[i]
+                        sym = "🔴 ЗАНЯТ" if inherited == 1 else "🟢 свободен"
+                        print(
+                            f"    день {i:2d} ({day}): "
+                            f"наследовал → {sym}"
+                        )
+
             # ── Применяем календарь к ценам ──
             final_prices: list[int] = []
             for i in range(DAYS_COUNT):
-                if calendar[i] == 1:
+                if final_calendar[i] == 1:
                     final_prices.append(0)
                 else:
                     final_prices.append(
                         prices_60[i] if i < len(prices_60) else 0
                     )
-
-            # Нормализуем ошибки
-            final_calendar = [0 if c == -1 else c for c in calendar]
 
         elif busy_status == "unbusy":
             print("\n[4/5] Объект unbusy — весь календарь свободен.")
@@ -527,7 +590,7 @@ async def main() -> None:
         # ── 5. Итог ──
         busy_days = sum(1 for c in final_calendar if c == 1)
         free_days = sum(1 for c in final_calendar if c == 0)
-        error_days = sum(1 for c in calendar if c == -1)
+        tail_days = sum(1 for c in calendar if c == -1)
         occupancy = (
             round(busy_days / DAYS_COUNT * 100, 1)
             if DAYS_COUNT > 0
@@ -539,7 +602,7 @@ async def main() -> None:
         print(
             f"  Занятость: {occupancy}% "
             f"({busy_days} занято, {free_days} свободно, "
-            f"{error_days} ошибок)"
+            f"{tail_days} хвостовых/наследованных)"
         )
         print(
             f"  Календарь: "
@@ -553,7 +616,7 @@ async def main() -> None:
         # Визуальная разметка
         print(
             f"\n  Визуальная карта "
-            f"(🔴=занят, 🟢=свободен, 🟡=min_nights):"
+            f"(🔴=занят, 🟢=свободен):"
         )
         line = ""
         for i, c in enumerate(final_calendar):
