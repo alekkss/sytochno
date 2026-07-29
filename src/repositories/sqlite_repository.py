@@ -225,6 +225,63 @@ class SQLiteListingRepository(BaseListingRepository):
         logger.info("объявления_сохранены", total=saved_count)
         return saved_count
 
+    def delete_not_in_ids(self, active_external_ids: set[str]) -> int:
+        """Удаляет из БД объявления, отсутствующие в переданном наборе ID.
+
+        Используется для очистки удалённых с сайта объявлений: если объект
+        не появился в каталоге текущего прогона — значит он удалён с сайта
+        и должен быть удалён из БД.
+
+        Безопасность: вызывается только после успешного сбора каталога
+        с достаточным количеством объявлений (проверка на стороне вызывающего).
+
+        Args:
+            active_external_ids: Набор external_id, собранных в текущем прогоне.
+
+        Returns:
+            Количество удалённых записей.
+        """
+        if not active_external_ids:
+            return 0
+
+        conn = self._get_connection()
+
+        # Получаем все external_id из БД
+        cursor = conn.execute("SELECT external_id FROM listings")
+        all_db_ids = {row["external_id"] for row in cursor.fetchall()}
+
+        # Определяем ID для удаления
+        ids_to_delete = all_db_ids - active_external_ids
+
+        if not ids_to_delete:
+            return 0
+
+        # Удаляем пачками (SQLite ограничивает количество параметров)
+        deleted_count = 0
+        batch_size = 500
+
+        ids_list = list(ids_to_delete)
+        for i in range(0, len(ids_list), batch_size):
+            batch = ids_list[i: i + batch_size]
+            placeholders = ",".join("?" * len(batch))
+            conn.execute(
+                f"DELETE FROM listings WHERE external_id IN ({placeholders})",
+                batch,
+            )
+            deleted_count += len(batch)
+
+        conn.commit()
+
+        if deleted_count > 0:
+            logger.info(
+                "удалены_неактивные_объявления",
+                deleted=deleted_count,
+                active=len(active_external_ids),
+                was_in_db=len(all_db_ids),
+            )
+
+        return deleted_count
+
     def get_all(self) -> list[RawListing]:
         """Возвращает все объявления из базы данных.
 
@@ -273,10 +330,6 @@ class SQLiteListingRepository(BaseListingRepository):
         """
         conn = self._get_connection()
 
-        # SQL-фильтр: быстро отсекает очевидно пустые записи.
-        # Массив из 60 нулей в JSON выглядит как '[0, 0, 0, ...]' — проверяем
-        # отсутствие ненулевых значений через NOT LIKE '%1%' и NOT LIKE '%2%'...
-        # Более надёжный способ: загружаем кандидатов и проверяем в Python.
         cursor = conn.execute("""
             SELECT * FROM listings
             WHERE (
@@ -303,7 +356,6 @@ class SQLiteListingRepository(BaseListingRepository):
         """)
         rows = cursor.fetchall()
 
-        # Дополнительная проверка на уровне Python — гарантирует корректность
         result: list[RawListing] = []
         for row in rows:
             listing = self._row_to_listing(row)
@@ -405,16 +457,12 @@ class SQLiteListingRepository(BaseListingRepository):
         Returns:
             Экземпляр RawListing.
         """
-        # Десериализация calendar_60_days из JSON-строки
         calendar_raw = row["calendar_60_days"]
         calendar: list[int] = json.loads(calendar_raw) if calendar_raw else []
 
-        # Десериализация prices_60_days из JSON-строки
         prices_raw = row["prices_60_days"]
         prices: list[int] = json.loads(prices_raw) if prices_raw else []
 
-        # Безопасное чтение новых столбцов — None если столбец ещё не существует
-        # (между миграцией и перезапуском парсера)
         row_keys = row.keys()
         lat = row["lat"] if "lat" in row_keys else None
         lng = row["lng"] if "lng" in row_keys else None

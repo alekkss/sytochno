@@ -676,6 +676,35 @@ async def run() -> None:
             step="storage",
         )
 
+        # --- Шаг 9.5: Удаление объявлений, отсутствующих на сайте ---
+        # Если объект не вернулся в каталоге текущего прогона — он удалён с сайта.
+        # Защита: удаляем только если каталог собрал достаточно объявлений
+        # (минимум 50% от того что в БД), чтобы избежать случайного обнуления
+        # при частичном сборе (сбой API, блокировка IP, лимит MAX_PAGES).
+        active_ids = {l.external_id for l in listings}
+        db_count_before = repository.count()
+
+        # Порог безопасности: каталог должен содержать минимум 50% от БД
+        # или минимум 100 объявлений (для случая когда БД ещё маленькая).
+        min_threshold = max(100, db_count_before // 2)
+
+        if len(active_ids) >= min_threshold:
+            deleted_count = repository.delete_not_in_ids(active_ids)
+            if deleted_count > 0:
+                logger.info(
+                    "удалены_объявления_отсутствующие_на_сайте",
+                    deleted=deleted_count,
+                    active_in_catalog=len(active_ids),
+                    was_in_db=db_count_before,
+                    step="cleanup",
+                )
+        else:
+            logger.warning(
+                "очистка_пропущена_мало_объявлений_в_каталоге",
+                step=f"каталог={len(active_ids)}, БД={db_count_before}, "
+                     f"порог={min_threshold}",
+            )
+
         # --- Шаг 10: Сохранение снимков ---
         logger.info("сохранение_снимков", step="snapshots")
         all_listings = repository.get_all()

@@ -42,6 +42,21 @@ class BaseListingRepository(ABC):
         """
 
     @abstractmethod
+    def delete_not_in_ids(self, active_external_ids: set[str]) -> int:
+        """Удаляет объявления, отсутствующие в переданном наборе ID.
+
+        Используется для очистки удалённых с сайта объявлений: если объект
+        не появился в каталоге текущего прогона — значит он удалён с сайта
+        и должен быть удалён из БД.
+
+        Args:
+            active_external_ids: Набор external_id, собранных в текущем прогоне.
+
+        Returns:
+            Количество удалённых записей.
+        """
+
+    @abstractmethod
     def get_all(self) -> list[RawListing]:
         """Возвращает все объявления из хранилища.
 

@@ -30,7 +30,7 @@ from src.services.listing.price_parser import PriceParser
 # ── Настройки ──────────────────────────────────────────────
 
 # ID объекта для диагностики
-TEST_OBJECT_ID: int = 2298659
+TEST_OBJECT_ID: int = 1069721
 
 # Количество ночей в скользящем окне (как в основной программе)
 SLIDING_WINDOW_NIGHTS: int = 2
