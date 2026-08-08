@@ -31,6 +31,7 @@ import asyncio
 import re
 from datetime import datetime, timezone
 
+from playwright.async_api import Error as PlaywrightError
 from playwright.async_api import Page
 
 from src.config.logger import get_logger
@@ -110,6 +111,62 @@ _SKIP_HEADERS: set[str] = {
     "sec-ch-ua", "sec-ch-ua-mobile",
     "sec-ch-ua-platform",
 }
+
+
+async def _safe_route_continue(route) -> None:
+    """Безопасно продолжает route, подавляя ошибки Playwright.
+
+    Playwright может выбросить ``Route.continue_: Route is already handled!``,
+    если маршрут уже был завершён (страница закрылась, ушла в навигацию,
+    ``unroute`` уже снял обработчик и т.п.). Такие исключения безвредны —
+    они возникают в event listener'е самого Playwright и не влияют
+    на собранные данные. Логируем на уровне DEBUG и подавляем.
+
+    Args:
+        route: Объект Playwright ``Route``.
+    """
+    try:
+        await route.continue_()
+    except PlaywrightError as e:
+        # "Route is already handled", "Target page/context closed" и т.п.
+        logger.debug(
+            "route_continue_подавлено",
+            error=str(e)[:200],
+            error_type=type(e).__name__,
+        )
+    except Exception as e:
+        # Любая другая ошибка внутри listener'а не должна ронять Playwright
+        logger.debug(
+            "route_continue_неожиданная_ошибка",
+            error=str(e)[:200],
+            error_type=type(e).__name__,
+        )
+
+
+async def _safe_unroute(page: Page, pattern: str) -> None:
+    """Безопасно снимает route-обработчик, подавляя ошибки.
+
+    Если страница уже закрыта или ушла в навигацию, ``unroute`` может
+    бросить исключение — оно не влияет на дальнейшую работу.
+
+    Args:
+        page: Страница Playwright.
+        pattern: Шаблон URL, ранее переданный в ``page.route``.
+    """
+    try:
+        await page.unroute(pattern)
+    except PlaywrightError as e:
+        logger.debug(
+            "unroute_подавлено",
+            pattern=pattern,
+            error=str(e)[:200],
+        )
+    except Exception as e:
+        logger.debug(
+            "unroute_неожиданная_ошибка",
+            pattern=pattern,
+            error=str(e)[:200],
+        )
 
 
 class ScraperService:
@@ -541,13 +598,26 @@ class ScraperService:
 
             page = self._browser.page
 
-            # Перехватчик searchObjectsOnMap
+            # Перехватчик searchObjectsOnMap.
+            # Вся логика listener'а обёрнута в try/except: любые исключения
+            # внутри route-обработчика Playwright всплывают в его event loop
+            # и печатаются как "Error occurred in event listener" в stderr.
+            # Особенно важно защитить route.continue_() — если маршрут уже
+            # был обработан (страница ушла в навигацию, unroute успел
+            # снять обработчик и т.п.), Playwright бросит
+            # "Route.continue_: Route is already handled!".
             async def _intercept(route, request):
-                url = request.url
-                if "searchObjectsOnMap" in url and captured["url"] is None:
-                    captured["url"] = url
-                    captured["headers"] = dict(request.headers)
-                await route.continue_()
+                try:
+                    url = request.url
+                    if "searchObjectsOnMap" in url and captured["url"] is None:
+                        captured["url"] = url
+                        captured["headers"] = dict(request.headers)
+                except Exception as e:
+                    logger.debug(
+                        "intercept_чтение_запроса_ошибка",
+                        error=str(e)[:200],
+                    )
+                await _safe_route_continue(route)
 
             await page.route("**/api/json/**", _intercept)
 
@@ -568,8 +638,10 @@ class ScraperService:
                 await asyncio.sleep(_API_INTERCEPT_POLL_INTERVAL)
                 elapsed += _API_INTERCEPT_POLL_INTERVAL
 
-            # Снимаем перехватчик (чтобы не мешал fetch)
-            await page.unroute("**/api/json/**")
+            # Снимаем перехватчик (чтобы не мешал fetch).
+            # Оборачиваем в safe-хелпер: если страница уже уходит
+            # в навигацию/закрытие, unroute может бросить исключение.
+            await _safe_unroute(page, "**/api/json/**")
 
             if not captured["url"]:
                 logger.warning(
@@ -906,17 +978,26 @@ class ScraperService:
             await self._browser.start(proxy=next_proxy)
             page = self._browser.page
 
-            # Перехватываем свежие заголовки из любого API-запроса
+            # Перехватываем свежие заголовки из любого API-запроса.
+            # Тот же защитный шаблон, что и в _intercept выше: любые
+            # исключения внутри listener'а глушим, route.continue_()
+            # обёрнут в _safe_route_continue.
             fresh_headers: dict[str, str] | None = None
 
             async def _capture_headers(route, request):
                 nonlocal fresh_headers
-                if fresh_headers is None:
-                    fresh_headers = {
-                        k: v for k, v in request.headers.items()
-                        if k.lower() not in _SKIP_HEADERS
-                    }
-                await route.continue_()
+                try:
+                    if fresh_headers is None:
+                        fresh_headers = {
+                            k: v for k, v in request.headers.items()
+                            if k.lower() not in _SKIP_HEADERS
+                        }
+                except Exception as e:
+                    logger.debug(
+                        "capture_headers_чтение_ошибка",
+                        error=str(e)[:200],
+                    )
+                await _safe_route_continue(route)
 
             await page.route("**/api/json/**", _capture_headers)
 
@@ -934,7 +1015,7 @@ class ScraperService:
                 await asyncio.sleep(_API_INTERCEPT_POLL_INTERVAL)
                 elapsed += _API_INTERCEPT_POLL_INTERVAL
 
-            await page.unroute("**/api/json/**")
+            await _safe_unroute(page, "**/api/json/**")
 
             if fresh_headers is None:
                 logger.warning(

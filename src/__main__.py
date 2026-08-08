@@ -13,8 +13,9 @@ from src.config.logger import get_logger
 from src.config.settings import Settings
 from src.models.booking_event import AnyEvent
 from src.models.proxy import ProxyConfig
-from src.repositories.snapshot_repository import SQLiteSnapshotRepository
-from src.repositories.sqlite_repository import SQLiteListingRepository
+from src.repositories.base import BaseListingRepository
+from src.repositories.db_factory import RepositoryPair, create_repositories
+from src.repositories.snapshot_repository import BaseSnapshotRepository
 from src.services.browser_service import BrowserService
 from src.services.comparison_export_service import ComparisonExportService
 from src.services.comparison_service import ComparisonService
@@ -430,14 +431,13 @@ async def run() -> None:
         step="init",
         search_urls_count=len(settings.search_urls),
         max_pages=settings.max_pages,
+        db_type=settings.db_type,
     )
 
-    # --- Шаг 3: Инициализация репозиториев ---
-    repository = SQLiteListingRepository(db_path=settings.db_path)
-    repository.initialize()
-
-    snapshot_repository = SQLiteSnapshotRepository(db_path=settings.db_path)
-    snapshot_repository.initialize()
+    # --- Шаг 3: Инициализация репозиториев через фабрику ---
+    repos = create_repositories(settings)
+    repository = repos.listing
+    snapshot_repository = repos.snapshot
 
     # --- Шаг 4: Загрузка и проверка прокси ---
     working_proxies: list[ProxyConfig] = []
@@ -677,15 +677,9 @@ async def run() -> None:
         )
 
         # --- Шаг 9.5: Удаление объявлений, отсутствующих на сайте ---
-        # Если объект не вернулся в каталоге текущего прогона — он удалён с сайта.
-        # Защита: удаляем только если каталог собрал достаточно объявлений
-        # (минимум 50% от того что в БД), чтобы избежать случайного обнуления
-        # при частичном сборе (сбой API, блокировка IP, лимит MAX_PAGES).
         active_ids = {l.external_id for l in listings}
         db_count_before = repository.count()
 
-        # Порог безопасности: каталог должен содержать минимум 50% от БД
-        # или минимум 100 объявлений (для случая когда БД ещё маленькая).
         min_threshold = max(100, db_count_before // 2)
 
         if len(active_ids) >= min_threshold:
@@ -861,10 +855,10 @@ async def run_loop() -> None:
             listings_count = 0
             events_count = 0
             try:
-                repo = SQLiteListingRepository(db_path=settings.db_path)
-                repo.initialize()
-                listings_count = len(repo.get_all())
-                repo.close()
+                stats_repos = create_repositories(settings)
+                listings_count = stats_repos.listing.count()
+                stats_repos.listing.close()
+                stats_repos.snapshot.close()
             except Exception:
                 pass
 
@@ -993,7 +987,7 @@ def _format_duration(seconds: float) -> str:
 
 def _run_comparison(
     listings: list,
-    snapshot_repository: SQLiteSnapshotRepository,
+    snapshot_repository: BaseSnapshotRepository,
     comparison_service: ComparisonService,
     logger: "any",  # type: ignore[name-defined]
 ) -> list[AnyEvent]:

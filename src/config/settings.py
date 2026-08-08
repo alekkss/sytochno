@@ -169,8 +169,16 @@ class Settings:
     tab_delay_ms: int = 3000
 
     # Хранилище
+    db_type: str = "sqlite"
     db_path: str = "data/sutochno_listings.db"
     export_path: str = "data/sutochno_report.xlsx"
+
+    # PostgreSQL
+    pg_host: str = "localhost"
+    pg_port: int = 5432
+    pg_name: str = "rentpulse"
+    pg_user: str = ""
+    pg_password: str = ""
 
     # Логирование
     log_level: str = "INFO"
@@ -199,17 +207,24 @@ class Settings:
     enrich_timeout_seconds: int = 240
 
     # Очистка ценовых выбросов (отклонение от медианы цены за м²)
-    # PRICE_DEVIATION_UP=100 означает: цена за м² > медиана × 2.0 → заградительная
-    # PRICE_DEVIATION_DOWN=50 означает: цена за м² < медиана × 0.5 → замануха
     price_deviation_up: int = 100
     price_deviation_down: int = 50
 
     # Ночная пауза (время по Москве, формат HH:MM)
-    # Парсер не начинает новый прогон, если текущее время МСК
-    # попадает в окно pause_start–pause_end.
-    # None = пауза отключена.
     pause_start: tuple[int, int] | None = None
     pause_end: tuple[int, int] | None = None
+
+    @property
+    def pg_dsn(self) -> str:
+        """Формирует строку подключения PostgreSQL (DSN).
+
+        Returns:
+            DSN в формате: postgresql://user:password@host:port/dbname
+        """
+        return (
+            f"postgresql://{self.pg_user}:{self.pg_password}"
+            f"@{self.pg_host}:{self.pg_port}/{self.pg_name}"
+        )
 
     @classmethod
     def load(cls) -> "Settings":
@@ -231,6 +246,9 @@ class Settings:
         pause_start = _parse_time_hhmm("PAUSE_START")
         pause_end = _parse_time_hhmm("PAUSE_END")
 
+        # Тип базы данных
+        db_type = os.getenv("DB_TYPE", "sqlite").strip().lower()
+
         settings = cls(
             search_urls=tuple(search_urls),
             headless_mode=_get_bool("HEADLESS_MODE", "false"),
@@ -240,8 +258,14 @@ class Settings:
             max_pages=_get_int("MAX_PAGES", "5"),
             max_tabs=_get_int("MAX_TABS", "5"),
             tab_delay_ms=_get_int("TAB_DELAY_MS", "3000"),
+            db_type=db_type,
             db_path=os.getenv("DB_PATH", "data/sutochno_listings.db").strip(),
             export_path=os.getenv("EXPORT_PATH", "data/sutochno_report.xlsx").strip(),
+            pg_host=os.getenv("PG_HOST", "localhost").strip(),
+            pg_port=_get_int("PG_PORT", "5432"),
+            pg_name=os.getenv("PG_NAME", "rentpulse").strip(),
+            pg_user=os.getenv("PG_USER", "").strip(),
+            pg_password=os.getenv("PG_PASSWORD", "").strip(),
             log_level=os.getenv("LOG_LEVEL", "INFO").strip().upper(),
             log_file_path=os.getenv("LOG_FILE_PATH", "logs/app.log").strip(),
             use_proxy=_get_bool("USE_PROXY", "false"),
@@ -260,7 +284,37 @@ class Settings:
             pause_end=pause_end,
         )
 
-        # Валидация диапазонов
+        # ── Валидация типа базы данных ──
+        if settings.db_type not in ("sqlite", "postgresql"):
+            raise RuntimeError(
+                f"DB_TYPE должен быть 'sqlite' или 'postgresql'. "
+                f"Получено: '{settings.db_type}'."
+            )
+
+        # ── Валидация PostgreSQL (только если выбран postgresql) ──
+        if settings.db_type == "postgresql":
+            if not settings.pg_user:
+                raise RuntimeError(
+                    "При DB_TYPE=postgresql переменная PG_USER обязательна. "
+                    "Укажите имя пользователя PostgreSQL в .env."
+                )
+            if not settings.pg_password:
+                raise RuntimeError(
+                    "При DB_TYPE=postgresql переменная PG_PASSWORD обязательна. "
+                    "Укажите пароль PostgreSQL в .env."
+                )
+            if not settings.pg_name:
+                raise RuntimeError(
+                    "При DB_TYPE=postgresql переменная PG_NAME обязательна. "
+                    "Укажите имя базы данных PostgreSQL в .env."
+                )
+            if settings.pg_port < 1 or settings.pg_port > 65535:
+                raise RuntimeError(
+                    f"PG_PORT должен быть от 1 до 65535. "
+                    f"Получено: {settings.pg_port}."
+                )
+
+        # ── Валидация диапазонов ──
         if settings.min_delay_ms < 0:
             raise RuntimeError("MIN_DELAY_MS не может быть отрицательным.")
         if settings.max_delay_ms < settings.min_delay_ms:

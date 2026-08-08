@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "sutochno-parser"
-version = "0.1.0"
+version = "0.2.0"
 description = "Парсер объявлений посуточной аренды с sutochno.ru"
 readme = "README.md"
 license = {text = "MIT"}
@@ -19,6 +19,10 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
+postgresql = [
+    "psycopg[binary]>=3.1.0",
+    "psycopg_pool>=3.1.0",
+]
 dev = [
     "ruff>=0.4.0",
     "mypy>=1.10.0",
@@ -71,7 +75,7 @@ warn_redundant_casts = true
 warn_unused_ignores = true
 
 [[tool.mypy.overrides]]
-module = ["playwright.*", "openpyxl.*"]
+module = ["playwright.*", "openpyxl.*", "psycopg.*", "psycopg_pool.*"]
 ignore_missing_imports = true
 
 [tool.pytest.ini_options]
