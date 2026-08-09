@@ -14,7 +14,13 @@ from src.config.settings import Settings
 from src.models.booking_event import AnyEvent
 from src.models.proxy import ProxyConfig
 from src.repositories.base import BaseListingRepository
+from src.repositories.base_comparison_events_repository import (
+    BaseComparisonEventsRepository,
+)
 from src.repositories.db_factory import RepositoryPair, create_repositories
+from src.repositories.postgres_comparison_events_repository import (
+    PostgreSQLComparisonEventsRepository,
+)
 from src.repositories.snapshot_repository import BaseSnapshotRepository
 from src.services.browser_service import BrowserService
 from src.services.comparison_export_service import ComparisonExportService
@@ -279,6 +285,58 @@ def _get_unenriched_listings(listings: list) -> list:
     ]
 
 
+def _build_events_repository(
+    settings: Settings,
+    logger: "any",  # type: ignore[name-defined]
+) -> BaseComparisonEventsRepository | None:
+    """Создаёт репозиторий событий сравнения для записи в БД.
+
+    Репозиторий создаётся только при DB_TYPE=postgresql. При любой
+    ошибке инициализации (нет драйвера, БД недоступна, таблица не
+    создана) — возвращает None. Экспорт в Excel продолжит работать
+    без записи в БД.
+
+    Args:
+        settings: Настройки приложения.
+        logger: Логгер для сообщений о результате инициализации.
+
+    Returns:
+        Инициализированный репозиторий или None, если БД недоступна
+        или используется SQLite.
+    """
+    if settings.db_type != "postgresql":
+        logger.info(
+            "запись_событий_в_бд_отключена_sqlite",
+            step="events_repo",
+        )
+        return None
+
+    dsn = (
+        f"host={settings.pg_host} "
+        f"port={settings.pg_port} "
+        f"dbname={settings.pg_name} "
+        f"user={settings.pg_user} "
+        f"password={settings.pg_password}"
+    )
+
+    try:
+        repo = PostgreSQLComparisonEventsRepository(dsn=dsn)
+        repo.initialize()
+        logger.info(
+            "репозиторий_событий_готов",
+            step="events_repo",
+        )
+        return repo
+    except Exception as e:
+        logger.warning(
+            "ошибка_инициализации_репозитория_событий",
+            error=str(e)[:300],
+            error_type=type(e).__name__,
+            step="events_repo",
+        )
+        return None
+
+
 async def _batch_retry_without_proxy(
     settings: Settings,
     batch_enrichment_service: BatchEnrichmentService,
@@ -439,6 +497,9 @@ async def run() -> None:
     repository = repos.listing
     snapshot_repository = repos.snapshot
 
+    # --- Шаг 3.1: Инициализация репозитория событий сравнения (PostgreSQL) ---
+    events_repository = _build_events_repository(settings, logger)
+
     # --- Шаг 4: Загрузка и проверка прокси ---
     working_proxies: list[ProxyConfig] = []
     proxy_service: ProxyService | None = None
@@ -482,7 +543,10 @@ async def run() -> None:
     comparison_service = ComparisonService()
 
     export_dir = str(Path(settings.export_path).parent)
-    comparison_export_service = ComparisonExportService(export_dir=export_dir)
+    comparison_export_service = ComparisonExportService(
+        export_dir=export_dir,
+        events_repository=events_repository,
+    )
 
     batch_enrichment_service = BatchEnrichmentService()
     data_cleaner_service = DataCleanerService(
@@ -763,6 +827,18 @@ async def run() -> None:
 
         repository.close()
         snapshot_repository.close()
+
+        # Закрытие пула событий сравнения (безопасно, даже если не создан)
+        if events_repository is not None:
+            try:
+                events_repository.close()
+            except Exception as e:
+                logger.warning(
+                    "ошибка_закрытия_репозитория_событий",
+                    error=str(e)[:300],
+                    error_type=type(e).__name__,
+                    step="cleanup",
+                )
 
 
 async def run_loop() -> None:

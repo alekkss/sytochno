@@ -1,4 +1,4 @@
-"""Сервис экспорта событий бронирования и отмен в Excel."""
+"""Сервис экспорта событий бронирования и отмен в Excel и БД."""
 
 from datetime import datetime
 from pathlib import Path
@@ -9,6 +9,9 @@ from openpyxl.utils import get_column_letter
 
 from src.config.logger import get_logger
 from src.models.booking_event import AnyEvent, BookingEvent, CancellationEvent, EventType
+from src.repositories.base_comparison_events_repository import (
+    BaseComparisonEventsRepository,
+)
 
 logger = get_logger("service.comparison_export")
 
@@ -37,25 +40,98 @@ _COLUMN_WIDTHS = [16, 18, 40, 20, 14, 14, 9, 16, 22, 18]
 
 
 class ComparisonExportService:
-    """Сервис экспорта событий сравнения снимков в Excel.
+    """Сервис экспорта событий сравнения снимков.
 
     Формирует файл comparison_report_<дата>.xlsx в папке экспорта.
     Строки броней выделены зелёным, отмены — красным.
+
+    Если передан events_repository, дополнительно записывает события
+    в базу данных перед экспортом в Excel. Ошибка записи в БД не
+    прерывает работу — Excel остаётся резервным каналом.
     """
 
-    def __init__(self, export_dir: str) -> None:
+    def __init__(
+        self,
+        export_dir: str,
+        events_repository: BaseComparisonEventsRepository | None = None,
+    ) -> None:
         """Инициализирует сервис.
 
         Args:
             export_dir: Путь к папке для сохранения Excel-файла.
+            events_repository: Опциональный репозиторий для записи событий в БД.
+                Если None — события пишутся только в Excel (обратная совместимость).
         """
         self._export_dir = Path(export_dir)
+        self._events_repository = events_repository
 
     def export(self, events: list[AnyEvent]) -> str:
-        """Экспортирует события в Excel-файл.
+        """Экспортирует события в БД (если репозиторий передан) и в Excel-файл.
+
+        Порядок операций:
+            1. Запись в БД через events_repository.bulk_insert (если задан).
+               Ошибка не прерывает работу — логируется и игнорируется.
+            2. Запись в Excel — всегда выполняется, независимо от результата БД.
 
         Args:
             events: Список событий BookingEvent и CancellationEvent.
+
+        Returns:
+            Путь к созданному Excel-файлу.
+
+        Raises:
+            OSError: Если не удалось создать папку или записать Excel-файл.
+        """
+        # ── Шаг 1: Запись в БД (best-effort, не блокирует Excel) ──
+        self._save_to_database(events)
+
+        # ── Шаг 2: Запись в Excel (основной путь) ──
+        return self._save_to_excel(events)
+
+    def _save_to_database(self, events: list[AnyEvent]) -> None:
+        """Записывает события в БД через репозиторий.
+
+        Метод рассчитан на graceful degradation: любая ошибка БД
+        (сеть, БД недоступна, конфликт схемы) логируется, но не
+        прерывает прогон парсера — Excel остаётся резервным путём.
+
+        Args:
+            events: Список событий для записи.
+        """
+        if self._events_repository is None:
+            return
+
+        if not events:
+            logger.debug(
+                "запись_в_бд_пропущена_пустой_список",
+                step="db_export",
+            )
+            return
+
+        try:
+            inserted = self._events_repository.bulk_insert(events)
+            logger.info(
+                "события_записаны_в_бд",
+                received=len(events),
+                inserted=inserted,
+                duplicates=len(events) - inserted,
+                step="db_export",
+            )
+        except Exception as e:
+            # Ошибку в БД проглатываем — Excel продолжит работать
+            logger.warning(
+                "ошибка_записи_событий_в_бд",
+                error=str(e)[:300],
+                error_type=type(e).__name__,
+                events_count=len(events),
+                step="db_export",
+            )
+
+    def _save_to_excel(self, events: list[AnyEvent]) -> str:
+        """Сохраняет события в Excel-файл.
+
+        Args:
+            events: Список событий для записи.
 
         Returns:
             Путь к созданному файлу.
