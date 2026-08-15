@@ -83,15 +83,6 @@ class ComparisonService:
             )
             return []
 
-        logger.debug(
-            "выравнивание_календарей",
-            external_id=new_snapshot.listing_external_id,
-            old_base=old_base_date.isoformat(),
-            new_base=new_base_date.isoformat(),
-            common_days=len(common_dates),
-            offset_days=(new_base_date - old_base_date).days,
-        )
-
         # Сравниваем значения для пересекающихся дат
         changes: list[tuple[date, int, int]] = []
         for day in common_dates:
@@ -101,10 +92,6 @@ class ComparisonService:
                 changes.append((day, old_val, new_val))
 
         if not changes:
-            logger.info(
-                "изменений_не_обнаружено",
-                external_id=new_snapshot.listing_external_id,
-            )
             return []
 
         # Склеиваем изменения в блоки и строим события

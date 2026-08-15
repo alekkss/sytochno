@@ -732,8 +732,44 @@ async def run() -> None:
         data_cleaner_service.clean_listings(listings)
 
         # --- Шаг 9: Сохранение в базу данных ---
+        # Фильтрация: не сохраняем карточки с пустыми данными (без фатальной
+        # причины), чтобы не перезаписать ранее собранные корректные данные.
+        # Такие карточки появляются при ошибках API (api_false, протухший токен).
+        listings_to_save: list = []
+        skipped_empty_count = 0
+
+        for listing in listings:
+            # Карточки с фатальной причиной — сохраняем (чтобы skip_reason
+            # зафиксировался в БД и карточка не обрабатывалась повторно).
+            if listing.enrichment_skip_reason is not None:
+                listings_to_save.append(listing)
+                continue
+
+            # Проверяем наличие данных: календарь ИЛИ цены должны быть непустыми.
+            has_calendar = (
+                listing.calendar_60_days
+                and any(c != 0 for c in listing.calendar_60_days)
+            )
+            has_prices = (
+                listing.prices_60_days
+                and any(p != 0 for p in listing.prices_60_days)
+            )
+
+            if has_calendar or has_prices:
+                listings_to_save.append(listing)
+            else:
+                skipped_empty_count += 1
+
+        if skipped_empty_count > 0:
+            logger.warning(
+                "пропущены_пустые_карточки_перед_сохранением",
+                step=f"пропущено={skipped_empty_count}, "
+                     f"сохраняется={len(listings_to_save)}, "
+                     f"всего={len(listings)}",
+            )
+
         logger.info("сохранение_в_бд", step="storage")
-        saved_count = repository.upsert_many(listings)
+        saved_count = repository.upsert_many(listings_to_save)
         logger.info(
             "данные_сохранены",
             total=saved_count,

@@ -1621,9 +1621,11 @@ class BatchEnrichmentService:
 
         if not raw_result.get("success"):
             error = raw_result.get("error", "unknown")
+            api_errors = raw_result.get("errors", [])
             logger.warning(
                 "batch_fetch_ошибка",
-                step=f"ids={len(object_ids)}, ошибка={error}",
+                step=f"ids={len(object_ids)}, ошибка={error}, "
+                     f"api_errors={api_errors}",
             )
             return [
                 {"object_id": oid, "success": False, "error_text": error}

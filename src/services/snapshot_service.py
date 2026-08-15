@@ -133,10 +133,6 @@ class SnapshotService:
         # Сохранять такой снимок нельзя: при следующем прогоне сравнение
         # обнаружит переходы 0→1 на всех 60 днях и создаст призрачные брони.
         if not raw_calendar:
-            logger.debug(
-                "снимок_пропущен_пустой_календарь",
-                external_id=external_id,
-            )
             return None
 
         calendar = "".join(str(v) for v in raw_calendar)
