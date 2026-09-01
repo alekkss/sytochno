@@ -926,6 +926,14 @@ async def run() -> None:
                      f"всего={len(listings)}",
             )
 
+        # snapshot_date должен отражать момент фактической записи в БД.
+        # В прогонах без каталога карточки загружаются из БД со старой
+        # snapshot_date и записывались обратно без обновления — из-за
+        # этого дашборд показывал устаревшую дату обновления данных.
+        save_moment = datetime.now(timezone.utc)
+        for listing in listings_to_save:
+            listing.snapshot_date = save_moment
+
         logger.info("сохранение_в_бд", step="storage")
         saved_count = repository.upsert_many(listings_to_save)
         logger.info(
