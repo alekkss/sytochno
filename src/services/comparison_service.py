@@ -102,12 +102,6 @@ class ComparisonService:
             listing_title=listing_title,
         )
 
-        logger.info(
-            "события_обнаружены",
-            external_id=new_snapshot.listing_external_id,
-            total=len(events),
-        )
-
         return sorted(events, key=lambda e: e.checkin_date)
 
     def _build_events(

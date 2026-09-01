@@ -2,14 +2,11 @@
 
 from datetime import date, timedelta
 
-from src.config.logger import get_logger
 from src.services.listing.constants import (
     BASE_PRICE_TYPE_INT,
     DAYS_COUNT,
     SEASON_PRICE_TYPE,
 )
-
-logger = get_logger("price_parser")
 
 
 class PriceParser:
@@ -92,14 +89,6 @@ class PriceParser:
             day_key = day.isoformat()
             price = daily_prices.get(day_key, base_price)
             prices_60.append(price)
-
-        prices_filled = sum(1 for p in prices_60 if p > 0)
-
-        logger.debug(
-            "цены_извлечены",
-            step=f"season_price={len(daily_prices)}, base_price={base_price}, "
-                 f"заполнено={prices_filled}/{DAYS_COUNT}",
-        )
 
         return prices_60
 

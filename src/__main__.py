@@ -1,4 +1,19 @@
-"""Точка входа приложения — сборка зависимостей и запуск pipeline."""
+"""Точка входа приложения — сборка зависимостей и запуск pipeline.
+
+Схема прогона (начиная с версии пула):
+  Этап 1 (сбор каталога) выполняется по расписанию — слоты МСК из
+  CATALOG_SYNC_TIMES (по умолчанию 01:00 и 19:00). Собранные ID
+  синхронизируются с пулом (таблица listing_pool): новые добавляются,
+  метки last_seen обновляются. Удалений нет.
+
+  Каждый прогон начинает этап 2 (batch-обогащение) с ID из пула:
+  - в прогоне с каталогом обрабатываются свежесобранные листинги;
+  - в прогоне без каталога листинги загружаются из БД по пулу
+    (ID пула без записи в listings пропускаются).
+
+  Токен для однопоточного batch-обогащения без каталога получается
+  через отдельный браузер (загрузка страницы поиска + перехват).
+"""
 
 import asyncio
 import json
@@ -12,6 +27,7 @@ from src.config.logger import configure as configure_logging
 from src.config.logger import get_logger
 from src.config.settings import Settings
 from src.models.booking_event import AnyEvent
+from src.models.listing import RawListing
 from src.models.proxy import ProxyConfig
 from src.repositories.base import BaseListingRepository
 from src.repositories.base_comparison_events_repository import (
@@ -23,11 +39,16 @@ from src.repositories.postgres_comparison_events_repository import (
 )
 from src.repositories.snapshot_repository import BaseSnapshotRepository
 from src.services.browser_service import BrowserService
+from src.services.catalog_schedule import (
+    CATALOG_SYNC_STATE_FILENAME,
+    CatalogSchedule,
+)
 from src.services.comparison_export_service import ComparisonExportService
 from src.services.comparison_service import ComparisonService
 from src.services.data_cleaner_service import DataCleanerService
 from src.services.export_service import ExportService
 from src.services.listing.batch_enrichment_service import BatchEnrichmentService
+from src.services.pool_service import PoolService
 from src.services.proxy_service import ProxyService
 from src.services.scraper_service import ScraperService
 from src.services.snapshot_service import SnapshotService
@@ -337,26 +358,58 @@ def _build_events_repository(
         return None
 
 
-async def _batch_retry_without_proxy(
+def _load_pool_listings(
+    pool_ids: list[str],
+    repository: BaseListingRepository,
+) -> tuple[list[RawListing], int]:
+    """Загружает из БД листинги, входящие в пул.
+
+    Используется в прогонах без каталога: этап batch-обогащения
+    работает с карточками из базы, отфильтрованными по ID пула.
+    ID пула, для которых в listings нет записи, пропускаются —
+    их метаданные появятся после ближайшей синхронизации каталога.
+
+    Args:
+        pool_ids: Все ID пула.
+        repository: Репозиторий объявлений.
+
+    Returns:
+        Кортеж (листинги из пула, количество пропущенных ID
+        без записи в БД).
+    """
+    pool_set = set(pool_ids)
+    all_listings = repository.get_all()
+
+    result = [l for l in all_listings if l.external_id in pool_set]
+    missing_count = len(pool_set) - len(result)
+
+    return result, missing_count
+
+
+async def _run_standalone_batch(
     settings: Settings,
     batch_enrichment_service: BatchEnrichmentService,
-    unenriched_listings: list,
+    listings: list,
     logger: "any",  # type: ignore[name-defined]
-) -> None:
-    """Однократный batch-retry необработанных карточек без прокси.
+    purpose: str = "batch",
+) -> bool:
+    """Выполняет batch-обогащение через отдельный браузер без прокси.
 
-    Запускает один браузер без прокси, загружает страницу поиска,
-    перехватывает токен API и выполняет batch-обогащение (bulk +
-    скользящее окно) только для необработанных карточек.
-
-    Выполняется один раз. Если после этого остались необработанные
-    карточки — они пропускаются, парсинг продолжается к снимкам и экспорту.
+    Запускает один браузер, загружает страницу поиска, перехватывает
+    токен API и передаёт карточки в enrich_batch (bulk + скользящее
+    окно). Используется в двух сценариях:
+    - основной batch в прогоне без каталога (нет токена этапа 1);
+    - однократный batch-retry необработанных карточек.
 
     Args:
         settings: Настройки приложения.
         batch_enrichment_service: Сервис batch-обогащения.
-        unenriched_listings: Список необогащённых карточек.
+        listings: Карточки для обогащения (обогащаются in-place).
         logger: Логгер.
+        purpose: Метка сценария для логов ("batch" или "batch_retry").
+
+    Returns:
+        True если токен получен и batch выполнен, False при неудаче.
     """
     browser_service = BrowserService(settings=settings)
 
@@ -367,7 +420,8 @@ async def _batch_retry_without_proxy(
         search_url = settings.search_urls[0]
 
         logger.info(
-            "batch_retry_загрузка_страницы_поиска",
+            "загрузка_страницы_поиска_для_токена",
+            purpose=purpose,
             step=f"url={search_url[:80]}...",
         )
 
@@ -416,47 +470,38 @@ async def _batch_retry_without_proxy(
 
         if not captured_token:
             logger.warning(
-                "batch_retry_токен_не_перехвачен",
+                "токен_не_перехвачен",
+                purpose=purpose,
                 step=f"ожидание={elapsed:.1f}с",
             )
-            return
+            return False
 
         token = captured_token[0]
 
         logger.info(
-            "batch_retry_токен_получен",
-            step=f"ожидание={elapsed:.1f}с, карточек={len(unenriched_listings)}",
+            "токен_получен",
+            purpose=purpose,
+            step=f"ожидание={elapsed:.1f}с, карточек={len(listings)}",
         )
 
-        # ── Batch-обогащение необработанных карточек ──
+        # ── Batch-обогащение карточек ──
         await batch_enrichment_service.enrich_batch(
             page=page,
             token=token,
-            listings=unenriched_listings,
+            listings=listings,
             search_url=search_url,
         )
 
-        retry_enriched = _count_enriched(unenriched_listings)
-        retry_still_empty = _count_unenriched(unenriched_listings)
-        retry_fatal = sum(
-            1 for l in unenriched_listings
-            if l.enrichment_skip_reason is not None
-        )
-
-        logger.info(
-            "batch_retry_завершён",
-            step=f"обогащено={retry_enriched}, "
-                 f"фатальных={retry_fatal}, "
-                 f"осталось_пустых={retry_still_empty}",
-        )
+        return True
 
     except Exception as e:
         logger.warning(
-            "ошибка_batch_retry",
+            "ошибка_standalone_batch",
+            purpose=purpose,
             error=str(e)[:300],
             error_type=type(e).__name__,
-            step="batch_retry",
         )
+        return False
     finally:
         try:
             await browser_service.stop()
@@ -465,7 +510,7 @@ async def _batch_retry_without_proxy(
 
 
 async def run() -> None:
-    """Один прогон pipeline — сбор каталога, обогащение, снимки, экспорт.
+    """Один прогон pipeline — каталог по расписанию, обогащение из пула.
 
     Возвращает управление после завершения. Не содержит цикла —
     цикл реализован в run_loop(). Это позволяет корректно обрабатывать
@@ -492,10 +537,13 @@ async def run() -> None:
         db_type=settings.db_type,
     )
 
+    data_dir = str(Path(settings.export_path).parent)
+
     # --- Шаг 3: Инициализация репозиториев через фабрику ---
     repos = create_repositories(settings)
     repository = repos.listing
     snapshot_repository = repos.snapshot
+    pool_repository = repos.pool
 
     # --- Шаг 3.1: Инициализация репозитория событий сравнения (PostgreSQL) ---
     events_repository = _build_events_repository(settings, logger)
@@ -554,27 +602,103 @@ async def run() -> None:
         price_deviation_down=settings.price_deviation_down,
     )
 
+    pool_service = PoolService(pool_repository=pool_repository)
+    catalog_schedule = CatalogSchedule(
+        slots=list(settings.catalog_sync_times),
+        state_file=Path(data_dir) / CATALOG_SYNC_STATE_FILENAME,
+    )
+
     try:
-        # --- Шаг 6: Парсинг каталога через API (Этап 1) ---
-        logger.info(
-            "начало_парсинга_каталога",
-            step="scraping",
-            urls_count=len(settings.search_urls),
-            proxies_available=len(working_proxies),
-        )
-        listings, catalog_token = await scraper_service.scrape_catalog()
+        # --- Шаг 6: Этап 1 (парсинг каталога) — только по расписанию ---
+        listings: list = []
+        catalog_token: str | None = None
+        catalog_executed = False
 
-        if not listings:
-            logger.warning("объявления_не_найдены")
-            await browser_service.stop()
-            return
+        now_utc = datetime.now(timezone.utc)
 
-        logger.info(
-            "каталог_собран",
-            total=len(listings),
-            token_available=catalog_token is not None,
-            step="scraping",
-        )
+        if catalog_schedule.is_due(now_utc):
+            logger.info(
+                "начало_этапа_1_по_расписанию",
+                step=f"слоты={catalog_schedule.describe_slots()}",
+                proxies_available=len(working_proxies),
+            )
+
+            try:
+                scraped_listings, scraped_token = (
+                    await scraper_service.scrape_catalog()
+                )
+
+                if scraped_listings:
+                    # Синхронизация пула: новые ID добавляются,
+                    # метки last_seen обновляются. Удалений нет.
+                    pool_service.sync_from_catalog(
+                        {l.external_id for l in scraped_listings},
+                    )
+                    catalog_schedule.mark_synced(datetime.now(timezone.utc))
+
+                    listings = scraped_listings
+                    catalog_token = scraped_token
+                    catalog_executed = True
+
+                    logger.info(
+                        "этап_1_выполнен",
+                        total=len(listings),
+                        token_available=catalog_token is not None,
+                        step="scraping",
+                    )
+                else:
+                    # Каталог пуст — метку расписания НЕ пишем:
+                    # следующий прогон (через 2 минуты) повторит попытку.
+                    logger.warning(
+                        "этап_1_каталог_пуст_синхронизация_не_выполнена",
+                        step="scraping",
+                    )
+            except Exception as e:
+                logger.warning(
+                    "ошибка_этапа_1_повтор_в_следующем_прогоне",
+                    error=str(e)[:300],
+                    error_type=type(e).__name__,
+                    step="scraping",
+                )
+        else:
+            logger.info(
+                "этап_1_пропущен_не_по_расписанию",
+                step=f"слоты={catalog_schedule.describe_slots()}",
+            )
+
+        # --- Шаг 6.5: Карточки из пула и БД (прогон без каталога) ---
+        if not catalog_executed:
+            pool_ids = pool_service.get_enrichment_ids()
+
+            if not pool_ids:
+                # Пустой пул — прогон пропускается целиком
+                await browser_service.stop()
+                return
+
+            listings, missing_in_db = _load_pool_listings(pool_ids, repository)
+
+            if missing_in_db > 0:
+                logger.info(
+                    "id_из_пула_без_записей_в_бд_пропущены",
+                    count=missing_in_db,
+                    step="появятся после ближайшей синхронизации каталога",
+                )
+
+            if not listings:
+                logger.warning(
+                    "нет_карточек_для_обработки_прогон_завершён",
+                    pool_total=len(pool_ids),
+                    step="enrichment",
+                )
+                await browser_service.stop()
+                return
+
+            logger.info(
+                "карточки_загружены_из_бд_по_пулу",
+                total=len(listings),
+                pool_total=len(pool_ids),
+                step="enrichment",
+            )
 
         # --- Шаг 7: Batch-обогащение через API (Этап 2a) ---
         batch_enriched_count = 0
@@ -658,7 +782,7 @@ async def run() -> None:
                     )
                 else:
                     logger.warning(
-                        "браузер_каталога_не_жив_пропуск_batch",
+                        "браузер_каталога_не_жив_переход_к_standalone",
                         step="batch_enrichment",
                     )
 
@@ -673,11 +797,38 @@ async def run() -> None:
             # Закрываем браузер каталога
             await browser_service.stop()
         else:
+            # ── Standalone batch: прогон без каталога (нет токена этапа 1) ──
+            # Один браузер без прокси: загрузка страницы поиска,
+            # перехват токена, batch-обогащение.
+            await browser_service.stop()
+
             logger.info(
-                "токен_каталога_отсутствует_пропуск_batch",
+                "начало_batch_обогащения_standalone",
+                total=len(listings),
                 step="batch_enrichment",
             )
-            await browser_service.stop()
+
+            await _run_standalone_batch(
+                settings=settings,
+                batch_enrichment_service=batch_enrichment_service,
+                listings=listings,
+                logger=logger,
+                purpose="batch",
+            )
+
+            batch_enriched_count = _count_enriched(listings)
+            batch_fatal_count = sum(
+                1 for l in listings
+                if l.enrichment_skip_reason is not None
+            )
+            batch_unenriched = _count_unenriched(listings)
+
+            logger.info(
+                "batch_обогащение_standalone_завершено",
+                step=f"обогащено={batch_enriched_count}, "
+                     f"фатальных={batch_fatal_count}, "
+                     f"для_retry={batch_unenriched}",
+            )
 
         # --- Шаг 8: Batch-retry необработанных (один раз, без прокси) ---
         unenriched_listings = _get_unenriched_listings(listings)
@@ -689,32 +840,39 @@ async def run() -> None:
                      f"уже_обогащено={batch_enriched_count}",
             )
 
-            await _batch_retry_without_proxy(
+            retry_ok = await _run_standalone_batch(
                 settings=settings,
                 batch_enrichment_service=batch_enrichment_service,
-                unenriched_listings=unenriched_listings,
+                listings=unenriched_listings,
                 logger=logger,
+                purpose="batch_retry",
             )
 
-            # Финальная статистика после retry
-            final_enriched = _count_enriched(listings)
-            final_unenriched = _count_unenriched(listings)
-            final_fatal = sum(
-                1 for l in listings if l.enrichment_skip_reason is not None
-            )
-
-            if final_unenriched > 0:
-                logger.info(
-                    "batch_retry_остались_необработанные_пропускаем",
-                    step=f"обогащено={final_enriched}, "
-                         f"фатальных={final_fatal}, "
-                         f"пропущено={final_unenriched}",
+            if retry_ok:
+                # Финальная статистика после retry
+                final_enriched = _count_enriched(listings)
+                final_unenriched = _count_unenriched(listings)
+                final_fatal = sum(
+                    1 for l in listings if l.enrichment_skip_reason is not None
                 )
+
+                if final_unenriched > 0:
+                    logger.info(
+                        "batch_retry_остались_необработанные_пропускаем",
+                        step=f"обогащено={final_enriched}, "
+                             f"фатальных={final_fatal}, "
+                             f"пропущено={final_unenriched}",
+                    )
+                else:
+                    logger.info(
+                        "все_карточки_обработаны_после_retry",
+                        step=f"обогащено={final_enriched}, "
+                             f"фатальных={final_fatal}",
+                    )
             else:
-                logger.info(
-                    "все_карточки_обработаны_после_retry",
-                    step=f"обогащено={final_enriched}, "
-                         f"фатальных={final_fatal}",
+                logger.warning(
+                    "batch_retry_не_выполнен_токен_недоступен",
+                    step=f"пропущено={len(unenriched_listings)}",
                 )
         else:
             logger.info(
@@ -776,28 +934,8 @@ async def run() -> None:
             step="storage",
         )
 
-        # --- Шаг 9.5: Удаление объявлений, отсутствующих на сайте ---
-        active_ids = {l.external_id for l in listings}
-        db_count_before = repository.count()
-
-        min_threshold = max(100, db_count_before // 2)
-
-        if len(active_ids) >= min_threshold:
-            deleted_count = repository.delete_not_in_ids(active_ids)
-            if deleted_count > 0:
-                logger.info(
-                    "удалены_объявления_отсутствующие_на_сайте",
-                    deleted=deleted_count,
-                    active_in_catalog=len(active_ids),
-                    was_in_db=db_count_before,
-                    step="cleanup",
-                )
-        else:
-            logger.warning(
-                "очистка_пропущена_мало_объявлений_в_каталоге",
-                step=f"каталог={len(active_ids)}, БД={db_count_before}, "
-                     f"порог={min_threshold}",
-            )
+        # Шаг 9.5 (удаление отсутствующих объявлений) отключён:
+        # пул и БД только накапливают записи, очистка не выполняется.
 
         # --- Шаг 10: Сохранение снимков ---
         logger.info("сохранение_снимков", step="snapshots")
@@ -863,6 +1001,7 @@ async def run() -> None:
 
         repository.close()
         snapshot_repository.close()
+        pool_repository.close()
 
         # Закрытие пула событий сравнения (безопасно, даже если не создан)
         if events_repository is not None:
@@ -913,19 +1052,26 @@ async def run_loop() -> None:
     data_dir = str(Path(settings.export_path).parent)
     run_number = 0
 
+    # Формируем описание слотов каталога для приветственного лога
+    slots_str = ", ".join(
+        f"{h:02d}:{m:02d}" for h, m in settings.catalog_sync_times
+    )
+
     # Логируем настройки паузы
     if settings.pause_start and settings.pause_end:
         logger.info(
             "цикл_парсера_запущен",
             step=f"пауза_между_прогонами={_CYCLE_PAUSE_SECONDS}с, "
                  f"ночная_пауза={settings.pause_start[0]:02d}:{settings.pause_start[1]:02d}"
-                 f"–{settings.pause_end[0]:02d}:{settings.pause_end[1]:02d} МСК",
+                 f"–{settings.pause_end[0]:02d}:{settings.pause_end[1]:02d} МСК, "
+                 f"слоты_каталога={slots_str} МСК",
         )
     else:
         logger.info(
             "цикл_парсера_запущен",
             step=f"пауза_между_прогонами={_CYCLE_PAUSE_SECONDS}с, "
-                 f"ночная_пауза=отключена",
+                 f"ночная_пауза=отключена, "
+                 f"слоты_каталога={slots_str} МСК",
         )
 
     while not _shutdown_requested:
@@ -971,6 +1117,7 @@ async def run_loop() -> None:
                 listings_count = stats_repos.listing.count()
                 stats_repos.listing.close()
                 stats_repos.snapshot.close()
+                stats_repos.pool.close()
             except Exception:
                 pass
 

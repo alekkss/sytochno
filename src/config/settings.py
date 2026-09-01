@@ -114,6 +114,71 @@ def _parse_time_hhmm(key: str) -> tuple[int, int] | None:
 
     return (hours, minutes)
 
+def _parse_catalog_sync_times() -> tuple[tuple[int, int], ...]:
+    """Парсит переменную CATALOG_SYNC_TIMES — расписание этапа 1.
+
+    Формат: список времени HH:MM через запятую (время московское).
+    Например: "01:00,19:00" — каталог собирается два раза в сутки.
+    Пустое значение переменной не допускается: расписание без слотов
+    не имеет смысла (используйте значение по умолчанию, не задавая
+    переменную вовсе).
+
+    Returns:
+        Кортеж слотов (часы, минуты), отсортированный по возрастанию,
+        без дубликатов.
+
+    Raises:
+        RuntimeError: Если значение пустое или содержит невалидное время.
+    """
+    raw = os.getenv("CATALOG_SYNC_TIMES", "01:00,19:00").strip()
+
+    if not raw:
+        raise RuntimeError(
+            "CATALOG_SYNC_TIMES не может быть пустой. "
+            "Укажите хотя бы один слот HH:MM (например, 01:00,19:00) "
+            "или удалите переменную — будет использовано значение "
+            "по умолчанию."
+        )
+
+    slots: list[tuple[int, int]] = []
+
+    for part_index, part in enumerate(raw.split(","), start=1):
+        value = part.strip()
+        parts = value.split(":")
+
+        if len(parts) != 2:
+            raise RuntimeError(
+                f"Слот {part_index} в CATALOG_SYNC_TIMES должен быть "
+                f"в формате HH:MM, получено: '{value}' "
+                f"(полное значение: '{raw}')."
+            )
+
+        try:
+            hours = int(parts[0].strip())
+            minutes = int(parts[1].strip())
+        except ValueError:
+            raise RuntimeError(
+                f"Слот {part_index} в CATALOG_SYNC_TIMES должен быть "
+                f"в формате HH:MM, получено: '{value}' "
+                f"(полное значение: '{raw}')."
+            ) from None
+
+        if not (0 <= hours <= 23):
+            raise RuntimeError(
+                f"Часы слота {part_index} в CATALOG_SYNC_TIMES должны быть "
+                f"от 0 до 23, получено: {hours}."
+            )
+        if not (0 <= minutes <= 59):
+            raise RuntimeError(
+                f"Минуты слота {part_index} в CATALOG_SYNC_TIMES должны быть "
+                f"от 0 до 59, получено: {minutes}."
+            )
+
+        slots.append((hours, minutes))
+
+    return tuple(sorted(set(slots)))
+
+
 
 def _load_search_urls() -> list[str]:
     """Загружает список URL поиска из переменных окружения.
@@ -213,6 +278,8 @@ class Settings:
     # Ночная пауза (время по Москве, формат HH:MM)
     pause_start: tuple[int, int] | None = None
     pause_end: tuple[int, int] | None = None
+    # Слоты запуска этапа 1 — сбора каталога (время по Москве, HH:MM)
+    catalog_sync_times: tuple[tuple[int, int], ...] = ((1, 0), (19, 0))
 
     @property
     def pg_dsn(self) -> str:
@@ -245,6 +312,9 @@ class Settings:
         # Парсинг времени паузы
         pause_start = _parse_time_hhmm("PAUSE_START")
         pause_end = _parse_time_hhmm("PAUSE_END")
+
+        # Слоты запуска этапа 1 (сбор каталога)
+        catalog_sync_times = _parse_catalog_sync_times()
 
         # Тип базы данных
         db_type = os.getenv("DB_TYPE", "sqlite").strip().lower()
@@ -282,6 +352,7 @@ class Settings:
             price_deviation_down=_get_int("PRICE_DEVIATION_DOWN", "50"),
             pause_start=pause_start,
             pause_end=pause_end,
+            catalog_sync_times=catalog_sync_times,
         )
 
         # ── Валидация типа базы данных ──
