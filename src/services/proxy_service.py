@@ -1,6 +1,8 @@
 """Сервис управления прокси — загрузка, проверка и распределение."""
 
 import asyncio
+import json
+from datetime import datetime, timezone
 from pathlib import Path
 
 from playwright.async_api import async_playwright
@@ -58,6 +60,12 @@ _CHECK_BROWSER_ARGS: list[str] = [
     "--disable-backgrounding-occluded-windows",
 ]
 
+# ── Экспорт статусов прокси для админки (rentpuls.ru) ──
+# Имя JSON-файла со статусами. Лежит рядом с файлом прокси
+# (в той же папке data/). Файл читается ТОЛЬКО админкой —
+# на логику работы парсера (выбор, замена, «смерть» прокси)
+# запись этого файла НЕ влияет.
+_PROXY_STATUS_FILENAME: str = "proxies_status.json"
 
 
 class ProxyService:
@@ -78,6 +86,12 @@ class ProxyService:
         """
         self._settings = settings
         self._working_proxies: list[ProxyConfig] = []
+
+        # Все прокси, проверенные в текущем прогоне. Нужны для экспорта
+        # статусов в файл для админки: она показывает статус КАЖДОЙ
+        # прокси из файла, включая нерабочие. Хранится отдельно от
+        # self._working_proxies, куда попадают только рабочие.
+        self._all_checked_proxies: list[ProxyConfig] = []
 
         # ── Централизованный реестр занятых прокси ──
         # Раньше "занятость" прокси каждый воркер вычислял локально
@@ -221,7 +235,79 @@ class ProxyService:
             total=len(working),
             step=f"из {len(proxies)}",
         )
+
+        # ── Экспорт статусов для админки ──
+        # Запоминаем все проверенные прокси и сразу фиксируем состояние
+        # в файл. Если прогон прервётся до конца — у админки останутся
+        # актуальные данные последней проверки. В конце прогона точка
+        # входа вызывает export_status() повторно — файл обновится с
+        # учётом прокси, исключённых из пула по ходу обработки.
+        self._all_checked_proxies = list(proxies)
+        self._write_status_file()
+
         return working
+
+    def export_status(self) -> None:
+        """Перезаписывает файл статусов по текущему состоянию пула.
+
+        Вызывается точкой входа в конце каждого прогона: к этому моменту
+        часть прокси могла быть исключена из пула рабочих (mark_dead) —
+        файл отражает финальное состояние по итогам прогона.
+        Ошибки записи подавляются: статусный файл нужен только админке
+        и не должен влиять на работу парсера.
+        """
+        self._write_status_file()
+
+    def _write_status_file(self) -> None:
+        """Записывает файл proxies_status.json для админки.
+
+        Формат файла:
+            {
+              "checked_at": "<время записи, ISO 8601, UTC>",
+              "statuses": {"<ip:port>": "working" | "not_working", ...}
+            }
+
+        Ключ — адрес прокси (ip:port). Прокси, отсутствующие в пуле
+        рабочих на момент записи, помечаются как not_working.
+
+        Raises:
+            Ничего: ошибки записи логируются и подавляются (graceful
+            degradation) — файл нужен только админке.
+        """
+        working_keys = {f"{p.host}:{p.port}" for p in self._working_proxies}
+
+        statuses: dict[str, str] = {}
+        for proxy in self._all_checked_proxies:
+            key = f"{proxy.host}:{proxy.port}"
+            statuses[key] = "working" if key in working_keys else "not_working"
+
+        status_path = Path(self._settings.proxies_path).parent / _PROXY_STATUS_FILENAME
+
+        data = {
+            "checked_at": datetime.now(timezone.utc).isoformat(),
+            "statuses": statuses,
+        }
+
+        try:
+            status_path.parent.mkdir(parents=True, exist_ok=True)
+            status_path.write_text(
+                json.dumps(data, ensure_ascii=False, indent=2),
+                encoding="utf-8",
+            )
+            logger.info(
+                "статусы_прокси_записаны",
+                total=len(statuses),
+                working=len(working_keys),
+                path=str(status_path),
+            )
+        except OSError as e:
+            # Файл нужен только админке — ошибка записи не должна
+            # прерывать работу парсера.
+            logger.warning(
+                "ошибка_записи_статусов_прокси",
+                error=str(e),
+                error_type=type(e).__name__,
+            )
 
     async def check_single_proxy(
         self, proxy: ProxyConfig, fast: bool = False

@@ -1007,6 +1007,22 @@ async def run() -> None:
         except Exception:
             pass
 
+        # ── Экспорт статусов прокси для админки ──
+        # Файл proxies_status.json перезаписывается после каждого прогона:
+        # к этому моменту часть прокси могла быть исключена из пула
+        # рабочих (mark_dead) по ходу обработки. Статусы нужны только
+        # админке (rentpuls.ru) и не влияют на работу парсера.
+        if proxy_service is not None:
+            try:
+                proxy_service.export_status()
+            except Exception as e:
+                logger.warning(
+                    "ошибка_экспорта_статусов_прокси",
+                    error=str(e)[:300],
+                    error_type=type(e).__name__,
+                    step="cleanup",
+                )
+
         repository.close()
         snapshot_repository.close()
         pool_repository.close()
