@@ -11,16 +11,29 @@ logger = get_logger("service.comparison")
 # Тип события: объединение для удобства аннотаций
 AnyEvent = BookingEvent | CancellationEvent
 
+# Виды переходов статуса дня
+_KIND_BOOKING = "booking"
+_KIND_CANCELLATION = "cancellation"
+
 
 class ComparisonService:
     """Сервис детектирования броней и отмен между двумя снимками.
+
+    Календарь использует три статуса дня:
+    0 — свободен и бронируем, 1 — продан, 2 — техблок (не продан,
+    но забронировать нельзя — ограничение минимального срока).
 
     Алгоритм:
     1. Строит словари {дата: значение} для каждого снимка на основе
        snapshot_dt.date() — реальной даты начала календаря.
     2. Находит пересечение дат (дни, присутствующие в обоих снимках).
-    3. Сравнивает значения только для пересекающихся дат.
-    4. Собирает блоки дней с одинаковым типом изменения (0→1 или 1→0).
+    3. Определяет вид перехода для каждой даты (_event_kind):
+       - бронь: 0→1 и 2→1 (день стал проданным);
+       - отмена: 1→0 и 1→2 (день перестал быть проданным);
+       - 0↔2 — НЕ событие: день не продан ни до, ни после —
+         изменилась только граница бронируемости (min-stay),
+         реальной сделки нет.
+    4. Собирает блоки подряд идущих дней одного вида перехода.
     5. Для каждого блока вычисляет экономику: глубину, цену, итог.
     6. Возвращает список событий BookingEvent и CancellationEvent.
     """
@@ -83,13 +96,31 @@ class ComparisonService:
             )
             return []
 
-        # Сравниваем значения для пересекающихся дат
+        # Сравниваем значения для пересекающихся дат.
+        # Переходы 0↔2 не являются событиями — считаем их отдельно
+        # для мониторинга (смена владельцем минимального срока).
         changes: list[tuple[date, int, int]] = []
+        boundary_shifts = 0
+
         for day in common_dates:
             old_val = old_by_date[day]
             new_val = new_by_date[day]
-            if old_val != new_val:
+
+            if old_val == new_val:
+                continue
+
+            if self._event_kind(old_val, new_val) is not None:
                 changes.append((day, old_val, new_val))
+            else:
+                boundary_shifts += 1
+
+        if boundary_shifts > 0:
+            logger.info(
+                "переходы_границы_бронируемости_пропущены",
+                external_id=new_snapshot.listing_external_id,
+                count=boundary_shifts,
+                note="0<->2 не события (сдвиг min-stay)",
+            )
 
         if not changes:
             return []
@@ -104,6 +135,29 @@ class ComparisonService:
 
         return sorted(events, key=lambda e: e.checkin_date)
 
+    @staticmethod
+    def _event_kind(old_val: int, new_val: int) -> str | None:
+        """Определяет вид перехода статуса дня.
+
+        Единственная точка истины о том, что является событием:
+        - бронь: день стал проданным (0→1 или 2→1);
+        - отмена: день перестал быть проданным (1→0 или 1→2);
+        - None: не событие — день не продан ни до, ни после (0↔2),
+          изменилась только граница бронируемости (min-stay).
+
+        Args:
+            old_val: Значение дня в предыдущем снимке (0/1/2).
+            new_val: Значение дня в текущем снимке (0/1/2).
+
+        Returns:
+            _KIND_BOOKING, _KIND_CANCELLATION или None.
+        """
+        if new_val == 1 and old_val != 1:
+            return _KIND_BOOKING
+        if old_val == 1 and new_val != 1:
+            return _KIND_CANCELLATION
+        return None
+
     def _build_events(
         self,
         changes: list[tuple[date, int, int]],
@@ -114,7 +168,8 @@ class ComparisonService:
         """Склеивает отдельные дни изменений в блоки и строит события.
 
         Блок — это непрерывная последовательность дней с одинаковым
-        типом изменения (0→1 или 1→0).
+        видом перехода (бронь или отмена), включая смешанные пары
+        статусов: брони 0→1 и 2→1, отмены 1→0 и 1→2.
 
         Args:
             changes: Список (дата, старое_значение, новое_значение).
@@ -146,37 +201,41 @@ class ComparisonService:
         self,
         changes: list[tuple[date, int, int]],
     ) -> list[list[tuple[date, int, int]]]:
-        """Группирует список изменений в непрерывные блоки одного типа.
+        """Группирует список изменений в непрерывные блоки одного вида.
 
         Блок разрывается если:
-        - Тип изменения сменился (0→1 на 1→0 или наоборот).
+        - Вид перехода сменился (бронь на отмену или наоборот).
+          Сравнение ведётся по _event_kind, а не по арифметике
+          значений: брони 0→1 и 2→1 — один вид, отмены 1→0 и 1→2 —
+          тоже один вид, поэтому смешанные блоки корректно склеиваются.
         - Между датами пропуск больше одного дня.
 
         Args:
             changes: Отсортированный список изменений по дням.
 
         Returns:
-            Список блоков, каждый блок — список изменений одного типа.
+            Список блоков, каждый блок — список изменений одного вида.
         """
         if not changes:
             return []
 
         blocks: list[list[tuple[date, int, int]]] = []
         current_block: list[tuple[date, int, int]] = [changes[0]]
+        current_kind = self._event_kind(changes[0][1], changes[0][2])
 
         for i in range(1, len(changes)):
-            prev_day, _, prev_new = changes[i - 1]
+            prev_day = changes[i - 1][0]
             curr_day, curr_old, curr_new = changes[i]
 
-            # Тот же тип изменения и следующий день подряд
-            same_type = (prev_new == curr_new and curr_old == (1 - curr_new))
+            curr_kind = self._event_kind(curr_old, curr_new)
             consecutive = (curr_day - prev_day == timedelta(days=1))
 
-            if same_type and consecutive:
+            if curr_kind == current_kind and consecutive:
                 current_block.append(changes[i])
             else:
                 blocks.append(current_block)
                 current_block = [changes[i]]
+                current_kind = curr_kind
 
         blocks.append(current_block)
         return blocks
@@ -190,10 +249,16 @@ class ComparisonService:
     ) -> AnyEvent | None:
         """Строит одно событие из блока дней.
 
-        Для брони (0→1) цены берутся из old_snapshot — там дни ещё
-        были свободны и содержат актуальную цену.
-        Для отмены (1→0) цены берутся из new_snapshot — там дни уже
-        освободились и содержат актуальную цену.
+        Вид события определяется по направлению перехода первого дня
+        блока через _event_kind: бронь — день стал проданным (0→1/2→1),
+        отмена — перестал быть проданным (1→0/1→2). Прочие переходы
+        в блок попасть не могут (отфильтрованы в compare) — на всякий
+        случай блок пропускается с предупреждением.
+
+        Цены: для брони берутся из old_snapshot (день был не продан:
+        свободен или техблок — цена валидна в обоих случаях, у дней
+        техблока цена сохраняется). Для отмены — из new_snapshot (день
+        снова не продан: свободен или техблок — цена валидна).
 
         Args:
             block: Список дней одного блока (дата, старое, новое).
@@ -212,11 +277,13 @@ class ComparisonService:
         checkout_date = last_day + timedelta(days=1)
         nights = len(block)
 
-        # Тип события определяется по направлению изменения
+        # Вид события определяется по направлению изменения первого дня
         _, old_val, new_val = block[0]
-        if old_val == 0 and new_val == 1:
+        kind = self._event_kind(old_val, new_val)
+
+        if kind == _KIND_BOOKING:
             event_type = EventType.BOOKING
-        elif old_val == 1 and new_val == 0:
+        elif kind == _KIND_CANCELLATION:
             event_type = EventType.CANCELLATION
         else:
             logger.warning(
@@ -241,8 +308,10 @@ class ComparisonService:
                      f"глубина={depth_days}",
             )
 
-        # Для брони берём цены из старого снимка (дни были свободны → цена есть).
-        # Для отмены берём цены из нового снимка (дни снова свободны → цена есть).
+        # Для брони берём цены из старого снимка (день был не продан →
+        # цена есть: свободный день или техблок с сохранённой ценой).
+        # Для отмены берём цены из нового снимка (день снова не продан →
+        # цена есть по той же причине).
         price_snapshot = old_snapshot if event_type == EventType.BOOKING else new_snapshot
 
         price_per_night = self._calc_avg_price(

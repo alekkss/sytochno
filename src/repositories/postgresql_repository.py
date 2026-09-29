@@ -333,8 +333,13 @@ class PostgreSQLListingRepository(BaseListingRepository):
     def get_empty_listings(self) -> list[RawListing]:
         """Возвращает объявления с пустыми данными календаря и цен.
 
+        «Пустым» считается календарь без данных о занятости: ни проданных
+        дней (1), ни техблоков (2). Карточка только с техблоками — ДАННЫЕ:
+        она не возвращается этим методом и не попадает в повторное
+        обогащение.
+
         Использует JSONB-операторы PostgreSQL для эффективной фильтрации:
-        - calendar_60_days не содержит значение 1 (нет занятых дней).
+        - calendar_60_days пуст ИЛИ не содержит ни 1, ни 2.
         - prices_60_days не содержит ненулевых цен.
 
         Returns:
@@ -348,7 +353,10 @@ class PostgreSQLListingRepository(BaseListingRepository):
                     SELECT * FROM listings
                     WHERE (
                         calendar_60_days = '[]'::jsonb
-                        OR NOT calendar_60_days @> '[1]'::jsonb
+                        OR (
+                            NOT calendar_60_days @> '[1]'::jsonb
+                            AND NOT calendar_60_days @> '[2]'::jsonb
+                        )
                     )
                     AND (
                         prices_60_days = '[]'::jsonb
@@ -377,6 +385,10 @@ class PostgreSQLListingRepository(BaseListingRepository):
     @staticmethod
     def _is_listing_empty(listing: RawListing) -> bool:
         """Проверяет, являются ли данные карточки пустыми.
+
+        День 2 (техблок) — это данные: карточка с техблоками НЕ пустая,
+        повторное обогащение для неё не требуется. Пустой календарь —
+        только нули (или отсутствие массива) при отсутствии цен.
 
         Args:
             listing: Объявление для проверки.

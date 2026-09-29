@@ -10,6 +10,15 @@
   batch-запрос с пачкой busy-ID. Группирует объекты по требуемому
   min_nights и обрабатывает каждую группу отдельно.
 
+  Фаза 3 — Переклассификация по календарю занятости (orders):
+  для busy-объектов запрашивается точный список занятых периодов
+  (EmploymentCalendarService, эндпоинт orders/getOrdersByObject).
+  День, входящий в занятый период, получает 1 (продан); busy-день вне
+  занятых периодов — 2 (техблок); unbusy-дни остаются 0. Применяется
+  ДО _apply_calendars, чтобы зануление цен осталось привязанным к
+  статусу 1 (день 2 сохраняет цену из detail[]). При выключенной фиче
+  или сбое запросов календарь остаётся как определило окно.
+
 Параллельный режим (enrich_batch_parallel):
   Запускает N прокси-браузеров, каждый загружает страницу поиска для
   получения токена и сессии, затем обрабатывает свою порцию объектов.
@@ -55,6 +64,9 @@ from src.services.listing.constants import (
     WORKER_STOP_TIMEOUT,
     format_duration,
     safe_stop_browser,
+)
+from src.services.listing.employment_calendar_service import (
+    EmploymentCalendarService,
 )
 from src.services.listing.price_parser import PriceParser
 
@@ -160,7 +172,8 @@ class _WorkerResult:
         worker_idx: Номер воркера.
         processed_ids: ID объектов, обработанных этим воркером.
         bulk_results: Результаты фазы 1 (bulk).
-        calendars: Результаты фазы 2 (скользящее окно).
+        calendars: Результаты фазы 2 (скользящее окно) после
+            переклассификации по календарю занятости (фаза 3).
         duration: Время работы в секундах.
         failed: True если воркер упал (не смог получить токен).
         browser_service: Браузер воркера (для корректной остановки).
@@ -204,13 +217,22 @@ class BatchEnrichmentService:
     цены — та же логика, что и в HybridStrategy.
     """
 
-    def __init__(self, price_parser: PriceParser | None = None) -> None:
+    def __init__(
+        self,
+        price_parser: PriceParser | None = None,
+        employment_calendar_service: EmploymentCalendarService | None = None,
+    ) -> None:
         """Инициализирует сервис.
 
         Args:
             price_parser: Парсер цен. Если None — создаётся новый.
+            employment_calendar_service: Сервис календаря занятости
+                (orders/getOrdersByObject) для переклассификации
+                «продан/техблок». Если None — фаза 3 пропускается
+                (поведение полностью совпадает с прежним).
         """
         self._price_parser = price_parser or PriceParser()
+        self._employment_service = employment_calendar_service
 
     # ══════════════════════════════════════════════════════════
     #  Параллельный режим (прокси-воркеры)
@@ -229,7 +251,8 @@ class BatchEnrichmentService:
         Каждый воркер:
         1. Запускает браузер через прокси.
         2. Загружает страницу поиска → перехватывает токен.
-        3. Обрабатывает свою порцию ID (bulk + скользящее окно).
+        3. Обрабатывает свою порцию ID (bulk + скользящее окно
+           + переклассификация по календарю занятости).
 
         При сбое прокси — замена через proxy_service. Необработанные
         объекты перераспределяются между живыми воркерами в retry-раунде.
@@ -319,6 +342,7 @@ class BatchEnrichmentService:
                     result.bulk_results, listings_map, today,
                 )
                 # Применяем результаты скользящего окна
+                # (уже переклассифицированные по календарю занятости)
                 self._apply_calendars(result.calendars, listings_map)
 
         # ── Останавливаем браузеры воркеров ──
@@ -334,9 +358,10 @@ class BatchEnrichmentService:
         elapsed = time.perf_counter() - start_time
 
         # ── Статистика ──
+        # День 2 (техблок) — тоже данные: считаем любой c != 0.
         final_enriched = sum(
             1 for l in listings
-            if (l.calendar_60_days and any(c == 1 for c in l.calendar_60_days))
+            if (l.calendar_60_days and any(c != 0 for c in l.calendar_60_days))
             or (l.prices_60_days and any(p > 0 for p in l.prices_60_days))
         )
         final_fatal = sum(
@@ -479,6 +504,13 @@ class BatchEnrichmentService:
         if busy_ids:
             result.calendars = await self._phase_sliding_window(
                 ctx, busy_ids, today,
+            )
+
+            # ── Фаза 3: переклассификация по календарю занятости ──
+            # Выполняется в контексте воркера (его страница и токен),
+            # пока браузер жив — отдельный браузер не запускается.
+            await self._apply_employment_calendars(
+                ctx, result.calendars, today,
             )
 
         result.duration = time.perf_counter() - worker_start
@@ -683,13 +715,20 @@ class BatchEnrichmentService:
         # ── Фаза 2: Batch скользящее окно ──
         if busy_ids:
             calendars = await self._phase_sliding_window(ctx, busy_ids, today)
+
+            # ── Фаза 3: переклассификация по календарю занятости ──
+            # Вызывается ДО _apply_calendars: зануление цен привязано
+            # к статусу 1, день 2 сохранит цену из detail[].
+            await self._apply_employment_calendars(ctx, calendars, today)
+
             self._apply_calendars(calendars, listings_map)
 
         elapsed = time.perf_counter() - start_time
 
+        # День 2 (техблок) — тоже данные: считаем любой c != 0.
         final_enriched = sum(
             1 for l in listings
-            if (l.calendar_60_days and any(c == 1 for c in l.calendar_60_days))
+            if (l.calendar_60_days and any(c != 0 for c in l.calendar_60_days))
             or (l.prices_60_days and any(p > 0 for p in l.prices_60_days))
         )
         final_fatal = sum(
@@ -941,6 +980,9 @@ class BatchEnrichmentService:
     ) -> None:
         """Применяет результаты скользящего окна к карточкам.
 
+        Зануление цен выполняется только для дней со статусом 1 —
+        день 2 (техблок) сохраняет цену из detail[].
+
         Args:
             calendars: Словарь {object_id: calendar_60_days}.
             listings_map: Индекс external_id → RawListing.
@@ -959,6 +1001,99 @@ class BatchEnrichmentService:
                     else listing.prices_60_days[i]
                     for i in range(min(DAYS_COUNT, len(listing.prices_60_days)))
                 ]
+
+    async def _apply_employment_calendars(
+        self,
+        ctx: _PageContext,
+        calendars: dict[int, list[int]],
+        today: date,
+    ) -> None:
+        """Переклассифицирует календари busy-объектов по занятым периодам.
+
+        Правила (источник истины — orders/getOrdersByObject):
+        - дата дня входит в занятый период → 1 (продан);
+        - день был UNBUSY (0) → остаётся 0;
+        - прочие busy-дни (окно/хвостовое наследование) → 2 (техблок).
+
+        Вызывается ДО _apply_calendars: зануление цен привязано к
+        статусу 1, поэтому день 2 сохранит цену из detail[].
+
+        Тихая деградация: объекты без успешного ответа orders остаются
+        с календарём по окну. При выключенной фиче — немедленный выход.
+
+        Args:
+            ctx: Контекст страницы (тот же, что у скользящего окна).
+            calendars: Словарь {object_id: calendar_60_days}
+                (мутируется на месте).
+            today: Дата начала календаря прогона — та же, которой
+                строились окна скользящего этапа.
+        """
+        if self._employment_service is None:
+            return
+        if not self._employment_service.enabled:
+            return
+
+        target_ids = self._employment_service.filter_ids(
+            list(calendars.keys()),
+        )
+        if not target_ids:
+            return
+
+        logger.info(
+            "employment_переклассификация_начало",
+            step=f"календарей={len(calendars)}, "
+                 f"запросов_занятости={len(target_ids)}",
+        )
+
+        busy_nights = await self._employment_service.load_busy_nights(
+            ctx=ctx,
+            object_ids=target_ids,
+            today=today,
+            recover_context=self._recover_page_context,
+        )
+
+        if not busy_nights:
+            logger.warning(
+                "employment_переклассификация_пропущена",
+                step="нет успешных ответов, календари остаются по окну",
+            )
+            return
+
+        set_to_booked = 0
+        set_to_techblock = 0
+
+        for obj_id, nights in busy_nights.items():
+            cal = calendars.get(obj_id)
+            if cal is None:
+                continue
+
+            for day_offset in range(min(DAYS_COUNT, len(cal))):
+                day = today + timedelta(days=day_offset)
+
+                if day in nights:
+                    # Дата входит в занятый период — продан.
+                    # Приоритет calendars[] над окном: заказ, появившийся
+                    # между запросами, разрешается в пользу orders.
+                    if cal[day_offset] != 1:
+                        set_to_booked += 1
+                    cal[day_offset] = 1
+                elif cal[day_offset] == 0:
+                    # UNBUSY — свободен и бронируем, не трогаем.
+                    continue
+                else:
+                    # Busy по окну, но не продан — техблок
+                    # (ограничение минимального срока или блок соседними
+                    # бронями, включая унаследованные хвостовые дни).
+                    if cal[day_offset] != 2:
+                        set_to_techblock += 1
+                    cal[day_offset] = 2
+
+        logger.info(
+            "employment_переклассификация_завершена",
+            step=f"объектов={len(busy_nights)}, "
+                 f"уточнено_до_1={set_to_booked}, "
+                 f"техблоков_2={set_to_techblock}",
+        )
 
     # ══════════════════════════════════════════════════════════
     #  Фаза 1: Batch bulk
@@ -1390,6 +1525,10 @@ class BatchEnrichmentService:
         Для дней, которые невозможно проверить (required_nights > remaining_days),
         наследует статус от ближайшего проверенного соседа слева.
         Если слева нет проверенных дней — считает занятым (1).
+
+        Унаследованное значение позже проходит переклассификацию по
+        календарю занятости (_apply_employment_calendars): проданные
+        даты уточнятся до 1, остальные busy-дни станут 2 (техблок).
 
         Args:
             calendars: Словарь календарей (мутируется).

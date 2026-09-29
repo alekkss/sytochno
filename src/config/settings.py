@@ -70,6 +70,28 @@ def _get_int(key: str, default: str) -> int:
         )
 
 
+def _get_float(key: str, default: str) -> float:
+    """Получает числовую переменную окружения с плавающей точкой.
+
+    Args:
+        key: Имя переменной окружения.
+        default: Значение по умолчанию (строка).
+
+    Returns:
+        Число с плавающей точкой.
+
+    Raises:
+        RuntimeError: Если значение не может быть преобразовано во float.
+    """
+    value = os.getenv(key, default).strip()
+    try:
+        return float(value)
+    except ValueError:
+        raise RuntimeError(
+            f"Переменная окружения {key} должна быть числом, получено: '{value}'."
+        )
+
+
 def _parse_time_hhmm(key: str) -> tuple[int, int] | None:
     """Парсит переменную окружения с временем в формате HH:MM.
 
@@ -179,6 +201,45 @@ def _parse_catalog_sync_times() -> tuple[tuple[int, int], ...]:
     return tuple(sorted(set(slots)))
 
 
+def _parse_employment_calendar_ids(key: str) -> frozenset[int]:
+    """Парсит список ID объектов через запятую для режима list.
+
+    Используется переменной EMPLOYMENT_CALENDAR_IDS: целые положительные
+    числа через запятую, пробелы вокруг допустимы. Пустое значение —
+    пустое множество (валидно только при scope != list — это проверяется
+    отдельно при валидации настроек).
+
+    Args:
+        key: Имя переменной окружения.
+
+    Returns:
+        Множество ID объектов.
+
+    Raises:
+        RuntimeError: Если элемент не является целым положительным числом.
+    """
+    raw = os.getenv(key, "").strip()
+    if not raw:
+        return frozenset()
+
+    ids: set[int] = set()
+
+    for part_index, part in enumerate(raw.split(","), start=1):
+        token = part.strip()
+        if not token:
+            continue
+
+        if not token.isdigit():
+            raise RuntimeError(
+                f"Элемент {part_index} в {key} должен быть целым "
+                f"положительным числом, получено: '{token}' "
+                f"(полное значение: '{raw}')."
+            )
+
+        ids.add(int(token))
+
+    return frozenset(ids)
+
 
 def _load_search_urls() -> list[str]:
     """Загружает список URL поиска из переменных окружения.
@@ -281,6 +342,16 @@ class Settings:
     # Слоты запуска этапа 1 — сбора каталога (время по Москве, HH:MM)
     catalog_sync_times: tuple[tuple[int, int], ...] = ((1, 0), (19, 0))
 
+    # Календарь занятости (orders/getOrdersByObject) — точное разделение
+    # «продан» (1) и «техблок» (2) для busy-объектов.
+    # all — запросы для всех busy-объектов; list — только ID из
+    # employment_calendar_ids; off — фича выключена (откат к окну).
+    employment_calendar_scope: str = "all"
+    # ID объектов для режима list (из EMPLOYMENT_CALENDAR_IDS, через запятую)
+    employment_calendar_ids: frozenset[int] = frozenset()
+    # Пауза между GET-запросами занятости (секунды)
+    employment_calendar_pause: float = 0.3
+
     @property
     def pg_dsn(self) -> str:
         """Формирует строку подключения PostgreSQL (DSN).
@@ -315,6 +386,14 @@ class Settings:
 
         # Слоты запуска этапа 1 (сбор каталога)
         catalog_sync_times = _parse_catalog_sync_times()
+
+        # Календарь занятости (orders/getOrdersByObject): режим и список ID
+        employment_scope = os.getenv(
+            "EMPLOYMENT_CALENDAR_SCOPE", "all",
+        ).strip().lower()
+        employment_ids = _parse_employment_calendar_ids(
+            "EMPLOYMENT_CALENDAR_IDS",
+        )
 
         # Тип базы данных
         db_type = os.getenv("DB_TYPE", "sqlite").strip().lower()
@@ -353,6 +432,11 @@ class Settings:
             pause_start=pause_start,
             pause_end=pause_end,
             catalog_sync_times=catalog_sync_times,
+            employment_calendar_scope=employment_scope,
+            employment_calendar_ids=employment_ids,
+            employment_calendar_pause=_get_float(
+                "EMPLOYMENT_CALENDAR_PAUSE", "0.3",
+            ),
         )
 
         # ── Валидация типа базы данных ──
@@ -496,6 +580,33 @@ class Settings:
             raise RuntimeError(
                 "PRICE_DEVIATION_DOWN должен быть от 1 до 99 (проценты). "
                 f"Получено: {settings.price_deviation_down}."
+            )
+
+        # ── Валидация календаря занятости (orders/getOrdersByObject) ──
+        if settings.employment_calendar_scope not in ("all", "list", "off"):
+            raise RuntimeError(
+                f"EMPLOYMENT_CALENDAR_SCOPE должен быть 'all', 'list' или "
+                f"'off'. Получено: '{settings.employment_calendar_scope}'."
+            )
+        if (
+            settings.employment_calendar_scope == "list"
+            and not settings.employment_calendar_ids
+        ):
+            raise RuntimeError(
+                "EMPLOYMENT_CALENDAR_SCOPE=list требует непустой список ID "
+                "в EMPLOYMENT_CALENDAR_IDS (через запятую). "
+                "Либо заполните переменную, либо используйте scope=all/off."
+            )
+        if settings.employment_calendar_pause < 0:
+            raise RuntimeError(
+                "EMPLOYMENT_CALENDAR_PAUSE не может быть отрицательной. "
+                f"Получено: {settings.employment_calendar_pause}."
+            )
+        if settings.employment_calendar_pause > 60:
+            raise RuntimeError(
+                "EMPLOYMENT_CALENDAR_PAUSE указывается в секундах "
+                "(по умолчанию 0.3) и не может превышать 60. "
+                f"Получено: {settings.employment_calendar_pause}."
             )
 
         # Валидация паузы: обе должны быть заданы или обе пусты

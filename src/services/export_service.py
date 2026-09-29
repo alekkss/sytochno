@@ -14,6 +14,17 @@ from src.models.listing import RawListing
 logger = get_logger("export")
 
 # Определение столбцов отчёта
+#
+# Легенда столбца «Календарь 60 дней» (три статуса дня):
+#   0 — свободен и бронируем;
+#   1 — занят (продан: дата входит в занятый период
+#       из orders/getOrdersByObject);
+#   2 — свободен с ограничением (техблок: не продан, но забронировать
+#       нельзя — ограничение минимального срока или блок соседними
+#       бронями).
+#
+# Легенда столбца «Цены 60 дней»: 0 — день продан (статус 1); у дней
+# техблока (статус 2) цена отображается — она валидна.
 _COLUMNS: list[dict[str, str | int]] = [
     {"header": "ID объявления", "width": 14},
     {"header": "Название", "width": 50},
@@ -25,8 +36,12 @@ _COLUMNS: list[dict[str, str | int]] = [
     {"header": "Адрес", "width": 45},
     {"header": "Метро", "width": 30},
     {"header": "Быстрое бронирование", "width": 22},
+    # Занятость считается только по проданным дням (статус 1) —
+    # RawListing.occupancy_percent; дни техблока (2) не учитываются.
     {"header": "Занятость (%)", "width": 14},
     {"header": "Календарь 60 дней", "width": 65},
+    # Средняя цена — по бронируемым дням (статус 0): см. докстринг
+    # RawListing.average_price.
     {"header": "Средняя цена (руб./сут.)", "width": 22},
     {"header": "Стоимость м² (руб./сут.)", "width": 22},
     {"header": "Цены 60 дней (руб./сут.)", "width": 65},
@@ -127,6 +142,10 @@ class ExportService:
     def _write_data(self, ws: Worksheet, listings: list[RawListing]) -> None:
         """Записывает данные объявлений в таблицу.
 
+        Календарь сериализуется как есть — дни со статусом 2 (техблок)
+        отображаются символом '2' (см. легенду у _COLUMNS). Цены у дней
+        техблока не обнуляются и отображаются в столбце цен.
+
         Args:
             ws: Рабочий лист Excel.
             listings: Список объявлений.
@@ -149,6 +168,8 @@ class ExportService:
                 value="Да" if listing.has_instant_booking else "Нет",
             )
 
+            # Занятость — только проданные дни (статус 1), см. шаг 5:
+            # RawListing.occupancy_percent не учитывает техблоки.
             ws.cell(row=row_idx, column=11, value=listing.occupancy_percent)
 
             calendar_str = (
@@ -158,6 +179,7 @@ class ExportService:
             )
             ws.cell(row=row_idx, column=12, value=calendar_str)
 
+            # Средняя цена — по бронируемым дням (статус 0).
             ws.cell(row=row_idx, column=13, value=listing.average_price)
 
             ws.cell(row=row_idx, column=14, value=listing.price_per_sqm)

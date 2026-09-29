@@ -13,6 +13,14 @@
 
   Токен для однопоточного batch-обогащения без каталога получается
   через отдельный браузер (загрузка страницы поиска + перехват).
+
+Календарь занятости (фаза 3 batch-обогащения):
+  EmploymentCalendarService уточняет календари busy-объектов через
+  orders/getOrdersByObject — точное разделение дней «продан» (1) и
+  «техблок» (2). Режим задаётся EMPLOYMENT_CALENDAR_SCOPE (all/list/off),
+  откат — off в .env без правки кода. Сервис инжектируется один раз
+  в BatchEnrichmentService и применяется во всех сценариях batch
+  (parallel, однопоточный, retry).
 """
 
 import asyncio
@@ -48,6 +56,9 @@ from src.services.comparison_service import ComparisonService
 from src.services.data_cleaner_service import DataCleanerService
 from src.services.export_service import ExportService
 from src.services.listing.batch_enrichment_service import BatchEnrichmentService
+from src.services.listing.employment_calendar_service import (
+    EmploymentCalendarService,
+)
 from src.services.pool_service import PoolService
 from src.services.proxy_service import ProxyService
 from src.services.scraper_service import ScraperService
@@ -248,6 +259,10 @@ def _write_run_status(
 def _count_enriched(listings: list) -> int:
     """Подсчитывает количество обогащённых карточек.
 
+    Обогащённой считается карточка с данными: календарь содержит хотя
+    бы один день со статусом 1 (продан) или 2 (техблок), либо есть
+    ненулевые цены. Карточка только с техблоками — обогащённая.
+
     Args:
         listings: Список карточек.
 
@@ -258,7 +273,7 @@ def _count_enriched(listings: list) -> int:
     for listing in listings:
         if listing.enrichment_skip_reason is not None:
             continue
-        if listing.calendar_60_days and any(c == 1 for c in listing.calendar_60_days):
+        if listing.calendar_60_days and any(c != 0 for c in listing.calendar_60_days):
             count += 1
         elif listing.prices_60_days and any(p > 0 for p in listing.prices_60_days):
             count += 1
@@ -267,6 +282,9 @@ def _count_enriched(listings: list) -> int:
 
 def _count_unenriched(listings: list) -> int:
     """Подсчитывает количество необогащённых карточек (без фатальных).
+
+    Необогащённая карточка — нет ни дней 1/2 в календаре, ни ненулевых
+    цен, ни фатальной причины.
 
     Args:
         listings: Список карточек.
@@ -279,7 +297,7 @@ def _count_unenriched(listings: list) -> int:
         if listing.enrichment_skip_reason is not None:
             continue
         has_calendar = listing.calendar_60_days and any(
-            c == 1 for c in listing.calendar_60_days
+            c != 0 for c in listing.calendar_60_days
         )
         has_prices = listing.prices_60_days and any(
             p > 0 for p in listing.prices_60_days
@@ -292,6 +310,9 @@ def _count_unenriched(listings: list) -> int:
 def _get_unenriched_listings(listings: list) -> list:
     """Возвращает список необогащённых карточек без фатальных причин.
 
+    Карточка считается обогащённой при наличии дней 1/2 в календаре
+    или ненулевых цен.
+
     Args:
         listings: Полный список карточек.
 
@@ -301,7 +322,7 @@ def _get_unenriched_listings(listings: list) -> list:
     return [
         l for l in listings
         if l.enrichment_skip_reason is None
-        and not (l.calendar_60_days and any(c == 1 for c in l.calendar_60_days))
+        and not (l.calendar_60_days and any(c != 0 for c in l.calendar_60_days))
         and not (l.prices_60_days and any(p > 0 for p in l.prices_60_days))
     ]
 
@@ -596,7 +617,27 @@ async def run() -> None:
         events_repository=events_repository,
     )
 
-    batch_enrichment_service = BatchEnrichmentService()
+    # Календарь занятости: точное разделение «продан» (1) и «техблок» (2)
+    # для busy-объектов через orders/getOrdersByObject. Инжектируется в
+    # BatchEnrichmentService один раз — фаза 3 применяется во всех
+    # сценариях batch (parallel, однопоточный, retry). Откат — режим off.
+    employment_calendar_service = EmploymentCalendarService(
+        scope=settings.employment_calendar_scope,
+        allowed_ids=settings.employment_calendar_ids,
+        pause_seconds=settings.employment_calendar_pause,
+    )
+
+    batch_enrichment_service = BatchEnrichmentService(
+        employment_calendar_service=employment_calendar_service,
+    )
+
+    logger.info(
+        "календарь_занятости_режим",
+        step=f"режим={settings.employment_calendar_scope}, "
+             f"id_в_списке={len(settings.employment_calendar_ids)}, "
+             f"пауза={settings.employment_calendar_pause}с",
+    )
+
     data_cleaner_service = DataCleanerService(
         price_deviation_up=settings.price_deviation_up,
         price_deviation_down=settings.price_deviation_down,
@@ -904,6 +945,7 @@ async def run() -> None:
                 continue
 
             # Проверяем наличие данных: календарь ИЛИ цены должны быть непустыми.
+            # День 2 (техблок) — тоже данные.
             has_calendar = (
                 listing.calendar_60_days
                 and any(c != 0 for c in listing.calendar_60_days)
