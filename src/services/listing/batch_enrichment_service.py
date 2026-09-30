@@ -13,8 +13,10 @@
   Фаза 3 — Переклассификация по календарю занятости (orders):
   для busy-объектов запрашивается точный список занятых периодов
   (EmploymentCalendarService, эндпоинт orders/getOrdersByObject).
-  День, входящий в занятый период, получает 1 (продан); busy-день вне
-  занятых периодов — 2 (техблок); unbusy-дни остаются 0. Применяется
+  День, входящий в занятый период, получает 1 (продан);
+  непроданные дни группируются в островки между заказами: островок с unbusy-днём (доступен валидный заезд) → 
+  весь 0, островок без доступных заездов (короче min-stay) → весь 2 (техблок — непродаваемые ночи).
+  Применяется
   ДО _apply_calendars, чтобы зануление цен осталось привязанным к
   статусу 1 (день 2 сохраняет цену из detail[]). При выключенной фиче
   или сбое запросов календарь остаётся как определило окно.
@@ -1012,11 +1014,20 @@ class BatchEnrichmentService:
 
         Правила (источник истины — orders/getOrdersByObject):
         - дата дня входит в занятый период → 1 (продан);
-        - день был UNBUSY (0) → остаётся 0;
-        - прочие busy-дни (окно/хвостовое наследование) → 2 (техблок).
+        - дни между заказами образуют «островки». Островок продаваем,
+          если хотя бы один его день получил от скользящего окна unbusy
+          (существует валидный интервал заезда: nights >= min-stay,
+          без пересечений с бронями) — тогда все ночи островка могут
+          быть проданы бронью с более ранним заездом → весь островок 0;
+        - островок, все дни которого окно пометило busy (островок короче
+          минимального срока — ночи невозможно продать никак) → 2 (техблок).
+
+        Пример (min 4 ночи): заказы до 16.10 и с 20.10 → островок 16–19
+        длиной 4 ночи продаваем (заезд 16-го) → все дни 0; островок 8–10
+        длиной 3 ночи мёртв → все дни 2.
 
         Вызывается ДО _apply_calendars: зануление цен привязано к
-        статусу 1, поэтому день 2 сохранит цену из detail[].
+        статусу 1, поэтому дни 0 и 2 сохранят цену из detail[].
 
         Тихая деградация: объекты без успешного ответа orders остаются
         с календарём по окну. При выключенной фиче — немедленный выход.
@@ -1060,6 +1071,7 @@ class BatchEnrichmentService:
             return
 
         set_to_booked = 0
+        set_to_free = 0
         set_to_techblock = 0
 
         for obj_id, nights in busy_nights.items():
@@ -1067,31 +1079,57 @@ class BatchEnrichmentService:
             if cal is None:
                 continue
 
-            for day_offset in range(min(DAYS_COUNT, len(cal))):
-                day = today + timedelta(days=day_offset)
+            n = min(DAYS_COUNT, len(cal))
 
-                if day in nights:
-                    # Дата входит в занятый период — продан.
+            # ── Шаг 1: проданные дни из orders + вердикт окна
+            # для остальных (free = unbusy, busy = заблокирован) ──
+            flags: list[str] = []
+            for d in range(n):
+                if (today + timedelta(days=d)) in nights:
                     # Приоритет calendars[] над окном: заказ, появившийся
                     # между запросами, разрешается в пользу orders.
-                    if cal[day_offset] != 1:
+                    if cal[d] != 1:
                         set_to_booked += 1
-                    cal[day_offset] = 1
-                elif cal[day_offset] == 0:
-                    # UNBUSY — свободен и бронируем, не трогаем.
-                    continue
+                    cal[d] = 1
+                    flags.append("booked")
+                elif cal[d] == 0:
+                    flags.append("free")
                 else:
-                    # Busy по окну, но не продан — техблок
-                    # (ограничение минимального срока или блок соседними
-                    # бронями, включая унаследованные хвостовые дни).
-                    if cal[day_offset] != 2:
-                        set_to_techblock += 1
-                    cal[day_offset] = 2
+                    flags.append("busy")
+
+            # ── Шаг 2: островки непроданных дней между заказами ──
+            day_offset = 0
+            while day_offset < n:
+                if flags[day_offset] == "booked":
+                    day_offset += 1
+                    continue
+
+                island_start = day_offset
+                while day_offset < n and flags[day_offset] != "booked":
+                    day_offset += 1
+
+                # Островок продаваем, если хотя бы один его день
+                # получил от окна unbusy — тогда существует валидный
+                # интервал заезда и все ночи островка могут быть проданы.
+                island_sellable = any(
+                    flags[i] == "free"
+                    for i in range(island_start, day_offset)
+                )
+                value = 0 if island_sellable else 2
+
+                for i in range(island_start, day_offset):
+                    if cal[i] != value:
+                        if value == 0:
+                            set_to_free += 1
+                        else:
+                            set_to_techblock += 1
+                    cal[i] = value
 
         logger.info(
-            "employment_переклассификация_завершена",
+            "employment_переклассификация_завершено",
             step=f"объектов={len(busy_nights)}, "
                  f"уточнено_до_1={set_to_booked}, "
+                 f"освобождено_до_0={set_to_free}, "
                  f"техблоков_2={set_to_techblock}",
         )
 
